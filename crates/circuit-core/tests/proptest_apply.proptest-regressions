@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc de8e9f7e784a3e22a087aaedb9358ed5dbbbc418c0df033fe376e9b149c19bb0 # shrinks to ops = [(Object {"op": String("block.begin"), "body": Object {"id": String("b2"), "role": String("filter"), "title": String("t"), "spec": Object {"fc_hz": Object {"target": Number(1000.0), "tol_pct": Number(10.0)}}, "ports": Array [Object {"name": String("in"), "direction": String("input"), "net": String("GND")}]}}, false), (Object {"op": String("part.add"), "body": Object {"refdes": String("V1"), "part": String("vsource_dc"), "params": Object {}, "block": String("b2")}}, false), (Object {"op": String("analysis.set"), "body": Object {"analyses": Array [Object {"type": String("dc"), "source": String("V1"), "start": Number(0.0), "stop": Number(5.0), "step": Number(0.5)}]}}, false), (Object {"op": String("block.abort"), "body": Object {"id": String("b2"), "reason": String("r")}}, false), (Object {"op": String("analysis.set"), "body": Object {"analyses": Array [Object {"type": String("op")}]}}, false)]

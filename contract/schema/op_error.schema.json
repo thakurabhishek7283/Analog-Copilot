@@ -1,0 +1,108 @@
+{
+  "type": "object",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ErrorCode"
+    },
+    "message": {
+      "type": "string"
+    },
+    "op_index": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint",
+      "minimum": 0,
+      "description": "Index of the failing op within a batch (`apply_all`)."
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "OpError",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ErrorCode": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "part_not_in_registry",
+            "pin_not_found",
+            "pin_already_connected",
+            "param_out_of_range",
+            "refdes_conflict",
+            "block_not_open",
+            "stale_rev",
+            "unknown_op",
+            "limit_exceeded",
+            "part_not_found",
+            "param_unknown",
+            "net_not_found",
+            "block_not_found",
+            "block_conflict",
+            "hint_not_found"
+          ]
+        },
+        {
+          "type": "string",
+          "const": "schema_error",
+          "description": "Envelope or body does not match the schema."
+        },
+        {
+          "type": "string",
+          "const": "unsupported_version",
+          "description": "Envelope `v` is not the current or previous protocol version."
+        },
+        {
+          "type": "string",
+          "const": "registry_mismatch",
+          "description": "Circuit and registry versions differ."
+        },
+        {
+          "type": "string",
+          "const": "refdes_invalid",
+          "description": "Refdes is malformed or its prefix does not match the part category."
+        },
+        {
+          "type": "string",
+          "const": "bad_value",
+          "description": "A value string could not be parsed in the param's unit."
+        },
+        {
+          "type": "string",
+          "const": "category_mismatch",
+          "description": "Swap target is in a different category."
+        },
+        {
+          "type": "string",
+          "const": "net_invalid",
+          "description": "Malformed net id, ground misuse, or a kind/label that disagrees with the existing net."
+        },
+        {
+          "type": "string",
+          "const": "net_conflict",
+          "description": "Net id already exists (case-insensitive, since SPICE node names are)."
+        },
+        {
+          "type": "string",
+          "const": "block_not_empty",
+          "description": "Block still has parts or hints referring to it."
+        },
+        {
+          "type": "string",
+          "const": "analysis_invalid",
+          "description": "Analysis parameters are invalid."
+        },
+        {
+          "type": "string",
+          "const": "forbidden",
+          "description": "The author is not allowed to emit this op (e.g. `part.pin` is user-only)."
+        }
+      ],
+      "description": "Error codes returned by `apply()`. These go back to the LLM verbatim during repair and are\nshown to users as friendly text (LLD §4). Additive only within a protocol major version."
+    }
+  }
+}

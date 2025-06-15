@@ -1,0 +1,13 @@
+id: cap_film
+category: C
+title: Film capacitor (non-polarized)
+role_tags: [passive, filter, coupling, timing]
+pins:
+  - {name: "1", num: 1, type: passive}
+  - {name: "2", num: 2, type: passive}
+params:
+  capacitance: {unit: farad, default: 100n, min: 1p, max: 10u}
+limits: {v_max: 63}
+spice:
+  line: "{refdes} {1} {2} {capacitance}"
+teach: "Blocks DC, passes AC; its impedance is 1/(2πfC)."

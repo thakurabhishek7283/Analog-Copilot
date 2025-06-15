@@ -1,0 +1,17 @@
+* Simplified behavioural model of ONE TL072 amplifier, written for circuit-tutor.
+* This is NOT the Texas Instruments vendor macro-model: single dominant pole, output clamped
+* 1.5 V inside each rail, no slew-rate limit. Aol = 2e5 (106 dB), GBW = 3 MHz.
+* Pin order matches the registry unit_line: inp inm vcc vee out
+.subckt TL072 inp inm vcc vee out
+rin inp inm 1e12
+cin inp inm 2p
+* gain stage: 1 mA/V into 200 Mohm = 2e5, dominant pole at 15 Hz
+g1 0 n1 inp inm 1m
+r1 n1 0 200meg
+c1 n1 0 53.05p
+* output stage, limited to the rails
+bout n2 0 v = max(min(v(n1), v(vcc) - 1.5), v(vee) + 1.5)
+rout n2 out 75
+* quiescent current, about 1.4 mA at +/-15 V
+rq vcc vee 21.4k
+.ends TL072

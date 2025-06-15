@@ -1,0 +1,12 @@
+id: led_red
+category: D
+title: Red LED, 5 mm
+role_tags: [indicator, load]
+pins:
+  - {name: A, num: 1, type: passive}
+  - {name: K, num: 2, type: passive}
+limits: {i_max: 0.02, v_rev_max: 5}
+spice:
+  include: models/diodes.lib
+  line: "{refdes} {A} {K} LED_RED"
+teach: "Drops about 1.8–2 V when lit; always limit its current with a series resistor."

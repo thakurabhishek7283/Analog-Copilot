@@ -1,0 +1,13 @@
+id: reg_lm7805
+category: U
+title: LM7805 +5 V linear regulator
+role_tags: [supply, regulator]
+pins:
+  - {name: IN,  num: 1, type: power_pos}
+  - {name: GND, num: 2, type: power_neg}
+  - {name: OUT, num: 3, type: output}
+limits: {v_supply_max: 35, i_out_max: 1.5}
+spice:
+  include: models/lm7805.lib
+  line: "X{refdes} {IN} {GND} {OUT} LM7805"
+teach: "Needs about 2 V of headroom: feed it at least 7 V to get a steady 5 V out; the difference is burned as heat."

@@ -1,0 +1,24 @@
+[workspace]
+resolver = "3"
+members = ["crates/circuit-core", "crates/circuit-core-wasm", "crates/circuit-core-py"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+indexmap = { version = "2.14", features = ["serde"] }
+schemars = { version = "1.2", features = ["indexmap2"] }
+sha2 = "0.11"
+thiserror = "2.0"
+serde_norway = "0.9"
+proptest = "1.11"
+insta = "1.48"
+
+[profile.release]
+lto = true
+codegen-units = 1

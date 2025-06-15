@@ -1,0 +1,21 @@
+* Simplified behavioural NE555, written for circuit-tutor (not the vendor model).
+* Comparators at VCC/3 (TRIG) and the CTRL voltage, nominally 2*VCC/3 (THR); TRIG wins
+* over THR as in the real part; RESET below 0.7 V forces the output low.
+* The latch is a 1 nF capacitor on node q, clamped near 0..1 V; q > 0.5 means "set".
+* Pin order matches the registry line: gnd trig out reset ctrl thr dis vcc
+.subckt NE555 gnd trig out reset ctrl thr dis vcc
+r1 vcc ctrl 5k
+r2 ctrl lo 5k
+r3 lo gnd 5k
+bq 0 q i = 1m * (u(v(lo) - v(trig)) - u(v(thr) - v(ctrl)) * u(v(trig) - v(lo)) - 2 * u(0.7 - v(reset, gnd)))
+cq q 0 1n
+vhi hi 0 1
+dhi q hi dclamp
+dlo 0 q dclamp
+bout o1 gnd v = u(v(q) - 0.5) * u(v(reset, gnd) - 0.7) * max(v(vcc, gnd) - 1.7, 0)
+rout o1 out 10
+* discharge transistor: about 10 ohm to GND while the latch is reset
+bdis dis gnd i = (1 - u(v(q) - 0.5)) * v(dis, gnd) / 10
+rq vcc gnd 1.5k
+.model dclamp d(is=1e-14)
+.ends NE555

@@ -1,0 +1,14 @@
+/target
+**/*.snap.new
+**/*.pending-snap
+node_modules/
+__pycache__/
+.venv/
+*.pyc
+.env
+/crates/circuit-core-wasm/pkg/
+/crates/circuit-core-wasm/pkg-*/
+.pytest_cache/
+*.pyd
+*.so
+*.pdb

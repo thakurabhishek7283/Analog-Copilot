@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
+
+[project]
+name = "circuit-core"
+version = "0.1.0"
+description = "Circuit IR, op protocol, ERC and SPICE compiler (Rust circuit-core via PyO3)"
+requires-python = ">=3.12"
+
+[tool.maturin]
+module-name = "circuit_core._native"
+python-source = "python"
+features = ["pyo3/extension-module"]

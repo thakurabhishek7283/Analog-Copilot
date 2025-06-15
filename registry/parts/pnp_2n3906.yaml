@@ -1,0 +1,13 @@
+id: pnp_2n3906
+category: Q
+title: 2N3906 PNP transistor
+role_tags: [amplifier, switch, buffer]
+pins:
+  - {name: E, num: 1, type: passive}
+  - {name: B, num: 2, type: passive}
+  - {name: C, num: 3, type: passive}
+limits: {v_ce_max: 40, i_c_max: 0.2, p_max: 0.625}
+spice:
+  include: models/bjt.lib
+  line: "{refdes} {C} {B} {E} Q2N3906"
+teach: "The mirror image of an NPN: current flows emitter to collector when the base is pulled about 0.7 V below the emitter."

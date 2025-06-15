@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "properties": {
+    "parts_upserted": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "parts_removed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nets_upserted": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nets_removed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blocks_upserted": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blocks_removed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "analyses_changed": {
+      "type": "boolean"
+    },
+    "hints_changed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "parts_upserted",
+    "parts_removed",
+    "nets_upserted",
+    "nets_removed",
+    "blocks_upserted",
+    "blocks_removed",
+    "analyses_changed",
+    "hints_changed"
+  ],
+  "description": "What changed, by id, so the UI never needs the whole circuit per op (LLD §10).",
+  "title": "Patch",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

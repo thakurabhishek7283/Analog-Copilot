@@ -1,0 +1,87 @@
+{
+  "type": "object",
+  "properties": {
+    "rule": {
+      "type": "string"
+    },
+    "code": {
+      "$ref": "#/$defs/ErcCode"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "message": {
+      "type": "string"
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "pins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PinRef"
+      }
+    },
+    "block": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "rule",
+    "code",
+    "severity",
+    "message"
+  ],
+  "title": "ErcIssue",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ErcCode": {
+      "type": "string",
+      "enum": [
+        "floating_pin",
+        "dangling_net",
+        "no_dc_path",
+        "vsource_loop",
+        "unpowered_ic",
+        "output_conflict",
+        "supply_short",
+        "over_voltage",
+        "port_unbound",
+        "unused_unit"
+      ]
+    },
+    "Severity": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "warning",
+            "info"
+          ]
+        },
+        {
+          "type": "string",
+          "const": "error",
+          "description": "Rejects an LLM block; for user edits, blocks simulation."
+        }
+      ]
+    },
+    "PinRef": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$",
+      "description": "Part pin as REFDES.PIN, e.g. \"R3.1\" or \"U1.OUT_A\"."
+    }
+  }
+}

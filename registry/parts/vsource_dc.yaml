@@ -1,0 +1,13 @@
+id: vsource_dc
+category: V
+title: DC voltage source
+role_tags: [supply, source, bias]
+pins:
+  - {name: P, num: 1, type: passive}
+  - {name: N, num: 2, type: passive}
+params:
+  voltage: {unit: volt, default: "5", min: -50, max: 50}
+dc_param: voltage
+spice:
+  line: "{refdes} {P} {N} DC {voltage}"
+teach: "An ideal supply: holds V(P) − V(N) fixed whatever current flows."

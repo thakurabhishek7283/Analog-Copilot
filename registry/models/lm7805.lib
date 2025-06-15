@@ -1,0 +1,8 @@
+* Simplified behavioural LM7805, written for circuit-tutor (not the vendor model).
+* 5 V out with about 2 V dropout, 5 mA quiescent current, 0.05 ohm output resistance.
+* Pin order matches the registry line: in gnd out
+.subckt LM7805 in gnd out
+breg n1 gnd v = min(5, max(v(in, gnd) - 2, 0))
+rout n1 out 0.05
+rq in gnd 2.4k
+.ends LM7805

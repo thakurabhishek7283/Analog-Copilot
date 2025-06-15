@@ -1,0 +1,15 @@
+id: vsource_sine
+category: V
+title: Sine signal source
+role_tags: [source]
+pins:
+  - {name: P, num: 1, type: passive}
+  - {name: N, num: 2, type: passive}
+params:
+  offset: {unit: volt, default: "0", min: -50, max: 50}
+  amplitude: {unit: volt, default: "1", min: 0, max: 50}
+  frequency: {unit: hertz, default: 1k, min: 1m, max: 100meg}
+dc_param: offset
+spice:
+  line: "{refdes} {P} {N} DC {offset} AC {amplitude} SIN({offset} {amplitude} {frequency})"
+teach: "A function generator: offset + amplitude·sin(2πft). AC analysis uses the amplitude as its magnitude."

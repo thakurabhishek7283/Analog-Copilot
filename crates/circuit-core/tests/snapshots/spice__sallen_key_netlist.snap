@@ -1,0 +1,19 @@
+---
+source: crates/circuit-core/tests/spice.rs
+expression: n.text
+---
+* circuit-tutor netlist
+.include models/tl072.lib
+C1 n_a n_out 2.2e-8
+C2 n_b 0 1.2e-8
+R1 n_in n_a 1e4
+R2 n_a n_b 1e4
+XU1_A n_b n_out vcc vee n_out TL072
+V1 vcc 0 DC 1.2e1
+V2 0 vee DC 1.2e1
+V3 n_in 0 DC 0e0 AC 1e0 SIN(0e0 1e0 1e3)
+.options reltol=1e-3 gmin=1e-12
+.save all @c1[i] @c2[i] @r1[i] @r2[i]
+.op
+.ac dec 20 1e1 1e5
+.end

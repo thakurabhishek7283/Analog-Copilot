@@ -1,0 +1,12 @@
+id: diode_1n4148
+category: D
+title: 1N4148 small-signal diode
+role_tags: [rectifier, clamp, protection]
+pins:
+  - {name: A, num: 1, type: passive}
+  - {name: K, num: 2, type: passive}
+limits: {i_max: 0.3, v_rev_max: 100, p_max: 0.5}
+spice:
+  include: models/diodes.lib
+  line: "{refdes} {A} {K} D1N4148"
+teach: "Conducts from anode (A) to cathode (K) once about 0.6–0.7 V is across it."

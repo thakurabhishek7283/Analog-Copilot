@@ -1,0 +1,18 @@
+id: timer_ne555
+category: U
+title: NE555 timer
+role_tags: [oscillator, timer]
+pins:
+  - {name: GND,   num: 1, type: power_neg}
+  - {name: TRIG,  num: 2, type: input}
+  - {name: OUT,   num: 3, type: output}
+  - {name: RESET, num: 4, type: input}
+  - {name: CTRL,  num: 5, type: passive}
+  - {name: THR,   num: 6, type: input}
+  - {name: DIS,   num: 7, type: passive}
+  - {name: VCC,   num: 8, type: power_pos}
+limits: {v_supply_max: 16, i_out_max: 0.2}
+spice:
+  include: models/ne555.lib
+  line: "X{refdes} {GND} {TRIG} {OUT} {RESET} {CTRL} {THR} {DIS} {VCC} NE555"
+teach: "Output goes high when TRIG drops below VCC/3 and low when THR rises above 2·VCC/3; DIS empties the timing capacitor."

@@ -1,0 +1,6 @@
+* Diode models for circuit-tutor. Parameters are the widely published generic values.
+.model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p M=0.4 TT=20n BV=100 IBV=100u)
+* Generic red LED: about 1.9 V at 20 mA.
+.model LED_RED D(IS=1e-19 N=1.8 RS=2 BV=5 IBV=10u CJO=10p)
+* Generic 5.1 V Zener (1N4733 class).
+.model DZ5V1 D(IS=1n RS=2 N=1.5 BV=5.1 IBV=5m CJO=100p)

@@ -1,0 +1,13 @@
+id: cap_elec
+category: C
+title: Electrolytic capacitor (polarized)
+role_tags: [passive, supply, coupling, bulk]
+pins:
+  - {name: P, num: 1, type: passive}
+  - {name: N, num: 2, type: passive}
+params:
+  capacitance: {unit: farad, default: 10u, min: 100n, max: 10m}
+limits: {v_max: 25}
+spice:
+  line: "{refdes} {P} {N} {capacitance}"
+teach: "Polarized: the + lead (P) must sit at the higher DC voltage."

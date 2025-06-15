@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "Deterministic: parts in natural refdes order."
+    },
+    "hash": {
+      "type": "string",
+      "description": "Lowercase hex sha256 of `text`."
+    },
+    "node_map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "IR net id -> SPICE node name (\"N_VOUT\" -> \"n_vout\", \"GND\" -> \"0\")."
+    },
+    "includes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Registry model files the simulator must load, relative to the registry root."
+    },
+    "meas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MeasDef"
+      },
+      "description": "Spec checks as `.meas` statements (filled once block templates define them)."
+    }
+  },
+  "required": [
+    "text",
+    "hash",
+    "node_map",
+    "includes",
+    "meas"
+  ],
+  "title": "Netlist",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "MeasDef": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "line": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "line"
+      ]
+    }
+  }
+}

@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    name: circuit-core, bindings, parity, codegen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: astral-sh/setup-uv@v6
+      - name: Install wasm-pack
+        run: cargo install --locked wasm-pack
+
+      - name: Python env
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv maturin pytest "pydantic>=2.9,<3"
+          echo "PYO3_PYTHON=$PWD/.venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Rust tests
+        run: cargo test --workspace --no-fail-fast
+      - name: Core builds without the YAML loader (WASM configuration)
+        run: cargo build -p circuit-core --no-default-features
+
+      - name: Cross-runtime parity (native vs WASM vs PyO3)
+        run: bash tools/parity/run.sh 1000
+      - name: Binding tests
+        run: |
+          node --test crates/circuit-core-wasm/tests/core.test.mjs
+          .venv/bin/python -m pytest -q crates/circuit-core-py/tests
+
+      - name: Generated code is up to date
+        run: bash tools/codegen/run.sh --check
+      - name: Generated models accept core output
+        run: .venv/bin/python -m pytest -q tools/codegen

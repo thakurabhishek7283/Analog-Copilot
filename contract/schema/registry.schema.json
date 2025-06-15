@@ -1,0 +1,263 @@
+{
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "parts": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/PartDef"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "parts"
+  ],
+  "title": "Registry",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "PartDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/Category"
+        },
+        "title": {
+          "type": "string"
+        },
+        "role_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Units of a multi-unit IC (e.g. `[A, B]` for a dual op-amp). Empty for single-unit parts.",
+          "default": []
+        },
+        "pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PinDef"
+          }
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ParamDef"
+          },
+          "description": "Every param must declare a default, so instances always carry a full param set.",
+          "default": {}
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "description": "Ratings used by ERC, e.g. `v_supply_max`, `i_max`, `p_max`.",
+          "default": {}
+        },
+        "dc_param": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "For voltage sources: the param holding V(P) − V(N) at DC (used by ERC007)."
+        },
+        "spice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpiceDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "breadboard": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "teach": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hazard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Hazard"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "title",
+        "pins"
+      ]
+    },
+    "Category": {
+      "type": "string",
+      "enum": [
+        "R",
+        "C",
+        "L",
+        "D",
+        "Q",
+        "U",
+        "V",
+        "J"
+      ]
+    },
+    "PinDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "num": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "type": {
+          "$ref": "#/$defs/PinType"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "num",
+        "type"
+      ]
+    },
+    "PinType": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "input",
+            "output",
+            "passive",
+            "power_pos",
+            "power_neg"
+          ]
+        },
+        {
+          "type": "string",
+          "const": "nc",
+          "description": "Not connected internally; exempt from ERC001."
+        }
+      ]
+    },
+    "ParamDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit": {
+          "$ref": "#/$defs/Unit"
+        },
+        "default": {
+          "type": "string"
+        },
+        "min": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double",
+          "description": "In SI units. YAML sources may write a prefixed number such as `1p` or `100meg`."
+        },
+        "max": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "required": [
+        "unit",
+        "default"
+      ]
+    },
+    "Unit": {
+      "type": "string",
+      "enum": [
+        "ohm",
+        "farad",
+        "henry",
+        "volt",
+        "ampere",
+        "hertz",
+        "second",
+        "watt",
+        "unitless"
+      ]
+    },
+    "SpiceDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unit_line": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "description": "SPICE emission template. `line` is for single-unit parts; `unit_line` is emitted once per\nused unit of a multi-unit part. Placeholders: `{refdes}`, `{unit}`, pin names, param names.\nIn `unit_line`, a unit pin is named without its `_<unit>` suffix (`{OUT}` → `OUT_A`)."
+    },
+    "Hazard": {
+      "type": "string",
+      "enum": [
+        "mains"
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+id: inductor
+category: L
+title: Inductor
+role_tags: [passive, filter, supply]
+pins:
+  - {name: "1", num: 1, type: passive}
+  - {name: "2", num: 2, type: passive}
+params:
+  inductance: {unit: henry, default: 1m, min: 1n, max: 10}
+limits: {i_max: 0.5}
+spice:
+  line: "{refdes} {1} {2} {inductance}"
+teach: "Resists changes in current; its impedance is 2πfL."

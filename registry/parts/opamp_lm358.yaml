@@ -1,0 +1,19 @@
+id: opamp_lm358
+category: U
+title: LM358 dual op-amp (single supply)
+role_tags: [amplifier, filter, buffer, comparator]
+units: [A, B]
+pins:
+  - {name: OUT_A, num: 1, type: output,    unit: A}
+  - {name: INM_A, num: 2, type: input,     unit: A}
+  - {name: INP_A, num: 3, type: input,     unit: A}
+  - {name: VEE,   num: 4, type: power_neg}
+  - {name: INP_B, num: 5, type: input,     unit: B}
+  - {name: INM_B, num: 6, type: input,     unit: B}
+  - {name: OUT_B, num: 7, type: output,    unit: B}
+  - {name: VCC,   num: 8, type: power_pos}
+limits: {v_supply_max: 32, i_out_max: 0.02}
+spice:
+  include: models/lm358.lib
+  unit_line: "X{refdes}_{unit} {INP} {INM} {VCC} {VEE} {OUT} LM358"
+teach: "Runs from a single supply (VEE on GND); its output reaches down to about 0 V but only to VCC − 1.5 V."

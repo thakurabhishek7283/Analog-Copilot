@@ -1,0 +1,10 @@
+{
+  "name": "@tutor/codegen",
+  "private": true,
+  "type": "module",
+  "description": "Generates apps/web/src/gen from contract/schema/contract.schema.json",
+  "devDependencies": {
+    "json-schema-to-typescript": "16.0.0",
+    "typescript": "^5.9.3"
+  }
+}

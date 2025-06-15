@@ -1,0 +1,13 @@
+id: resistor_th
+category: R
+title: Through-hole resistor, 1/4 W
+role_tags: [passive, bias, filter, amplifier, load]
+pins:
+  - {name: "1", num: 1, type: passive}
+  - {name: "2", num: 2, type: passive}
+params:
+  resistance: {unit: ohm, default: 10k, min: 0.1, max: 1e9}
+limits: {p_max: 0.25}
+spice:
+  line: "{refdes} {1} {2} {resistance}"
+teach: "Ohm's law: V = I·R. A 1/4 W part should stay well under 250 mW."

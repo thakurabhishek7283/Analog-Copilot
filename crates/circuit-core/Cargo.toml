@@ -1,0 +1,26 @@
+[package]
+name = "circuit-core"
+description = "Circuit IR, op protocol, apply(), ERC and SPICE compiler. Pure: no I/O, no clock, no randomness."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["yaml"]
+# YAML registry sources are only needed at build time (CI, Python); the WASM build loads the JSON bundle.
+yaml = ["dep:serde_norway"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+schemars.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+serde_norway = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_norway.workspace = true
+proptest.workspace = true
+insta.workspace = true

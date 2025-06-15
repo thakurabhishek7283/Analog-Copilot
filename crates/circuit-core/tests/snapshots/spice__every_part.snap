@@ -1,0 +1,19 @@
+---
+source: crates/circuit-core/tests/spice.rs
+expression: "lines.join(\"\\n\")"
+---
+cap_elec: C1 n_p n_n 1e-5
+cap_film: C1 n_1 n_2 1e-7
+diode_1n4148: D1 n_a n_k D1N4148
+inductor: L1 n_1 n_2 1e-3
+led_red: D1 n_a n_k LED_RED
+npn_2n3904: Q1 n_c n_b n_e Q2N3904
+opamp_lm358: XU1_A n_inp_a n_inm_a n_vcc n_vee n_out_a LM358 | XU1_B n_inp_b n_inm_b n_vcc n_vee n_out_b LM358
+opamp_tl072: XU1_A n_inp_a n_inm_a n_vcc n_vee n_out_a TL072 | XU1_B n_inp_b n_inm_b n_vcc n_vee n_out_b TL072
+pnp_2n3906: Q1 n_c n_b n_e Q2N3906
+reg_lm7805: XU1 n_in n_gnd n_out LM7805
+resistor_th: R1 n_1 n_2 1e4
+timer_ne555: XU1 n_gnd n_trig n_out n_reset n_ctrl n_thr n_dis n_vcc NE555
+vsource_dc: V1 n_p n_n DC 5e0
+vsource_sine: V1 n_p n_n DC 0e0 AC 1e0 SIN(0e0 1e0 1e3)
+zener_5v1: D1 n_a n_k DZ5V1

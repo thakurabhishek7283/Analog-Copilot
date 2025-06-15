@@ -1,0 +1,1019 @@
+{
+  "description": "One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.",
+  "allOf": [
+    {
+      "$ref": "#/$defs/Op"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "seq": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "author": {
+          "$ref": "#/$defs/Author"
+        },
+        "job": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "block": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_rev": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "v",
+        "seq",
+        "author",
+        "base_rev"
+      ]
+    }
+  ],
+  "title": "OpEnvelope",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Op": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "block.begin"
+            },
+            "body": {
+              "$ref": "#/$defs/BlockBegin"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "block.commit"
+            },
+            "body": {
+              "$ref": "#/$defs/BlockRef"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "block.abort"
+            },
+            "body": {
+              "$ref": "#/$defs/BlockAbort"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "block.remove"
+            },
+            "body": {
+              "$ref": "#/$defs/BlockRef"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ],
+          "description": "Inverse of `block.begin`."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "block.set_status"
+            },
+            "body": {
+              "$ref": "#/$defs/BlockSetStatus"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ],
+          "description": "Inverse of `block.commit` / `block.abort`."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "part.add"
+            },
+            "body": {
+              "$ref": "#/$defs/PartAdd"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "part.remove"
+            },
+            "body": {
+              "$ref": "#/$defs/PartRef"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "part.set_param"
+            },
+            "body": {
+              "$ref": "#/$defs/PartSetParam"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "part.swap"
+            },
+            "body": {
+              "$ref": "#/$defs/PartSwap"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "part.pin"
+            },
+            "body": {
+              "$ref": "#/$defs/PartPin"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "net.connect"
+            },
+            "body": {
+              "$ref": "#/$defs/NetConnect"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "net.disconnect"
+            },
+            "body": {
+              "$ref": "#/$defs/NetDisconnect"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "net.rename"
+            },
+            "body": {
+              "$ref": "#/$defs/NetRename"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "analysis.set"
+            },
+            "body": {
+              "$ref": "#/$defs/AnalysisSet"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "hint.add"
+            },
+            "body": {
+              "$ref": "#/$defs/HintBody"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "hint.remove"
+            },
+            "body": {
+              "$ref": "#/$defs/HintBody"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ],
+          "description": "Inverse of `hint.add`."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "narrate"
+            },
+            "body": {
+              "$ref": "#/$defs/Narrate"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        }
+      ]
+    },
+    "BlockBegin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/BlockRole"
+        },
+        "title": {
+          "type": "string"
+        },
+        "spec": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecTarget"
+          },
+          "default": {}
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BlockPort"
+          },
+          "default": []
+        },
+        "template": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "role",
+        "title"
+      ]
+    },
+    "BlockRole": {
+      "type": "string",
+      "enum": [
+        "supply",
+        "source",
+        "bias",
+        "amplifier",
+        "buffer",
+        "filter",
+        "oscillator",
+        "comparator",
+        "load",
+        "other"
+      ]
+    },
+    "SpecTarget": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "number",
+          "format": "double"
+        },
+        "tol_pct": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "target",
+        "tol_pct"
+      ]
+    },
+    "BlockPort": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "direction": {
+          "$ref": "#/$defs/PortDirection"
+        },
+        "net": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "direction",
+        "net"
+      ],
+      "description": "A named interface of a block, bound to the net that carries it (checked by ERC009)."
+    },
+    "PortDirection": {
+      "type": "string",
+      "enum": [
+        "input",
+        "output",
+        "bidir",
+        "power_pos",
+        "power_neg",
+        "ground"
+      ]
+    },
+    "BlockRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "BlockAbort": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ]
+    },
+    "BlockSetStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/BlockStatus"
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ]
+    },
+    "BlockStatus": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "composing",
+        "verified",
+        "committed",
+        "failed"
+      ]
+    },
+    "PartAdd": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "refdes": {
+          "type": "string"
+        },
+        "part": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Values as written (\"10k\", \"4.7u\"); unspecified params take the registry default.",
+          "default": {}
+        },
+        "block": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Origin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normally derived from the envelope; set explicitly by inverse ops so undo restores it."
+        }
+      },
+      "required": [
+        "refdes",
+        "part"
+      ]
+    },
+    "Origin": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "llm"
+            }
+          },
+          "required": [
+            "kind",
+            "job_id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "user"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "template"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        }
+      ]
+    },
+    "PartRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "refdes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "refdes"
+      ]
+    },
+    "PartSetParam": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "refdes": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "refdes",
+        "key",
+        "value"
+      ]
+    },
+    "PartSwap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "refdes": {
+          "type": "string"
+        },
+        "part": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "refdes",
+        "part"
+      ]
+    },
+    "PartPin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "refdes": {
+          "type": "string"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Placement"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "refdes"
+      ]
+    },
+    "Placement": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "format": "double"
+        },
+        "y": {
+          "type": "number",
+          "format": "double"
+        },
+        "rot": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Degrees: 0, 90, 180 or 270.",
+          "default": 0
+        },
+        "flip": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
+    },
+    "NetConnect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "net": {
+          "type": "string"
+        },
+        "pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PinRef"
+          }
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NetKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Applied when the net is created; must match if the net exists."
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "net",
+        "pins"
+      ]
+    },
+    "PinRef": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$",
+      "description": "Part pin as REFDES.PIN, e.g. \"R3.1\" or \"U1.OUT_A\"."
+    },
+    "NetKind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "signal"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "volts": {
+              "type": "number",
+              "format": "double"
+            },
+            "kind": {
+              "type": "string",
+              "const": "power"
+            }
+          },
+          "required": [
+            "kind",
+            "volts"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "ground"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        }
+      ]
+    },
+    "NetDisconnect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "net": {
+          "type": "string"
+        },
+        "pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PinRef"
+          }
+        }
+      },
+      "required": [
+        "net",
+        "pins"
+      ]
+    },
+    "NetRename": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ]
+    },
+    "AnalysisSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "analyses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Analysis"
+          }
+        }
+      },
+      "required": [
+        "analyses"
+      ]
+    },
+    "Analysis": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "op"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "start": {
+              "type": "number",
+              "format": "double"
+            },
+            "stop": {
+              "type": "number",
+              "format": "double"
+            },
+            "step": {
+              "type": "number",
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "dc"
+            }
+          },
+          "required": [
+            "type",
+            "source",
+            "start",
+            "stop",
+            "step"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "points_per_decade": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "f_start": {
+              "type": "number",
+              "format": "double"
+            },
+            "f_stop": {
+              "type": "number",
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "ac"
+            }
+          },
+          "required": [
+            "type",
+            "points_per_decade",
+            "f_start",
+            "f_stop"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "t_step": {
+              "type": "number",
+              "format": "double"
+            },
+            "t_stop": {
+              "type": "number",
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "tran"
+            }
+          },
+          "required": [
+            "type",
+            "t_step",
+            "t_stop"
+          ]
+        }
+      ]
+    },
+    "HintBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hint": {
+          "$ref": "#/$defs/LayoutHint"
+        }
+      },
+      "required": [
+        "hint"
+      ]
+    },
+    "LayoutHint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "dir": {
+              "$ref": "#/$defs/Direction"
+            },
+            "kind": {
+              "type": "string",
+              "const": "flow"
+            }
+          },
+          "required": [
+            "kind",
+            "dir"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            },
+            "b": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "near"
+            }
+          },
+          "required": [
+            "kind",
+            "a",
+            "b"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "block": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "group"
+            }
+          },
+          "required": [
+            "kind",
+            "block"
+          ]
+        }
+      ]
+    },
+    "Direction": {
+      "type": "string",
+      "enum": [
+        "right",
+        "down"
+      ]
+    },
+    "Narrate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "type": "string"
+        },
+        "block": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "refs",
+        "text"
+      ]
+    },
+    "Author": {
+      "type": "string",
+      "enum": [
+        "llm",
+        "user",
+        "template"
+      ]
+    }
+  }
+}

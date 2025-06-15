@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "refdes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "message"
+  ],
+  "title": "CompileError",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
