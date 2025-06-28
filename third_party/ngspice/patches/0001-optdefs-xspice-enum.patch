@@ -1,0 +1,23 @@
+ngspice 47 does not compile with --disable-xspice: cktsopt.c uses OPT_ENH_RSHUNT in its
+non-XSPICE branch, but optdefs.h declares it only under #ifdef XSPICE.
+
+--- a/src/include/ngspice/optdefs.h
++++ b/src/include/ngspice/optdefs.h
+@@ -138,7 +138,8 @@
+     OPT_NEWTRUNC,
+ };
+ 
+-#ifdef XSPICE
++/* XSPICE option ids; declared unconditionally because cktsopt.c names OPT_ENH_RSHUNT
++   in its non-XSPICE branch too (ngspice 47 fails to build with --disable-xspice). */
+ /* gtri - begin - wbk - add new options */
+ enum {
+     OPT_ENH_NOOPALTER = 100,
+@@ -153,7 +154,6 @@
+ };
+ 
+ /* gtri - end   - wbk - add new options */
+-#endif
+ 
+ #define OPT_TOTALDEV 200 /* Total devices in the netlist */
+ 
