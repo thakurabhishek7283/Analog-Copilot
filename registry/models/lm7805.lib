@@ -1,8 +1,12 @@
 * Simplified behavioural LM7805, written for circuit-tutor (not the vendor model).
 * 5 V out with about 2 V dropout, 5 mA quiescent current, 0.05 ohm output resistance.
+* The load current is drawn from IN (series pass element) and the GND pin carries only the
+* quiescent current, so input current and dissipation (VIN - VOUT) * IOUT are right.
 * Pin order matches the registry line: in gnd out
 .subckt LM7805 in gnd out
 breg n1 gnd v = min(5, max(v(in, gnd) - 2, 0))
-rout n1 out 0.05
-rq in gnd 2.4k
+rout n1 n2 0.05
+vsense n2 out 0
+fpass in gnd vsense 1
+bq in gnd i = 5m * min(max(v(in, gnd), 0), 1)
 .ends LM7805

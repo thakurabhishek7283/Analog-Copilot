@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "registry_version": "2025.06.0",
+  "rev": 28,
+  "parts": {
+    "V1": {
+      "refdes": "V1",
+      "part": "vsource_dc",
+      "params": {
+        "voltage": {
+          "si": 12.0,
+          "unit": "volt",
+          "display": "12V"
+        }
+      },
+      "block": "b1",
+      "origin": {
+        "kind": "llm",
+        "job_id": "j_test"
+      }
+    },
+    "V2": {
+      "refdes": "V2",
+      "part": "vsource_dc",
+      "params": {
+        "voltage": {
+          "si": 12.0,
+          "unit": "volt",
+          "display": "12V"
+        }
+      },
+      "block": "b1",
+      "origin": {
+        "kind": "llm",
+        "job_id": "j_test"
+      }
+    },
+    "V3": {
+      "refdes": "V3",
+      "part": "vsource_sine",
+      "params": {
+        "amplitude": {
+          "si": 1.0,
+          "unit": "volt",
+          "display": "1V"
+        },
+        "frequency": {
+          "si": 1000.0,
+          "unit": "hertz",
+          "display": "1kHz"
+        },
+        "offset": {
+          "si": 0.0,
+          "unit": "volt",
+          "display": "0V"
+        }
+      },
+      "block": "b2",
+      "origin": {
+        "kind": "llm",
+        "job_id": "j_test"
+      }
+    },
+    "R1": {
+      "refdes": "R1",
+      "part": "resistor_th",
+      "params": {
+        "resistance": {
+          "si": 10000.0,
+          "unit": "ohm",
+          "display": "10kΩ"
+        }
+      },
+      "block": "b3",
+      "origin": {
+        "kind": "llm",
+        "job_id": "j_test"
+      }
+    },
+    "R2": {
+      "refdes": "R2",
+      "part": "resistor_th",
+      "params": {
+        "resistance": {
+          "si": 10000.0,
+          "unit": "ohm",
+          "display": "10kΩ"
+        }
+      },
+      "block": "b3",
+      "origin": {
+        "kind": "llm",
+        "job_id": "j_test"
+      }
+    },
+    "C1": {
+      "refdes": "C1",
+      "part": "cap_film",
+      "params": {
+        "capacitance": {
+          "si": 2.2e-8,
+          "unit": "farad",
+          "display": "22nF"
+        }
+      },
+      "block": "b3",
+      "origin": {
+        "kind": "llm",
+        "job_id": "j_test"
+      }
+    },
+    "C2": {
+      "refdes": "C2",
+      "part": "cap_film",
+      "params": {
+        "capacitance": {
+          "si": 1.2e-8,
+          "unit": "farad",
+          "display": "12nF"
+        }
+      },
+      "block": "b3",
+      "origin": {
+        "kind": "llm",
+        "job_id": "j_test"
+      }
+    },
+    "U1": {
+      "refdes": "U1",
+      "part": "opamp_tl072",
+      "params": {},
+      "block": "b3",
+      "origin": {
+        "kind": "llm",
+        "job_id": "j_test"
+      }
+    }
+  },
+  "nets": {
+    "VCC": {
+      "id": "VCC",
+      "pins": [
+        "U1.VCC",
+        "V1.P"
+      ],
+      "kind": {
+        "kind": "power",
+        "volts": 12.0
+      }
+    },
+    "GND": {
+      "id": "GND",
+      "pins": [
+        "C2.2",
+        "V1.N",
+        "V2.P",
+        "V3.N"
+      ],
+      "kind": {
+        "kind": "ground"
+      }
+    },
+    "VEE": {
+      "id": "VEE",
+      "pins": [
+        "U1.VEE",
+        "V2.N"
+      ],
+      "kind": {
+        "kind": "power",
+        "volts": -12.0
+      }
+    },
+    "N_IN": {
+      "id": "N_IN",
+      "pins": [
+        "R1.1",
+        "V3.P"
+      ],
+      "kind": {
+        "kind": "signal"
+      }
+    },
+    "N_A": {
+      "id": "N_A",
+      "pins": [
+        "C1.1",
+        "R1.2",
+        "R2.1"
+      ],
+      "kind": {
+        "kind": "signal"
+      }
+    },
+    "N_B": {
+      "id": "N_B",
+      "pins": [
+        "C2.1",
+        "R2.2",
+        "U1.INP_A"
+      ],
+      "kind": {
+        "kind": "signal"
+      }
+    },
+    "N_OUT": {
+      "id": "N_OUT",
+      "pins": [
+        "C1.2",
+        "U1.INM_A",
+        "U1.OUT_A"
+      ],
+      "kind": {
+        "kind": "signal"
+      }
+    }
+  },
+  "blocks": {
+    "b1": {
+      "id": "b1",
+      "role": "supply",
+      "title": "±12 V supply",
+      "spec": {},
+      "ports": [
+        {
+          "name": "vcc",
+          "direction": "power_pos",
+          "net": "VCC"
+        },
+        {
+          "name": "vee",
+          "direction": "power_neg",
+          "net": "VEE"
+        },
+        {
+          "name": "gnd",
+          "direction": "ground",
+          "net": "GND"
+        }
+      ],
+      "status": "committed"
+    },
+    "b2": {
+      "id": "b2",
+      "role": "source",
+      "title": "Signal source",
+      "spec": {},
+      "ports": [
+        {
+          "name": "out",
+          "direction": "output",
+          "net": "N_IN"
+        }
+      ],
+      "status": "committed"
+    },
+    "b3": {
+      "id": "b3",
+      "role": "filter",
+      "title": "Sallen-Key low-pass",
+      "spec": {
+        "fc_hz": {
+          "target": 1000.0,
+          "tol_pct": 10.0
+        },
+        "q": {
+          "target": 0.707,
+          "tol_pct": 15.0
+        }
+      },
+      "ports": [
+        {
+          "name": "in",
+          "direction": "input",
+          "net": "N_IN"
+        },
+        {
+          "name": "out",
+          "direction": "output",
+          "net": "N_OUT"
+        },
+        {
+          "name": "vcc",
+          "direction": "power_pos",
+          "net": "VCC"
+        },
+        {
+          "name": "vee",
+          "direction": "power_neg",
+          "net": "VEE"
+        },
+        {
+          "name": "gnd",
+          "direction": "ground",
+          "net": "GND"
+        }
+      ],
+      "status": "committed",
+      "template": "sallen_key_lp"
+    }
+  },
+  "analyses": [
+    {
+      "type": "op"
+    },
+    {
+      "type": "ac",
+      "points_per_decade": 20,
+      "f_start": 10.0,
+      "f_stop": 100000.0
+    }
+  ],
+  "hints": [
+    {
+      "kind": "group",
+      "block": "b3"
+    }
+  ]
+}

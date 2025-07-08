@@ -16,6 +16,22 @@ fn golden_sallen_key_netlist() {
     assert_eq!(n.hash.len(), 64);
 }
 
+/// The demo circuit as an IR snapshot, for the simulation tests in other runtimes
+/// (tools/sim, apps/web) that load it with `Session(registry, snapshot)`.
+/// `UPDATE_FIXTURES=1 cargo test` rewrites it after a deliberate change.
+#[test]
+fn demo_fixture_is_current() {
+    let reg = registry();
+    let path = registry_root().join("../crates/circuit-core/tests/fixtures/demo_sallen_key.json");
+    let json = serde_json::to_string_pretty(&demo_circuit(&reg)).unwrap() + "\n";
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, &json).unwrap();
+    }
+    let on_disk = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
+    assert!(on_disk == json, "{} is stale: run UPDATE_FIXTURES=1 cargo test -p circuit-core", path.display());
+}
+
 #[test]
 fn golden_circuit_text() {
     let reg = registry();

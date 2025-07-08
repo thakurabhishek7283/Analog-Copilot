@@ -1,17 +1,32 @@
 * Simplified behavioural model of ONE TL072 amplifier, written for circuit-tutor.
-* This is NOT the Texas Instruments vendor macro-model: single dominant pole, output clamped
-* 1.5 V inside each rail, no slew-rate limit. Aol = 2e5 (106 dB), GBW = 3 MHz.
+* This is NOT the Texas Instruments vendor macro-model: single dominant pole, no slew-rate
+* limit. Aol = 2e5 (106 dB), GBW = 3 MHz; output swings to about 1.5 V inside each rail.
+* The output current is drawn from VCC when sourcing and returned to VEE when sinking, so supply
+* currents and dissipation are right. Swing limits are diode clamps on the gain node, driven
+* from ground-referenced copies of the rails: smooth, so the operating point converges directly.
 * Pin order matches the registry unit_line: inp inm vcc vee out
 .subckt TL072 inp inm vcc vee out
 rin inp inm 1e12
 cin inp inm 2p
-* gain stage: 1 mA/V into 200 Mohm = 2e5, dominant pole at 15 Hz
-g1 0 n1 inp inm 1m
-r1 n1 0 200meg
-c1 n1 0 53.05p
-* output stage, limited to the rails
-bout n2 0 v = max(min(v(n1), v(vcc) - 1.5), v(vee) + 1.5)
-rout n2 out 75
+* gain stage: 10 uA/V into 20 Gohm = 2e5, dominant pole at 15 Hz
+g1 0 n1 inp inm 10u
+r1 n1 0 20g
+c1 n1 0 0.5305p
+* clamps: n1 stays within about (VEE + 1.5 V, VCC - 1.5 V); 1.55 V = 1.5 V + the drop of a sharp (n = 0.1) diode
+erhi rhi 0 vcc 0 1
+vhi rhi nhi 1.55
+dhi n1 nhi dclamp
+erlo rlo 0 vee 0 1
+vlo nlo rlo 1.55
+dlo nlo n1 dclamp
+* output stage
+eout n2 0 n1 0 1
+rout n2 n3 75
+vsense n3 out 0
+* move the output current onto the supply pins (smooth split, 1 uA rounding at zero load)
+bsrc vcc 0 i = 0.5 * (i(vsense) + sqrt(i(vsense) * i(vsense) + 1e-12))
+bsnk 0 vee i = 0.5 * (sqrt(i(vsense) * i(vsense) + 1e-12) - i(vsense))
 * quiescent current, about 1.4 mA at +/-15 V
 rq vcc vee 21.4k
+.model dclamp d(is=1e-14 n=0.1)
 .ends TL072

@@ -1,15 +1,30 @@
 * Simplified behavioural model of ONE LM358 amplifier, written for circuit-tutor.
 * NOT the vendor macro-model: single dominant pole, no slew limit. Aol = 1e5 (100 dB),
 * GBW = 1 MHz; output swings from VEE + 0.02 V up to VCC - 1.5 V (single-supply behaviour).
+* The output current is drawn from VCC when sourcing and returned to VEE when sinking. Swing
+* limits are diode clamps on the gain node, driven from ground-referenced copies of the rails.
 * Pin order matches the registry unit_line: inp inm vcc vee out
 .subckt LM358 inp inm vcc vee out
 rin inp inm 1e12
-* gain stage: 1 mA/V into 100 Mohm = 1e5, dominant pole at 10 Hz
-g1 0 n1 inp inm 1m
-r1 n1 0 100meg
-c1 n1 0 159.2p
-bout n2 0 v = max(min(v(n1), v(vcc) - 1.5), v(vee) + 0.02)
-rout n2 out 50
+* gain stage: 10 uA/V into 10 Gohm = 1e5, dominant pole at 10 Hz
+g1 0 n1 inp inm 10u
+r1 n1 0 10g
+c1 n1 0 1.592p
+* clamps: n1 stays within about (VEE + 0.02 V, VCC - 1.5 V); each offset adds the ~0.05 V drop of a sharp (n = 0.1) diode
+erhi rhi 0 vcc 0 1
+vhi rhi nhi 1.55
+dhi n1 nhi dclamp
+erlo rlo 0 vee 0 1
+vlo nlo rlo 0.07
+dlo nlo n1 dclamp
+* output stage
+eout n2 0 n1 0 1
+rout n2 n3 50
+vsense n3 out 0
+* move the output current onto the supply pins (smooth split, 1 uA rounding at zero load)
+bsrc vcc 0 i = 0.5 * (i(vsense) + sqrt(i(vsense) * i(vsense) + 1e-12))
+bsnk 0 vee i = 0.5 * (sqrt(i(vsense) * i(vsense) + 1e-12) - i(vsense))
 * quiescent current, about 0.7 mA at 5 V
 rq vcc vee 7.1k
+.model dclamp d(is=1e-14 n=0.1)
 .ends LM358

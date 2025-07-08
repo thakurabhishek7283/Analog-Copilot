@@ -1,21 +1,32 @@
 * Simplified behavioural NE555, written for circuit-tutor (not the vendor model).
-* Comparators at VCC/3 (TRIG) and the CTRL voltage, nominally 2*VCC/3 (THR); TRIG wins
-* over THR as in the real part; RESET below 0.7 V forces the output low.
-* The latch is a 1 nF capacitor on node q, clamped near 0..1 V; q > 0.5 means "set".
+* Comparators at VCC/3 (TRIG) and the CTRL voltage, nominally 2*VCC/3 (THR); TRIG wins over
+* THR as in the real part; RESET below 0.7 V forces the output low.
+* Every function is smooth (comparators are 10 mV wide tanh steps), so the operating point
+* converges without stepping. The latch state q (0..1) settles in about 0.1 us.
+* Output high is about VCC - 1.7 V; the sourced current is drawn from VCC.
 * Pin order matches the registry line: gnd trig out reset ctrl thr dis vcc
 .subckt NE555 gnd trig out reset ctrl thr dis vcc
 r1 vcc ctrl 5k
 r2 ctrl lo 5k
 r3 lo gnd 5k
-bq 0 q i = 1m * (u(v(lo) - v(trig)) - u(v(thr) - v(ctrl)) * u(v(trig) - v(lo)) - 2 * u(0.7 - v(reset, gnd)))
+* s: TRIG below VCC/3 (set), r: THR above CTRL (reset); TRIG wins. The comparators push a
+* bistable (slope 10 at q = 0.5) rather than scale it, so q snaps between 0 and 1 and the
+* circuit cannot settle half-way. RESET pin low forces q to 0.
+bq qt 0 v = 0.5 * (1 + tanh((v(reset, gnd) - 0.7) / 0.05)) * 0.5 * (1 + tanh((v(q) - 0.5
++ + (1 + tanh((v(lo) - v(trig)) / 0.01))
++ - (1 + tanh((v(thr) - v(ctrl)) / 0.01)) * (0.5 - 0.5 * tanh((v(lo) - v(trig)) / 0.01))) / 0.05))
+rq qt q 100
 cq q 0 1n
-vhi hi 0 1
-dhi q hi dclamp
-dlo 0 q dclamp
-bout o1 gnd v = u(v(q) - 0.5) * u(v(reset, gnd) - 0.7) * max(v(vcc, gnd) - 1.7, 0)
-rout o1 out 10
+* sharpened latch output for the output stage and the discharge transistor, so a latch that
+* has settled at 0.99 does not leave the discharge transistor slightly on
+bqs qs 0 v = 0.5 * (1 + tanh((v(q) - 0.5) / 0.02))
+* output stage: high = VCC - 1.7 V through 10 ohm; sourced current comes from VCC
+bout o1 gnd v = v(qs) * max(v(vcc, gnd) - 1.7, 0)
+rout o1 o2 10
+vsense o2 out 0
+bsrc vcc gnd i = 0.5 * (i(vsense) + sqrt(i(vsense) * i(vsense) + 1e-12))
 * discharge transistor: about 10 ohm to GND while the latch is reset
-bdis dis gnd i = (1 - u(v(q) - 0.5)) * v(dis, gnd) / 10
-rq vcc gnd 1.5k
-.model dclamp d(is=1e-14)
+bdis dis gnd i = (1 - v(qs)) * v(dis, gnd) / 10
+* quiescent current, about 6 mA at 9 V
+rquies vcc gnd 1.5k
 .ends NE555
