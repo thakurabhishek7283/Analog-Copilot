@@ -1,8 +1,62 @@
 # Circuit Forge
 
-Spec: [docs/LLD.md](docs/LLD.md).
+[![CI](https://github.com/thakurabhishek7283/Analog-Copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/thakurabhishek7283/Analog-Copilot/actions/workflows/ci.yml)
+[![MIT licence](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
-## Layout (so far)
+**An AI tutor for analog electronics that builds circuits you can simulate.** Describe a circuit
+("a 1 kHz Sallen-Key low-pass driven by a sine source"). A planner picks verified building blocks, each
+block is composed, simulated in its own test bench and repaired until it meets its spec, and the result
+streams into a schematic editor where it is laid out, animated and simulated live in the browser with
+ngspice compiled to WebAssembly.
+
+Design: [docs/LLD.md](docs/LLD.md) (scope, performance budgets, wire protocol, as-built notes).
+
+## Status
+
+| Phase | Scope | |
+| --- | --- | --- |
+| 0 | `circuit-core` in Rust with WASM and Python bindings, schema codegen, cross-runtime parity | ✅ |
+| 1 | Local-first schematic editor: ELK layout worker, ngspice WASM simulation, edit tools, scope, verified block templates | ✅ |
+| 2 | Generation: FastAPI, plan → compose → verify → repair orchestrator, sandboxed `sim_runner`, SSE stream, animated playback | ✅ |
+| 3 | Grounded tutor: answers that cite live simulation values | Next |
+| 4 | Hardening: quotas, spend breaker, tracing, load tests | Planned |
+
+The registry has 15 parts and 20 block templates so far.
+
+## How it fits together
+
+```text
+                circuit-core (Rust): IR · ops · ERC · SPICE compiler
+                 │ wasm-bindgen                         │ PyO3
+                 ▼                                      ▼
+  React editor ◀──── SSE job events ────  FastAPI orchestrator ──▶ LLM gateway
+  ngspice.wasm · ELK layout worker         plan → compose → verify → repair
+                                            │
+                                            ▼
+                         sim_runner (arq) · native ngspice, sandboxed
+                         Postgres (projects, op log) · Redis (streams, cache)
+```
+
+## Highlights
+
+- **One source of truth in three languages.** Every type on the wire is defined once in Rust; the
+  browser calls it through WASM, the API through PyO3, and TypeScript and Pydantic models are generated
+  from its JSON Schema (CI fails if they drift).
+- **Generation that is checked, not trusted.** Each generated block is trialled in its verification
+  bench; a spec miss goes back to the model with the measured value, and after 3 attempts the block falls
+  back to its verified template.
+- **Deterministic tests for an LLM pipeline.** Model replies are recorded as cassettes keyed by request
+  hash, and a scripted fake provider drives the Playwright end-to-end tests against the real API on
+  testcontainers.
+- **Cross-runtime parity gate.** 1,000 random op logs must produce identical results on native Rust,
+  WASM and Python, and every part and template is simulated on both native and WASM ngspice.
+- **Sandboxed simulation.** The worker runs ngspice under memory and CPU limits with a 2 s kill, as a
+  non-root user on a read-only image, on an internal network with Redis only.
+- **Local-first editor.** Without the API it still edits and simulates; unsynced ops wait in IndexedDB.
+
+## Development
+
+### Layout (so far)
 
 | Path | What |
 | --- | --- |
@@ -21,7 +75,7 @@ Spec: [docs/LLD.md](docs/LLD.md).
 | `tools/codegen` | Schema → TS / Pydantic generation |
 | `tools/e2e` | `stack.py`: the real API on testcontainers with the sim worker and scripted model replies, for the browser tests |
 
-## Setup
+### Setup
 
 Needs Rust (with `wasm32-unknown-unknown`), `wasm-pack`, Node 24, `uv`, and Docker for the
 ngspice WASM build (it runs in the pinned emsdk image; no local Emscripten needed).
@@ -38,7 +92,7 @@ node crates/circuit-core-wasm/build.mjs            # @tutor/core for the browser
 (cd apps/web && npm ci)
 ```
 
-## Everyday commands
+### Everyday commands
 
 ```sh
 cargo test --workspace                     # core tests (apply/undo properties, ERC, golden netlists)
