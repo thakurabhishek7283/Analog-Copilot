@@ -224,6 +224,17 @@ def ngspice_path() -> Path | None:
     return p if p.exists() else None
 
 
+def environment(exe: Path) -> dict[str, str]:
+    """The process environment for `exe`. ngspice finds `spinit` through the install prefix it was
+    built with, which is an absolute path, so a build that has moved since (another checkout, a
+    renamed repository, a restored CI cache) needs `SPICE_LIB_DIR`; the image sets it itself."""
+    env = dict(os.environ)
+    share = exe.parent.parent / "share" / "ngspice"
+    if "SPICE_LIB_DIR" not in env and (share / "scripts" / "spinit").is_file():
+        env["SPICE_LIB_DIR"] = str(share)
+    return env
+
+
 def command(exe: Path, timeout_s: float, limits: bool) -> list[str]:
     """`ngspice -b deck.cir`; with `limits` on POSIX, under RLIMIT_AS and RLIMIT_CPU (LLD §8). The
     limits are set by `sh` before it execs ngspice, because `preexec_fn` is unsafe in a process
@@ -273,7 +284,12 @@ def simulate(
         (work / "deck.cir").write_text("\n".join(deck.body + control_block(deck) + [".end", ""]), encoding="utf-8")
         try:
             proc = subprocess.run(
-                command(exe, timeout_s, limits), cwd=work, capture_output=True, timeout=timeout_s, check=False
+                command(exe, timeout_s, limits),
+                cwd=work,
+                env=environment(exe),
+                capture_output=True,
+                timeout=timeout_s,
+                check=False,
             )
         except subprocess.TimeoutExpired as e:
             log = (e.stdout or b"").decode("utf-8", "replace") + (e.stderr or b"").decode("utf-8", "replace")
