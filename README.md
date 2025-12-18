@@ -1,4 +1,4 @@
-# Circuit Forge
+# Analog-Copilot
 
 [![CI](https://github.com/thakurabhishek7283/Analog-Copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/thakurabhishek7283/Analog-Copilot/actions/workflows/ci.yml)
 [![MIT licence](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
