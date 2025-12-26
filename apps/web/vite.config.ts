@@ -1,4 +1,4 @@
-// Circuit Forge web client: a static bundle for a CDN (LLD §2).
+// Analog-Copilot web client: a static bundle for a CDN (LLD §2).
 //
 // Static assets the app loads at runtime, kept out of the JS bundle:
 //   /ngspice/   ngspice.mjs, ngspice.wasm, COPYING   from third_party/ngspice/dist/wasm (build-wasm.sh)
@@ -59,7 +59,7 @@ function apiDown(): Plugin {
     res.end();
   };
   return {
-    name: "circuit-forge-api-down",
+    name: "analog-copilot-api-down",
     configureServer: (server) => void server.middlewares.use(down),
     configurePreviewServer: (server) => void server.middlewares.use(down),
   };
@@ -67,7 +67,7 @@ function apiDown(): Plugin {
 
 function staticAssets(mounts: Mount[]): Plugin {
   return {
-    name: "circuit-forge-static-assets",
+    name: "analog-copilot-static-assets",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = decodeURIComponent((req.url ?? "").split("?")[0]!);

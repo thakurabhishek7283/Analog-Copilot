@@ -26,7 +26,7 @@ export function memoryPendingStore(): PendingStore {
   };
 }
 
-const DB = "circuit-forge";
+const DB = "analog-copilot";
 const STORE = "pending-ops";
 
 function request<T>(r: IDBRequest<T>): Promise<T> {

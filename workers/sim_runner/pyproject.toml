@@ -1,8 +1,10 @@
 [project]
 name = "sim-runner"
 version = "0.1.0"
-description = "Circuit Forge simulation worker: circuit-core netlists on the pinned native ngspice (LLD §8)"
+description = "Analog-Copilot simulation worker: circuit-core netlists on the pinned native ngspice (LLD §8)"
 requires-python = ">=3.12"
+license = "PolyForm-Noncommercial-1.0.0"  # LICENSE.md
+classifiers = ["Private :: Do Not Upload"]
 dependencies = ["arq==0.28.0", "redis>=5,<6"]  # arq 0.28 pins redis-py < 6
 
 [project.optional-dependencies]

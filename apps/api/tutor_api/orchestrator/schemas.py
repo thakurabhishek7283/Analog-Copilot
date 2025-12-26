@@ -15,7 +15,7 @@ import re
 from functools import lru_cache
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, model_validator
 
 
 class Strict(BaseModel):
@@ -37,11 +37,22 @@ class Net(Strict):
     pins: list[str] = Field(min_length=1, description="REF.PIN, such as R1.2 or U1.OUT_A")
 
 
+class PlanBlockBase(Strict):
+    @model_validator(mode="before")
+    @classmethod
+    def targets_default(cls, data: Any) -> Any:
+        """A block without `targets` takes every default, as leaving each target out does. The schema
+        sent still lists the field as required; models leave it out for templates that have no targets."""
+        if isinstance(data, dict) and "targets" not in data:
+            return data | {"targets": []}
+        return data
+
+
 @lru_cache(maxsize=8)
 def plan_model(templates: tuple[str, ...]) -> type[BaseModel]:
     block = create_model(
         "PlanBlock",
-        __base__=Strict,
+        __base__=PlanBlockBase,
         id=(str, Field(description="b1, b2, ...")),
         template=(Literal[templates], ...),
         title=(str, Field(max_length=80)),

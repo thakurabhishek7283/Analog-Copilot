@@ -57,7 +57,7 @@ export default defineConfig({
       ? [
           {
             // A fresh API per run: the fake script's one-shot rules (a failure, then a retry) are state.
-            command: `"${python}" ${join(repo, "tools/e2e/stack.py")} --port ${apiPort}`,
+            command: `"${python}" "${join(repo, "tools/e2e/stack.py")}" --port ${apiPort}`,
             url: `http://127.0.0.1:${apiPort}/healthz`,
             timeout: 180_000,
             reuseExistingServer: false,

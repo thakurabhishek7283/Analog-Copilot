@@ -1,1 +1,1 @@
-"""Circuit Forge simulation worker (LLD §8)."""
+"""Analog-Copilot simulation worker (LLD §8)."""

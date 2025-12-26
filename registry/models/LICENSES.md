@@ -1,6 +1,7 @@
 # Model licences
 
-Record the licence of every model file here before it ships in a registry bundle (LLD §12).
+Record the licence of every model file here before it ships in a registry bundle (LLD §12). "Project licence" is
+the PolyForm Noncommercial License 1.0.0 (LICENSE.md at the repository root).
 
 | File | Source | Licence |
 | --- | --- | --- |

@@ -99,7 +99,7 @@ class FakeProvider:
             raise ProviderError(reply.code, reply.message, reply.retryable, reply.retry_after_s)
         text = reply if isinstance(reply, str) else json.dumps(reply)
         # A rough, deterministic count (about 4 characters a token) so usage is never zero.
-        usage = Usage(in_tokens=(len(req.system) + len(req.user)) // 4, out_tokens=max(1, len(text) // 4))
+        usage = Usage(in_tokens=(len(req.system) + len(req.user)) // 4, out_tokens=max(1, len(text) // 4), estimated=True)
         return LlmResponse(text, f"fake-{req.tier}", usage)
 
     async def stream(self, req: LlmRequest, on_delta: OnDelta) -> LlmResponse:

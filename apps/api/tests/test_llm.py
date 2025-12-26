@@ -111,6 +111,15 @@ async def test_complete_sends_the_schema_and_reads_usage(mock_server, mock):
     assert body["response_format"] == {"type": "json_schema", "json_schema": {"name": "plan", "schema": SCHEMA}}
 
 
+async def test_a_reasoning_model_gets_max_completion_tokens_and_no_temperature(mock_server, mock):
+    """GPT-5 on Azure rejects `max_tokens` and any temperature but the default."""
+    mock.handlers.append(lambda body: completion('{"ok": true}'))
+    p = OpenAICompatProvider("openai", mock_server[0], "k", {"large": "m-large", "small": "m-small"}, reasoning=True)
+    await p.complete(REQ)
+    body = mock.requests[0][1]
+    assert body["max_completion_tokens"] == 100 and "max_tokens" not in body and "temperature" not in body
+
+
 async def test_json_object_mode_puts_the_schema_in_the_prompt(mock_server, mock):
     """DeepSeek on Azure AI Foundry: any JSON object; the system prefix stays unchanged (cacheable)."""
     mock.handlers.append(lambda body: completion('{"ok": false}'))
@@ -161,6 +170,31 @@ async def test_http_errors_are_classified(mock_server, mock, status, payload, co
     assert f"HTTP {status}" in e.value.message
     want = payload[0] if isinstance(payload, list) else payload
     assert want["error"]["message"] in e.value.message
+
+
+def gemini_429(quota_id: str) -> list[dict]:
+    """Gemini's quota error body (recorded from the API, message shortened)."""
+    return [{"error": {"code": 429, "message": "You exceeded your current quota.", "status": "RESOURCE_EXHAUSTED",
+                       "details": [
+                           {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
+                               {"quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+                                "quotaId": quota_id, "quotaValue": "5"}]},
+                           {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "48.220090438s"}]}}]
+
+
+async def test_gemini_quota_errors_say_which_quota_and_when_to_retry(mock_server, mock):
+    mock.handlers.append(lambda body: JSONResponse(gemini_429("GenerateRequestsPerMinutePerProjectPerModel-FreeTier"),
+                                                   status_code=429))
+    with pytest.raises(ProviderError) as e:
+        await provider(mock_server).complete(REQ)
+    assert (e.value.code, e.value.retryable, e.value.retry_after_s) == ("rate_limited", True, 48.220090438)
+    assert "[GenerateRequestsPerMinutePerProjectPerModel-FreeTier] You exceeded" in e.value.message
+    # A daily quota: retrying cannot help today, so the gateway goes on to the fallback provider.
+    mock.handlers.append(lambda body: JSONResponse(gemini_429("GenerateRequestsPerDayPerProjectPerModel-FreeTier"),
+                                                   status_code=429))
+    with pytest.raises(ProviderError) as e:
+        await provider(mock_server).complete(REQ)
+    assert (e.value.code, e.value.retryable) == ("quota_exhausted", False)
 
 
 async def test_streamed_errors_are_classified_too(mock_server, mock):
@@ -264,6 +298,44 @@ async def test_cassettes_record_and_replay_in_order(tmp_path):
     assert not issubclass(CassetteMiss, ProviderError)
 
 
+async def test_a_cancelled_call_is_recorded_and_its_replay_waits_to_be_cancelled(tmp_path):
+    """A job cancels a narration that is still waiting out a rate limit when the job ends: the replay
+    asks for the same call and gets no answer either, rather than missing it."""
+    narrate = LlmRequest("narrate", "small", "S", "U")
+
+    class Waiting:  # a provider still waiting out a rate limit
+        name = "waiting"
+
+        async def complete(self, req: LlmRequest) -> LlmResponse:
+            await asyncio.sleep(60)
+            raise AssertionError("not cancelled")
+
+        async def stream(self, req: LlmRequest, on_delta: Any) -> LlmResponse:
+            return await self.complete(req)
+
+    async def on_delta(t: str) -> None:
+        pass
+
+    for call in (lambda p: p.complete(REQ), lambda p: p.stream(narrate, on_delta)):
+        rec = Recorder(Waiting())
+        task = asyncio.create_task(call(rec))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        path = tmp_path / "c.json"
+        rec.save(path)
+        assert [it.get("cancelled") for it in rec.interactions] == [True]
+
+        rep = Replayer.from_file(path)
+        task = asyncio.create_task(call(rep))
+        await asyncio.sleep(0.05)
+        assert not task.done() and rep.unused() == 0
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
 def test_providers_from_the_environment():
     assert gateway_from_env({}) is None
     env = {
@@ -281,6 +353,14 @@ def test_providers_from_the_environment():
     # The fallback never takes the primary's LLM_MODEL_* (those are Gemini model ids).
     assert deepseek.models == {"large": "DeepSeek-V3.1", "small": "DeepSeek-V3.1"}
     assert deepseek.json_mode == "json_object"
+    assert not gemini.reasoning and not deepseek.reasoning
+    # GPT-5 on Azure: the v1 endpoint, a deployment name for both tiers, a reasoning model.
+    (gpt5,) = gateway_from_env({
+        "LLM_PROVIDER": "openai", "OPENAI_API_KEY": "k3", "OPENAI_MODEL": "gpt-5", "OPENAI_REASONING": "1",
+        "OPENAI_BASE_URL": "https://example.cognitiveservices.azure.com/openai/v1",
+    }).providers
+    assert gpt5.url == "https://example.cognitiveservices.azure.com/openai/v1/chat/completions"
+    assert gpt5.models == {"large": "gpt-5", "small": "gpt-5"} and gpt5.reasoning
 
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         gateway_from_env({"LLM_PROVIDER": "gemini", "GEMINI_API_KEY": "REPLACE_ME"})

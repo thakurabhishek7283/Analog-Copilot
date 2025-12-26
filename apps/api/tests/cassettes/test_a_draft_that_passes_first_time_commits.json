@@ -2,7 +2,7 @@
  "version": 1,
  "interactions": [
   {
-   "key": "c3f67bce94ee7f4b5ef0a2f245c4807f5667f198254b2f9d692fcfc6a264dfe1",
+   "key": "814890f6c3f4402761d46e010a3111786985384be287948af1173c93ed932287",
    "kind": "plan",
    "tier": "large",
    "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
@@ -12,13 +12,14 @@
     "usage": {
      "in_tokens": 3598,
      "out_tokens": 59,
-     "cached_tokens": 0
+     "cached_tokens": 0,
+     "estimated": true
     },
     "finish_reason": "stop"
    }
   },
   {
-   "key": "3f73fbd42b59d7244e69e74a08068a52270c1cb3729d833092d3d892460fbf3f",
+   "key": "427441f136f985fce3bfcc53d51e1ee868d1b997d43cfaf8074b2def7975fccd",
    "kind": "compose",
    "tier": "large",
    "user_tail": "r: R1, C2, U1), the part id, and a value for each of its params (name and value).\n- nets: a net named after a port of the template (in, out, gnd) is that port; any other name is a net inside the block. Pins are REF.PIN, such as R1.2 or U1.OUT_A. Every port needs a net, and a pin is on one net only.\n",
@@ -26,15 +27,16 @@
     "text": "{\"use_template\": false, \"parts\": [{\"ref\": \"R1\", \"part\": \"resistor_th\", \"params\": [{\"name\": \"resistance\", \"value\": \"8.2k\"}]}, {\"ref\": \"C1\", \"part\": \"cap_film\", \"params\": [{\"name\": \"capacitance\", \"value\": \"10n\"}]}], \"nets\": [{\"name\": \"in\", \"pins\": [\"R1.1\"]}, {\"name\": \"out\", \"pins\": [\"R1.2\", \"C1.1\"]}, {\"name\": \"gnd\", \"pins\": [\"C1.2\"]}]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3726,
+     "in_tokens": 3727,
      "out_tokens": 83,
-     "cached_tokens": 0
+     "cached_tokens": 0,
+     "estimated": true
     },
     "finish_reason": "stop"
    }
   },
   {
-   "key": "cede195da7151ff969c17d8f232c4b387945f4561f6e39dc9c832cb758176309",
+   "key": "0da126d0b96047ec1d44d89c66d5a58d592be95429a3147616a86019f21095b3",
    "kind": "narrate",
    "tier": "small",
    "user_tail": "let low frequencies through and send high ones to ground. It teaches: C shorts high frequencies to ground through R: above fc = 1/(2πRC) the output falls 20 dB per decade.\n\nWrite two to four short sentences for a beginner student that introduce this circuit and follow the signal through its blocks.\n",
@@ -64,9 +66,10 @@
     "text": "This circuit is a low-pass filter. The signal enters a resistor, and a capacitor shunts the fast parts to ground.",
     "model": "fake-small",
     "usage": {
-     "in_tokens": 260,
+     "in_tokens": 261,
      "out_tokens": 28,
-     "cached_tokens": 0
+     "cached_tokens": 0,
+     "estimated": true
     },
     "finish_reason": "stop"
    }

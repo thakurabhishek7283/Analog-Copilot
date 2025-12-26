@@ -36,6 +36,7 @@ class Usage:
     in_tokens: int = 0
     out_tokens: int = 0
     cached_tokens: int = 0  # of in_tokens, served from the provider's prompt cache
+    estimated: bool = False  # counted by us, not reported by a provider (scripted or hand-answered replies)
 
 
 @dataclass

@@ -5,13 +5,13 @@
 # LLM_PROVIDER=fake it answers from apps/api/fake/script.json (mounted read-only), with no network
 # calls; a real provider takes its keys and models from the variables passed below.
 # The simulation worker sits on an internal network with Redis only: no route out (LLD §8, §14).
-name: circuit-forge
+name: analog-copilot
 
 x-api: &api
   build:
     context: .
     dockerfile: apps/api/Dockerfile
-  image: ${API_IMAGE:-circuit-forge/api:dev}
+  image: ${API_IMAGE:-analog-copilot/api:dev}
   environment: &api-env
     DATABASE_URL: postgresql+asyncpg://tutor:${POSTGRES_PASSWORD:-tutor}@postgres:5432/tutor
     REDIS_URL: redis://redis:6379/0
@@ -70,7 +70,9 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_REASONING: ${OPENAI_REASONING:-}
     volumes: ["./apps/api/fake:/opt/fake:ro"]
     ports: ["127.0.0.1:8000:8000", "[::1]:8000:8000"]
     depends_on:
@@ -81,7 +83,7 @@ services:
     build:
       context: .
       dockerfile: workers/sim_runner/Dockerfile
-    image: ${SIM_RUNNER_IMAGE:-circuit-forge/sim-runner:dev}
+    image: ${SIM_RUNNER_IMAGE:-analog-copilot/sim-runner:dev}
     environment:
       REDIS_URL: redis://redis:6379/0
     depends_on:

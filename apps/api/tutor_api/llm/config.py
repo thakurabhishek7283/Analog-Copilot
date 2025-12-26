@@ -7,6 +7,8 @@
 - A real provider `P` takes its key from `P_API_KEY`, its endpoint from `P_BASE_URL` (Gemini and
   OpenAI have defaults), and its models from `P_MODEL_LARGE` / `P_MODEL_SMALL`, else `P_MODEL`
   for both, else, for the primary provider only, `LLM_MODEL_LARGE` / `LLM_MODEL_SMALL`.
+  `P_REASONING=1` for a reasoning model (GPT-5 and later, also on Azure): `max_completion_tokens`
+  instead of `max_tokens`, and no temperature (only the default is accepted).
 """
 
 from __future__ import annotations
@@ -50,7 +52,8 @@ def provider_from_env(name: str, env: Mapping[str, str], *, primary: bool) -> Pr
         if not model:
             raise RuntimeError(f"no {tier} model for {name}: set {p}_MODEL_{tier.upper()} or {p}_MODEL")
         models[tier] = model
-    return OpenAICompatProvider(name, base_url, key, models, json_mode=json_mode)
+    reasoning = get(f"{p}_REASONING").lower() in ("1", "true", "yes")
+    return OpenAICompatProvider(name, base_url, key, models, json_mode=json_mode, reasoning=reasoning)
 
 
 def gateway_from_env(env: Mapping[str, str] | None = None) -> Gateway | None:

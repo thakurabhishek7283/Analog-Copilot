@@ -51,7 +51,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             await st.redis.aclose()
             await st.engine.dispose()
 
-    app = FastAPI(title="Circuit Forge API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Analog-Copilot API", version="0.1.0", lifespan=lifespan)
     errors.install(app)
     if settings.cors_origins:
         app.add_middleware(

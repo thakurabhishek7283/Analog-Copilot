@@ -11,7 +11,7 @@ import pytest
 from tutor_api.config import REPO
 from tutor_api.llm.prompts import Prompts
 from tutor_api.orchestrator.planner import validate
-from tutor_api.orchestrator.schemas import plan_model
+from tutor_api.orchestrator.schemas import plan_model, provider_schema
 
 
 @pytest.fixture(scope="module")
@@ -108,3 +108,13 @@ def test_uncovered_needs_are_reported_separately(reg, prompts):
                  cc.Session(reg), prompts, 1)
     assert v.problems == [] and v.plan is not None
     assert v.uncovered == ["no template builds 'a microcontroller': leave it out of the request, or plan it from the templates"]
+
+
+def test_a_block_without_targets_takes_every_default(reg, prompts):
+    """A model may leave `targets` out on templates that have none."""
+    model = plan_model(tuple(prompts.templates))
+    p = model.model_validate({"blocks": [{"id": "b1", "template": "rc_lowpass", "title": "", "purpose": ""}],
+                              "links": [], "uncovered": []})
+    v = validate(p, cc.Session(reg), prompts, 1)
+    assert v.problems == [] and v.plan.blocks[0].targets == {}
+    assert "targets" in provider_schema(model)["properties"]["blocks"]["items"]["required"]  # still asked for

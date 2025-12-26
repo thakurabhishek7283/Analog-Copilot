@@ -31,6 +31,7 @@ class OpenAICompatProvider:
         models: dict[Tier, str],
         *,
         json_mode: JsonMode = "json_schema",
+        reasoning: bool = False,
         timeout_s: float = CALL_TIMEOUT_S,
         client: httpx.AsyncClient | None = None,
     ):
@@ -38,6 +39,9 @@ class OpenAICompatProvider:
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.models = models
         self.json_mode = json_mode
+        # OpenAI's reasoning models (on Azure too) take `max_completion_tokens`, which also covers their
+        # reasoning tokens, and only the default temperature.
+        self.reasoning = reasoning
         self.timeout_s = timeout_s
         self.headers = {"Authorization": f"Bearer {api_key}"}
         # The deadline is enforced per call below; httpx's own timeouts (the same length) only bound a
@@ -49,11 +53,11 @@ class OpenAICompatProvider:
 
     def body(self, req: LlmRequest, stream: bool) -> dict[str, Any]:
         user = req.user
-        body: dict[str, Any] = {
-            "model": self.models[req.tier],
-            "max_tokens": req.max_tokens,
-            "temperature": req.temperature,
-        }
+        body: dict[str, Any] = {"model": self.models[req.tier]}
+        if self.reasoning:
+            body["max_completion_tokens"] = req.max_tokens
+        else:
+            body |= {"max_tokens": req.max_tokens, "temperature": req.temperature}
         if req.schema is not None:
             if self.json_mode == "json_schema":
                 body["response_format"] = {
@@ -124,15 +128,22 @@ class OpenAICompatProvider:
 def check(r: httpx.Response, body: str) -> None:
     if r.status_code < 400:
         return
+    details: list[Any] = []
     try:
         detail = json.loads(body)
         detail = detail[0] if isinstance(detail, list) else detail  # Gemini sometimes wraps it
         message = str((detail.get("error") or {}).get("message") or body)
+        details = [d for d in (detail.get("error") or {}).get("details") or [] if isinstance(d, dict)]
     except (ValueError, AttributeError, IndexError):
         message = body
-    message = f"HTTP {r.status_code}: {message[:300]}"
+    # Gemini says which quota ran out and when to retry in the body (QuotaFailure, RetryInfo), not in headers.
+    quota = next((v.get("quotaId") for d in details for v in d.get("violations") or [] if v.get("quotaId")), None)
+    delay = next((seconds(d["retryDelay"]) for d in details if d.get("retryDelay")), None)
+    message = f"HTTP {r.status_code}: " + (f"[{quota}] " if quota else "") + message[:300]
     if r.status_code == 429:
-        raise ProviderError("rate_limited", message, True, retry_after(r))
+        if quota and "PerDay" in quota:  # retrying today cannot help: let the fallback provider answer
+            raise ProviderError("quota_exhausted", message, False)
+        raise ProviderError("rate_limited", message, True, retry_after(r) or delay)
     if r.status_code == 408 or r.status_code >= 500:
         raise ProviderError("server_error", message, True, retry_after(r))
     if r.status_code in (401, 403):
@@ -144,6 +155,14 @@ def retry_after(r: httpx.Response) -> float | None:
     try:
         return float(r.headers["retry-after"])
     except (KeyError, ValueError):
+        return None
+
+
+def seconds(text: Any) -> float | None:
+    """A protobuf Duration as JSON ("48s", "48.220090438s")."""
+    try:
+        return float(str(text).removesuffix("s"))
+    except ValueError:
         return None
 
 

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # The API (LLD §2): FastAPI on uvicorn, one process per container, with circuit-core's Python wheel
 # built here from the workspace (abi3, CPython >= 3.12). Build from the repository root:
-#   docker build -f apps/api/Dockerfile -t circuit-forge/api .
+#   docker build -f apps/api/Dockerfile -t analog-copilot/api .
 # The same image runs the migrations: python -m tutor_api.db.migrate
 ARG PYTHON_IMAGE=python:3.12-slim-trixie
 

@@ -351,6 +351,21 @@ async def test_a_request_no_template_covers_is_unsupported(http, alice, app, sce
     assert err["code"] == "unsupported_request" and not err["retryable"] and "microcontroller" in err["message"]
 
 
+async def test_uncovered_needs_kept_to_the_last_plan_are_unsupported_whatever_else_is_wrong(http, alice, app, scenario):
+    """An FM transmitter: blocks for what the templates can build, the RF stages listed as
+    uncovered, and a wiring mistake in every round. Out of scope, not an invalid plan."""
+    partial = plan(block("b1", "sine_source", "Audio", "The audio to send.", freq_hz="1k"),
+                   block("b2", "noninverting_amp", "Mic amp", "Raises the audio."),
+                   links=[("b1.out", "b2.in"), ("b1.out", "b2.in")],
+                   uncovered=["a 100 MHz oscillator and its FM modulator"])
+    spy = scenario({"plan": [partial] * 3})
+    pid, jid, events = await run_job(http, alice, "an FM radio transmitter at 100 MHz")
+
+    assert len(spy.of("plan")) == 3 and not spy.of("compose")
+    (err,) = named(events, "error")
+    assert err["code"] == "unsupported_request" and not err["retryable"] and "100 MHz oscillator" in err["message"]
+
+
 @pytest.mark.parametrize("code", ["server_error", "timeout"])
 async def test_a_composer_that_does_not_answer_falls_back(http, alice, app, scenario, code):
     """LLD §14: 30 s call timeout or 5xx: retried twice, then the template."""

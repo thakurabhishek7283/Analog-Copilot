@@ -6,11 +6,14 @@ A cassette is a JSON file of interactions, each keyed by the sha256 of its reque
 `Recorder` wraps a provider and writes what it answered; `Replayer` answers from the file, in
 recorded order for repeated identical requests. A request the cassette does not hold raises
 `CassetteMiss`, which is not a `ProviderError`, so no retry or fallback can hide it: a prompt
-change means re-recording.
+change means re-recording. A call its caller cancelled is recorded too (`cancelled`), and its replay
+waits until the caller cancels it again: a job cancels a narration still waiting out a rate limit when
+the job ends, and the replay must ask for that call without answering it.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections import deque
 from pathlib import Path
@@ -40,6 +43,9 @@ class Recorder:
         except ProviderError as e:
             self.interactions.append(_summary(req) | {"error": e.to_json()})
             raise
+        except asyncio.CancelledError:
+            self.interactions.append(_summary(req) | {"cancelled": True})
+            raise
         self.interactions.append(_summary(req) | {"response": resp.to_json()})
         return resp
 
@@ -54,6 +60,9 @@ class Recorder:
             resp = await self.inner.stream(req, tee)
         except ProviderError as e:
             self.interactions.append(_summary(req) | {"chunks": chunks, "error": e.to_json()})
+            raise
+        except asyncio.CancelledError:
+            self.interactions.append(_summary(req) | {"chunks": chunks, "cancelled": True})
             raise
         self.interactions.append(_summary(req) | {"chunks": chunks, "response": resp.to_json()})
         return resp
@@ -88,17 +97,19 @@ class Replayer:
         return queue.popleft()
 
     @staticmethod
-    def _answer(it: dict[str, Any]) -> LlmResponse:
+    async def _answer(it: dict[str, Any]) -> LlmResponse:
+        if it.get("cancelled"):
+            await asyncio.Event().wait()  # until the caller cancels, as it did when this was recorded
         if "error" in it:
             e = it["error"]
             raise ProviderError(e["code"], e["message"], e["retryable"])
         return LlmResponse.from_json(it["response"])
 
     async def complete(self, req: LlmRequest) -> LlmResponse:
-        return self._answer(self._take(req))
+        return await self._answer(self._take(req))
 
     async def stream(self, req: LlmRequest, on_delta: OnDelta) -> LlmResponse:
         it = self._take(req)
         for chunk in it.get("chunks", []):
             await on_delta(chunk)
-        return self._answer(it)
+        return await self._answer(it)

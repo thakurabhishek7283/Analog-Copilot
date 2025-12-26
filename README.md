@@ -1,7 +1,7 @@
 # Analog-Copilot
 
 [![CI](https://github.com/thakurabhishek7283/Analog-Copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/thakurabhishek7283/Analog-Copilot/actions/workflows/ci.yml)
-[![MIT licence](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+[![Licence: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/licence-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE.md)
 
 **An AI tutor for analog electronics that builds circuits you can simulate.** Describe a circuit
 ("a 1 kHz Sallen-Key low-pass driven by a sine source"). A planner picks verified building blocks, each
@@ -74,6 +74,7 @@ The registry has 15 parts and 20 block templates so far.
 | `tools/parity` | Cross-runtime parity gate: native vs WASM vs Python |
 | `tools/codegen` | Schema → TS / Pydantic generation |
 | `tools/e2e` | `stack.py`: the real API on testcontainers with the sim worker and scripted model replies, for the browser tests |
+| `evals` | Generation evals (LLD 15, the Phase 2 gate): 100 prompts run as real jobs, their metrics, the gate and a report; see [evals/README.md](evals/README.md) |
 
 ### Setup
 
@@ -110,6 +111,9 @@ docker compose up -d --build                         # Postgres, Redis, migratio
 (cd apps/web && npm run e2e)                          # browser tests on that bundle (system Edge; PW_CHANNEL=chrome for Chrome);
                                                      # the generation flows start tools/e2e/stack.py (Docker, ngspice); E2E_API=0 skips them;
                                                      # 4 workers locally (E2E_WORKERS)
+.venv/Scripts/python -m pytest -q evals/tests        # the eval harness on scripted replies (Docker, ngspice)
+.venv/Scripts/python evals/run_evals.py --fake apps/api/fake/script.json --limit 10   # an eval run, no network
+.venv/Scripts/python evals/run_evals.py --env-file .env --live --record --gate        # the live evals (real model calls)
 ```
 
 The editor needs the browser build of the core, the registry bundle and `ngspice.wasm` (above). The dev
@@ -119,7 +123,7 @@ left out of `dist/`. The app calls its API on the same origin (`/v1`): the dev a
 (default `http://127.0.0.1:8000`, the compose stack); a deployment routes `/v1` to the API or builds with `VITE_API_URL`
 (and sets the API's `CORS_ORIGINS`). No hash opens your last project (or a new one), `#new` a new project, `#p/<id>` a
 project, `#demo` the demo circuit (not saved). Without the API the editor still edits and simulates, but saves nothing and
-cannot generate. In development the open editor is on `window.circuitForge`.
+cannot generate. In development the open editor is on `window.analogCopilot`.
 
 The simulation tests use the bindings and registry bundle that `tools/parity/run.sh` builds. They skip
 when ngspice is not built; CI sets `REQUIRE_NGSPICE=1` so they cannot skip there. The worker tests also skip
@@ -148,3 +152,15 @@ After changing a template in `registry/templates` or a solver: rebuild the bundl
 template meets its spec it writes `target/registry/registry-<version>.verified.json`, which the CI web build requires
 (`REQUIRE_VERIFIED=1`).
 After changing a symbol in `registry/symbols`: `cargo insta review` (the sprite sheet is snapshotted) and look at it in the editor.
+
+## Licence
+
+Analog-Copilot is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). It is free for any
+noncommercial purpose: personal study, hobby projects, research and teaching, and use by schools,
+universities, charities and government bodies. Commercial use, including use at work for a company, needs
+a separate commercial licence from the copyright holder. This is a source-available licence, not an
+OSI-approved open-source one.
+
+Third-party components keep their own licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), generated
+by `tools/licenses/third_party.py` (run it after changing a dependency). ngspice is Modified BSD with an LGPL
+part, shipped as a separate, replaceable file (`third_party/ngspice/README.md`).

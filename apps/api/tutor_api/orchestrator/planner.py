@@ -68,7 +68,7 @@ class PlanFailed(Exception):
     def __init__(self, problems: list[str], unsupported: bool):
         super().__init__("; ".join(problems))
         self.problems = problems
-        self.unsupported = unsupported  # only `uncovered` problems remain: the request is out of scope
+        self.unsupported = unsupported  # the last plan still lists `uncovered` items: the request is out of scope
 
 
 @dataclass
@@ -199,6 +199,7 @@ async def plan(gw: Gateway, prompts: Prompts, session: cc.Session, *, prompt: st
             return v.plan
         previous = json.dumps(raw.model_dump(), ensure_ascii=False)
         problems = v.problems + v.uncovered
-        unsupported = bool(v.uncovered) and not v.problems
+        # Uncovered items kept to the last round make the request out of scope, whatever else that plan got wrong.
+        unsupported = bool(v.uncovered)
     raise PlanFailed(problems, unsupported)
 

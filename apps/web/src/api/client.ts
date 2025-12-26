@@ -40,7 +40,7 @@ export interface TokenStore {
   set(token: string | null): void;
 }
 
-export function localTokenStore(key = "circuit-forge.session"): TokenStore {
+export function localTokenStore(key = "analog-copilot.session"): TokenStore {
   // Storage can be missing or throw (private windows, blocked site data): the token is then per tab.
   let memory: string | null = null;
   return {

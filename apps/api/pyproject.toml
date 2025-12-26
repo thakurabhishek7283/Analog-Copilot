@@ -1,8 +1,10 @@
 [project]
 name = "tutor-api"
 version = "0.1.0"
-description = "Circuit Forge API: projects, op log, generation jobs, the orchestrator and its event stream (LLD §5, §6, §11)"
+description = "Analog-Copilot API: projects, op log, generation jobs, the orchestrator and its event stream (LLD §5, §6, §11)"
 requires-python = ">=3.12"
+license = "PolyForm-Noncommercial-1.0.0"  # LICENSE.md
+classifiers = ["Private :: Do Not Upload"]
 # Also needs `circuit_core` (crates/circuit-core-py, built with maturin) and `sim-runner`
 # (workers/sim_runner), installed from the repository.
 dependencies = [
@@ -19,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "pytest-asyncio>=1.4", "testcontainers>=4.15"]
+test = ["pytest>=8", "pytest-asyncio>=1.4", "testcontainers>=4.15", "pyyaml>=6,<7"]  # pyyaml: evals/prompts.yaml
 
 [build-system]
 requires = ["hatchling>=1.27"]

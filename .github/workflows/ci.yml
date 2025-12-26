@@ -97,6 +97,19 @@ jobs:
           REQUIRE_DOCKER: "1"
           REQUIRE_NGSPICE: "1"
         run: .venv/bin/python -m pytest -q apps/api/tests
+      # The eval harness on scripted replies: metrics, gate, report, and a recorded run replayed.
+      - name: Generation eval harness
+        env:
+          REQUIRE_DOCKER: "1"
+          REQUIRE_NGSPICE: "1"
+        run: .venv/bin/python -m pytest -q evals/tests
+      # The accepted live run (evals/golden) replayed and gated (LLD 15): any change to what the pipeline
+      # asks the model fails here until the live evals are run again. Runs once a live run is accepted.
+      - name: Generation evals gate (replays evals/golden)
+        if: hashFiles('evals/golden/cassette.json') != ''
+        run: >-
+          .venv/bin/python evals/run_evals.py --replay evals/golden/cassette.json --gate
+          --baseline evals/golden/report.json --out target/evals
       - name: circuit-core browser build (@tutor/core for Vite)
         run: node crates/circuit-core-wasm/build.mjs
       # Store, layout, schematic and sim worker against the real core, registry bundle and
@@ -139,8 +152,8 @@ jobs:
     name: images (sim_runner, api) and the local stack
     runs-on: ubuntu-latest
     env:
-      SIM_RUNNER_IMAGE: circuit-forge/sim-runner:ci
-      API_IMAGE: circuit-forge/api:ci
+      SIM_RUNNER_IMAGE: analog-copilot/sim-runner:ci
+      API_IMAGE: analog-copilot/api:ci
       AUTH_TOKEN_SECRET: ci-only-secret-0123456789abcdefghijklmnopqrstuvwxyz
       LLM_PROVIDER: fake  # apps/api/fake/script.json, mounted by compose: no network calls
     steps:
@@ -151,7 +164,7 @@ jobs:
         with:
           context: .
           file: workers/sim_runner/Dockerfile
-          tags: circuit-forge/sim-runner:ci
+          tags: analog-copilot/sim-runner:ci
           load: true
           push: false
           cache-from: type=gha,scope=sim-runner
@@ -161,7 +174,7 @@ jobs:
         with:
           context: .
           file: apps/api/Dockerfile
-          tags: circuit-forge/api:ci
+          tags: analog-copilot/api:ci
           load: true
           push: false
           cache-from: type=gha,scope=api
@@ -170,7 +183,7 @@ jobs:
         run: >-
           docker run --rm --read-only --network none --tmpfs /tmp:size=512m,mode=1777
           --cap-drop ALL --security-opt no-new-privileges
-          circuit-forge/sim-runner:ci python -m sim_runner.selftest
+          analog-copilot/sim-runner:ci python -m sim_runner.selftest
       - name: Stack starts (Postgres, Redis, migrations, API, worker) and the API answers
         run: |
           docker compose up -d --no-build --wait --wait-timeout 180 api sim_runner

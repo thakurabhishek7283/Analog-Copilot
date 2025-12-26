@@ -1,0 +1,56 @@
+{
+ "version": 1,
+ "interactions": [
+  {
+   "key": "7151fb913fbb2c38d75f7b4f8fc1a97273de2c4066316b20c79b85a7acafdfb2",
+   "kind": "plan",
+   "tier": "large",
+   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "response": {
+    "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Audio\", \"purpose\": \"The audio to send.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"1k\"}]}, {\"id\": \"b2\", \"template\": \"noninverting_amp\", \"title\": \"Mic amp\", \"purpose\": \"Raises the audio.\", \"targets\": []}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}",
+    "model": "fake-large",
+    "usage": {
+     "in_tokens": 3599,
+     "out_tokens": 104,
+     "cached_tokens": 0,
+     "estimated": true
+    },
+    "finish_reason": "stop"
+   }
+  },
+  {
+   "key": "5c648ccb9c0c51383a86955fc6e8258abb3e9e5feac8347f06cce3c0d76d0a9b",
+   "kind": "plan",
+   "tier": "large",
+   "user_tail": "\"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}\n\nIt has these problems. Fix every one:\n- b2.in is linked twice\n- no template builds 'a 100 MHz oscillator and its FM modulator': leave it out of the request, or plan it from the templates\n",
+   "response": {
+    "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Audio\", \"purpose\": \"The audio to send.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"1k\"}]}, {\"id\": \"b2\", \"template\": \"noninverting_amp\", \"title\": \"Mic amp\", \"purpose\": \"Raises the audio.\", \"targets\": []}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}",
+    "model": "fake-large",
+    "usage": {
+     "in_tokens": 3756,
+     "out_tokens": 104,
+     "cached_tokens": 0,
+     "estimated": true
+    },
+    "finish_reason": "stop"
+   }
+  },
+  {
+   "key": "5c648ccb9c0c51383a86955fc6e8258abb3e9e5feac8347f06cce3c0d76d0a9b",
+   "kind": "plan",
+   "tier": "large",
+   "user_tail": "\"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}\n\nIt has these problems. Fix every one:\n- b2.in is linked twice\n- no template builds 'a 100 MHz oscillator and its FM modulator': leave it out of the request, or plan it from the templates\n",
+   "response": {
+    "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Audio\", \"purpose\": \"The audio to send.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"1k\"}]}, {\"id\": \"b2\", \"template\": \"noninverting_amp\", \"title\": \"Mic amp\", \"purpose\": \"Raises the audio.\", \"targets\": []}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}",
+    "model": "fake-large",
+    "usage": {
+     "in_tokens": 3756,
+     "out_tokens": 104,
+     "cached_tokens": 0,
+     "estimated": true
+    },
+    "finish_reason": "stop"
+   }
+  }
+ ]
+}

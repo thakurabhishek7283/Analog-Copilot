@@ -1,8 +1,9 @@
 {
   "name": "@tutor/web",
   "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
-  "description": "Circuit Forge browser client (LLD §10): schematic editor on circuit-core (WASM), ELK layout and ngspice workers.",
+  "description": "Analog-Copilot browser client (LLD §10): schematic editor on circuit-core (WASM), ELK layout and ngspice workers.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

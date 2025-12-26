@@ -2,7 +2,7 @@
  "version": 1,
  "interactions": [
   {
-   "key": "c3f67bce94ee7f4b5ef0a2f245c4807f5667f198254b2f9d692fcfc6a264dfe1",
+   "key": "814890f6c3f4402761d46e010a3111786985384be287948af1173c93ed932287",
    "kind": "plan",
    "tier": "large",
    "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
@@ -12,13 +12,14 @@
     "usage": {
      "in_tokens": 3598,
      "out_tokens": 59,
-     "cached_tokens": 0
+     "cached_tokens": 0,
+     "estimated": true
     },
     "finish_reason": "stop"
    }
   },
   {
-   "key": "cede195da7151ff969c17d8f232c4b387945f4561f6e39dc9c832cb758176309",
+   "key": "0da126d0b96047ec1d44d89c66d5a58d592be95429a3147616a86019f21095b3",
    "kind": "narrate",
    "tier": "small",
    "user_tail": "let low frequencies through and send high ones to ground. It teaches: C shorts high frequencies to ground through R: above fc = 1/(2πRC) the output falls 20 dB per decade.\n\nWrite two to four short sentences for a beginner student that introduce this circuit and follow the signal through its blocks.\n",
@@ -48,9 +49,10 @@
     "text": "This circuit is a low-pass filter. The signal enters a resistor, and a capacitor shunts the fast parts to ground.",
     "model": "fake-small",
     "usage": {
-     "in_tokens": 260,
+     "in_tokens": 261,
      "out_tokens": 28,
-     "cached_tokens": 0
+     "cached_tokens": 0,
+     "estimated": true
     },
     "finish_reason": "stop"
    }

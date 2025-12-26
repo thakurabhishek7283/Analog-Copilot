@@ -36,7 +36,7 @@ function parseRoute(hash: string): Route {
 
 const api = new ApiClient({ base: API_URL, tokens: localTokenStore() });
 const pending = indexedDbPendingStore();
-const LAST_PROJECT = "circuit-forge.project";
+const LAST_PROJECT = "analog-copilot.project";
 
 function lastProject(): string | null {
   try {
@@ -134,7 +134,7 @@ export function App() {
       if (r.notice) setNotice(r.notice);
       setOpened({ editor, project });
       // Dev builds only: drive the editor from the console.
-      if (import.meta.env.DEV) Object.assign(window, { circuitForge: { ...editor, project } });
+      if (import.meta.env.DEV) Object.assign(window, { analogCopilot: { ...editor, project } });
     })().catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       cancelled = true;
@@ -253,7 +253,7 @@ function Toolbar({ demo, onRetryServer }: { demo: boolean; onRetryServer: () => 
   const busy = generating || phase === "starting";
   return (
     <header className="toolbar">
-      <h1>Circuit Forge</h1>
+      <h1>Analog-Copilot</h1>
       <div className="actions">
         <button type="button" disabled={busy} onClick={() => (location.hash = "#new")} title="Start a new circuit">
           New

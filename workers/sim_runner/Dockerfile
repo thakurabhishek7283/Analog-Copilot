@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # sim_runner (LLD §8): the pinned ngspice built from source, the registry's model files and the
 # arq worker. Build from the repository root:
-#   docker build -f workers/sim_runner/Dockerfile -t circuit-forge/sim-runner .
+#   docker build -f workers/sim_runner/Dockerfile -t analog-copilot/sim-runner .
 # Run it as compose.yaml does: read-only, a tmpfs at /tmp, no network but Redis. The tmpfs must be
 # /tmp: ngspice calls tmpfile(), which ignores TMPDIR.
 ARG PYTHON_IMAGE=python:3.12-slim-trixie

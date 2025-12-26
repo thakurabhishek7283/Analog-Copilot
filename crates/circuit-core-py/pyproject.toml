@@ -7,6 +7,8 @@ name = "circuit-core"
 version = "0.1.0"
 description = "Circuit IR, op protocol, ERC and SPICE compiler (Rust circuit-core via PyO3)"
 requires-python = ">=3.12"
+license = "PolyForm-Noncommercial-1.0.0"  # LICENSE.md
+classifiers = ["Private :: Do Not Upload"]
 
 [tool.maturin]
 module-name = "circuit_core._native"
