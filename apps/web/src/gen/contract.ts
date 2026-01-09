@@ -307,6 +307,11 @@ export type CheckKind =
   | "tran_threshold";
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Edge".
+ */
+export type Edge = "rise" | "fall";
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Category".
  */
 export type Category = "R" | "C" | "L" | "D" | "Q" | "U" | "V" | "J";
@@ -325,11 +330,6 @@ export type Hazard = "mains";
  * via the `definition` "Pass".
  */
 export type Pass = "low" | "high";
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "Edge".
- */
-export type Edge = "rise" | "fall";
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Side".
@@ -921,6 +921,10 @@ export interface SpecCheckDef {
    * `.meas` result names, in the order the kind combines them. Empty when `missing` is set.
    */
   meas: string[];
+  /**
+   * The output edge a `tran_threshold` check measures.
+   */
+  edge?: Edge | null;
   /**
    * Why the check could not be compiled into this netlist ("needs an AC analysis").
    */

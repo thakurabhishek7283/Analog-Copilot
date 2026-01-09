@@ -449,6 +449,11 @@ class CheckKind(StrEnum):
     tran_threshold = "tran_threshold"
 
 
+class Edge(StrEnum):
+    rise = "rise"
+    fall = "fall"
+
+
 class CurrentTerm(BaseModel):
     """
     `coeff · vector`, e.g. `-1 · @r1[i]`.
@@ -567,11 +572,6 @@ class TemplatePart(BaseModel):
 class Pass(StrEnum):
     low = "low"
     high = "high"
-
-
-class Edge(StrEnum):
-    rise = "rise"
-    fall = "fall"
 
 
 class TranWindow(BaseModel):
@@ -1213,6 +1213,10 @@ class SpecCheckDef(BaseModel):
             description="`.meas` result names, in the order the kind combines them. Empty when `missing` is set."
         ),
     ]
+    edge: Annotated[
+        Edge | None,
+        Field(description="The output edge a `tran_threshold` check measures."),
+    ] = None
     missing: Annotated[
         str | None,
         Field(

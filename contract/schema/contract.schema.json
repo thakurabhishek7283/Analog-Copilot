@@ -1778,6 +1778,17 @@
           },
           "description": "`.meas` result names, in the order the kind combines them. Empty when `missing` is set."
         },
+        "edge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Edge"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The output edge a `tran_threshold` check measures."
+        },
         "missing": {
           "type": [
             "string",
@@ -1853,6 +1864,13 @@
         }
       ],
       "description": "LLD §7 spec checks. Each is a few primitive ngspice `.meas` results combined by\n[`evaluate_checks`] (ngspice cannot measure an expression such as `vdb(out)-vdb(in)`)."
+    },
+    "Edge": {
+      "type": "string",
+      "enum": [
+        "rise",
+        "fall"
+      ]
     },
     "CurrentTerm": {
       "type": "object",
@@ -2488,13 +2506,6 @@
       "enum": [
         "low",
         "high"
-      ]
-    },
-    "Edge": {
-      "type": "string",
-      "enum": [
-        "rise",
-        "fall"
       ]
     },
     "TranWindow": {

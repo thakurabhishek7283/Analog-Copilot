@@ -43,16 +43,22 @@ def request(tid: str, k: int) -> dict[str, Any]:
     }
 
 
-def build(tid: str, k: int) -> tuple[Bench, dict[str, Any]]:
-    """The template at verification point k, inside its test bench (circuit-core's `bench_ops`, the
-    bench generated blocks are verified in too)."""
-    t = TEMPLATES[tid]
-    point = cc.unwrap(REG.verify_points(tid))[k]
+def in_bench(req: dict[str, Any]) -> Bench:
+    """The inserted block inside its template's test bench (circuit-core's `bench_ops`, the bench
+    generated blocks are verified in too)."""
     bench = Bench(REG)
     s = bench.session
-    ins = cc.unwrap(s.insert_block(json.dumps(request(tid, k))))
+    ins = cc.unwrap(s.insert_block(json.dumps(req)))
     cc.unwrap(s.apply_ops(json.dumps(ins["ops"]), "template"))
     cc.unwrap(s.apply_ops(json.dumps(cc.unwrap(s.bench_ops(ins["block"]))), "user"))
+    return bench
+
+
+def build(tid: str, k: int) -> tuple[Bench, dict[str, Any]]:
+    """The template at verification point k, inside its test bench."""
+    t = TEMPLATES[tid]
+    point = cc.unwrap(REG.verify_points(tid))[k]
+    bench = in_bench(request(tid, k))
     for port, direction in t["ports"].items():
         if direction == "input":
             assert port in (t.get("verify") or {}).get("drive", {}), f"{tid}: input {port} has no drive in its verify bench"
@@ -75,6 +81,23 @@ def test_template_meets_its_spec(tid: str, k: int):
         if not c["pass"]
     ]
     assert not failed, f"{tid} at {point}: " + "; ".join(failed)
+
+
+@pytest.mark.parametrize("step", ["1.9e-6", "2e-6", "2.1e-6"])
+def test_thresholds_ignore_spurious_switching(step: str):
+    """Inside its hysteresis both output states solve a Schmitt trigger, and the transient solver
+    sometimes jumps between them, at places that differ between ngspice builds and steps: on Linux
+    the schmitt-2v5 eval read its 3.1 V threshold as 2.21 V (a fall in the first period), on Windows
+    a 1.9 µs step read 1.9 V as 2.0 V. The checks take the outermost edge, so steps that change
+    nothing physical leave the thresholds where they are."""
+    bench = in_bench({"template": "schmitt_trigger", "targets": {"center_v": "2.5", "hyst_v": "1.2"}})
+    n = bench.netlist(interactive=True)
+    assert ".tran 2e-6 2e-2\n" in n["text"]
+    text = n["text"].replace(".tran 2e-6 2e-2\n", f".tran {step} 2e-2\n")
+    r = simulate(text, n["includes"], hash=f"{n['hash']}-{step}", timeout_s=10)
+    assert r.status == "ok", r.log[-2000:]
+    for c in cc.unwrap(cc.evaluate_checks(json.dumps(n["checks"]), json.dumps(r.meas))):
+        assert abs(c["measured"] - c["target"]) <= 0.02 * c["target"], c
 
 
 @pytest.mark.skipif(not (WASM.exists() and NODE), reason="ngspice.wasm or node missing")

@@ -25,6 +25,9 @@ pub const TRAN_STEPS_PER_PERIOD: f64 = 200.0;
 /// The most transient steps a check (or the scope) asks for.
 pub const MAX_TRAN_STEPS: f64 = 100_000.0;
 pub const DEFAULT_GAIN_HZ: f64 = 1e3;
+/// A threshold check reads this many output edges (the second half of five periods has two or
+/// three, plus any spurious switch).
+const THRESHOLD_EDGES: [&str; 4] = ["x1", "x2", "x3", "x4"];
 
 /// A check as compiled into one netlist: which `.meas` results it combines.
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
@@ -39,6 +42,9 @@ pub struct SpecCheckDef {
     pub tol_pct: f64,
     /// `.meas` result names, in the order the kind combines them. Empty when `missing` is set.
     pub meas: Vec<String>,
+    /// The output edge a `tran_threshold` check measures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<Edge>,
     /// Why the check could not be compiled into this netlist ("needs an AC analysis").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing: Option<String>,
@@ -99,6 +105,7 @@ pub fn emit(c: &Circuit, reg: &Registry, analyses: &[Analysis]) -> (Vec<MeasDef>
                 target: spec.target,
                 tol_pct: spec.tol_pct,
                 meas: Vec::new(),
+                edge: ch.edge,
                 missing: None,
             };
             let node = |port: &str| {
@@ -207,17 +214,34 @@ fn cards_for(
         CheckKind::TranAmplitude => range(),
         CheckKind::DcLevel => vec![("av", format!("avg v({out})"))],
         CheckKind::TranThreshold => {
-            let edge = if ch.edge == Some(Edge::Fall) { "fall=2" } else { "rise=2" };
-            let mut v = range();
-            v.push(("x", format!("find v({inp}) when v({out})={mid} {edge}")));
+            // Every edge of the second half (the default transient is five input periods), combined
+            // in `combine`. Leaving its balance point at start-up, a Schmitt trigger can switch at
+            // any input level.
+            let td = n(t_stop / 2.0);
+            let edge = if ch.edge == Some(Edge::Fall) { "fall" } else { "rise" };
+            let mut v = vec![("hi", format!("max v({out}) from={td}")), ("lo", format!("min v({out}) from={td}"))];
+            for (k, suffix) in THRESHOLD_EDGES.iter().enumerate() {
+                v.push((*suffix, format!("find v({inp}) when v({out})={mid} {edge}={} td={td}", k + 1)));
+            }
             v
         }
     }
 }
 
-/// The measured value of one check from its `.meas` results.
-fn combine(kind: CheckKind, v: &[f64]) -> Option<f64> {
-    let x = match (kind, v) {
+/// The measured value of one check from its `.meas` results (`None` where ngspice found nothing).
+fn combine(kind: CheckKind, edge: Option<Edge>, v: &[Option<f64>]) -> Option<f64> {
+    if kind == CheckKind::TranThreshold {
+        // Inside the hysteresis both output states solve the circuit, and the transient solver
+        // sometimes jumps between them: a spurious switch, at a place that differs between ngspice
+        // builds (Linux read a 3.1 V threshold as 2.21 V). Such an edge reads inside the window, so
+        // the threshold is the outermost edge: the highest input at a fall, the lowest at a rise.
+        // A switch a step late reads just outside it (1% at 2 µs steps, against jumps of 0.9 V).
+        let xs = v.get(2..)?.iter().flatten().copied();
+        let x = if edge == Some(Edge::Fall) { xs.reduce(f64::max) } else { xs.reduce(f64::min) }?;
+        return x.is_finite().then_some(x);
+    }
+    let v: Vec<f64> = v.iter().copied().collect::<Option<_>>()?;
+    let x = match (kind, v.as_slice()) {
         (CheckKind::AcCorner, [_, x]) => *x,
         (CheckKind::AcQ, [_, r, g0]) => 10f64.powf((g0 - r) / 20.0),
         (CheckKind::AcGain, [o, i]) => 10f64.powf((o - i) / 20.0),
@@ -227,7 +251,6 @@ fn combine(kind: CheckKind, v: &[f64]) -> Option<f64> {
         (CheckKind::TranDuty, [hi, lo, _, _, av]) if hi > lo => (av - lo) / (hi - lo),
         (CheckKind::TranAmplitude, [hi, lo]) => (hi - lo) / 2.0,
         (CheckKind::DcLevel, [av]) => *av,
-        (CheckKind::TranThreshold, [_, _, x]) => *x,
         _ => return None,
     };
     x.is_finite().then_some(x)
@@ -250,10 +273,10 @@ fn unmeasured(kind: CheckKind) -> &'static str {
 pub fn evaluate_checks(defs: &[SpecCheckDef], meas: &BTreeMap<String, f64>) -> Vec<CheckResult> {
     defs.iter()
         .map(|d| {
-            let values: Option<Vec<f64>> = d.meas.iter().map(|m| meas.get(m).copied()).collect();
-            let measured = match (&d.missing, values) {
-                (None, Some(v)) => combine(d.kind, &v),
-                _ => None,
+            let values: Vec<Option<f64>> = d.meas.iter().map(|m| meas.get(m).copied()).collect();
+            let measured = match &d.missing {
+                None => combine(d.kind, d.edge, &values),
+                Some(_) => None,
             };
             let pass =
                 measured.is_some_and(|m| (m - d.target).abs() <= d.tol_pct / 100.0 * d.target.abs() * (1.0 + 1e-9));
@@ -372,8 +395,32 @@ mod tests {
             target,
             tol_pct: 10.0,
             meas: meas.iter().map(|s| s.to_string()).collect(),
+            edge: None,
             missing: None,
         }
+    }
+
+    #[test]
+    fn a_threshold_is_the_outermost_edge() {
+        // Linux ngspice on the schmitt-2v5 bench: a spurious fall at 2.21 V among falls at 3.10 V.
+        let m: BTreeMap<String, f64> = [("hi", 7.47), ("lo", 0.01), ("x1", 3.104), ("x2", 2.209), ("x3", 3.103)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let edges = ["hi", "lo", "x1", "x2", "x3", "x4"];
+        let mut fall = def(CheckKind::TranThreshold, 3.1, &edges);
+        fall.edge = Some(Edge::Fall);
+        let r = &evaluate_checks(&[fall.clone()], &m)[0];
+        assert_eq!((r.measured, r.pass), (Some(3.104), true), "x4 absent is fine");
+        let mut rise = def(CheckKind::TranThreshold, 2.2, &edges);
+        rise.edge = Some(Edge::Rise);
+        assert_eq!(evaluate_checks(&[rise], &m)[0].measured, Some(2.209));
+
+        let none: BTreeMap<String, f64> =
+            [("hi", 7.47), ("lo", 0.01)].into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        let r = &evaluate_checks(&[fall], &none)[0];
+        assert_eq!(r.measured, None);
+        assert_eq!(r.note.as_deref(), Some("the output never switched: is the input swinging past the threshold?"));
     }
 
     #[test]

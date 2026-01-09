@@ -119,6 +119,17 @@
           },
           "description": "`.meas` result names, in the order the kind combines them. Empty when `missing` is set."
         },
+        "edge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Edge"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The output edge a `tran_threshold` check measures."
+        },
         "missing": {
           "type": [
             "string",
@@ -207,6 +218,13 @@
         "second",
         "watt",
         "unitless"
+      ]
+    },
+    "Edge": {
+      "type": "string",
+      "enum": [
+        "rise",
+        "fall"
       ]
     },
     "CurrentTerm": {
