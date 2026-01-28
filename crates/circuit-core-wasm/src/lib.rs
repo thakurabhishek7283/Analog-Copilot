@@ -120,6 +120,20 @@ impl CoreSession {
         api::bench_ops(&self.inner, block)
     }
 
+    /// The slice of the circuit a question is about (`AskRequest` JSON) →
+    /// `{"ok": TutorContext} | {"err": OpError}` (LLD §9).
+    #[wasm_bindgen(js_name = tutorContext)]
+    pub fn tutor_context(&self, req: &str) -> String {
+        api::tutor_context(&self.inner, req)
+    }
+
+    /// A tutor answer, whole or streamed so far → `Answer` JSON: its references (spans in UTF-16
+    /// units, as JS indexes strings), each checked, and its `try` suggestion, validated.
+    #[wasm_bindgen(js_name = readAnswer)]
+    pub fn read_answer(&self, text: &str) -> String {
+        api::read_answer(&self.inner, text)
+    }
+
     /// The full `Circuit` JSON.
     pub fn snapshot(&self) -> String {
         api::snapshot(&self.inner)

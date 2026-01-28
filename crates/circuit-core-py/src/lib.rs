@@ -167,6 +167,18 @@ impl Session {
         api::bench_ops(&self.inner, block)
     }
 
+    /// The slice of the circuit a question is about (`AskRequest` JSON) → `{"ok": TutorContext} |
+    /// {"err": OpError}` (LLD §9).
+    fn tutor_context(&self, req: &str) -> String {
+        api::tutor_context(&self.inner, req)
+    }
+
+    /// A tutor answer read against the circuit → `Answer` JSON: its references, each checked,
+    /// and its `try` suggestion, validated.
+    fn read_answer(&self, text: &str) -> String {
+        api::read_answer(&self.inner, text)
+    }
+
     /// The full `Circuit` JSON.
     fn snapshot(&self) -> String {
         api::snapshot(&self.inner)

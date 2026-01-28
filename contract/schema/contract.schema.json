@@ -3699,6 +3699,531 @@
       "required": [
         "job_id"
       ]
+    },
+    "AskRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "question": {
+          "type": "string"
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Selection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rev": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "level": {
+          "$ref": "#/$defs/LearnerLevel",
+          "default": "beginner"
+        },
+        "mode": {
+          "$ref": "#/$defs/TutorMode",
+          "default": "explain"
+        },
+        "sim": {
+          "$ref": "#/$defs/SimValues",
+          "default": {
+            "op_v": {},
+            "op_i": {},
+            "checks": []
+          }
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How hard a reasoning model thinks before it answers, the learner's choice; absent: the\nprovider's default. Models that do not reason ignore it."
+        }
+      },
+      "required": [
+        "question",
+        "rev"
+      ],
+      "description": "`POST /v1/projects/{id}/ask`. The server reads its own circuit at `rev` (never a client\nnetlist) and takes the simulation values from the client, which ran them (LLD §5)."
+    },
+    "Selection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "refdes": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "part"
+            }
+          },
+          "required": [
+            "kind",
+            "refdes"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "net"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "block"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        }
+      ],
+      "description": "What the learner has selected in the editor."
+    },
+    "TutorMode": {
+      "type": "string",
+      "enum": [
+        "explain",
+        "socratic"
+      ],
+      "description": "Explain, or ask one guiding question first (LLD §9, rule 4)."
+    },
+    "SimValues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The run's status (`ok`, `no_convergence`, `singular_matrix`, `timeout`, `error`); absent\nwhen nothing was simulated."
+        },
+        "op_v": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "description": "Operating point: net -> volts.",
+          "default": {}
+        },
+        "op_i": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "description": "Operating point: pin (`R3.1`) -> amps flowing into the pin.",
+          "default": {}
+        },
+        "ac": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcValues"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "AC response at the scope's frequency."
+        },
+        "tran": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TranValues"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The transient's range on each net."
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckResult"
+          },
+          "description": "Spec checks as the browser measured them.",
+          "default": []
+        }
+      },
+      "description": "The learner's simulation of the circuit the question is about. The server never simulated an\nedited circuit, so these come from the browser (LLD §5); the circuit itself does not."
+    },
+    "AcValues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hz": {
+          "type": "number",
+          "format": "double"
+        },
+        "v": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "description": "Net -> magnitude (volts)."
+        },
+        "deg": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "description": "Net -> phase (degrees).",
+          "default": {}
+        }
+      },
+      "required": [
+        "hz",
+        "v"
+      ]
+    },
+    "TranValues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "t_stop": {
+          "type": "number",
+          "format": "double"
+        },
+        "v": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Span"
+          },
+          "description": "Net -> lowest and highest voltage over the run."
+        }
+      },
+      "required": [
+        "t_stop",
+        "v"
+      ]
+    },
+    "Span": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "number",
+          "format": "double"
+        },
+        "max": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ]
+    },
+    "ReasoningEffort": {
+      "type": "string",
+      "enum": [
+        "low",
+        "high"
+      ]
+    },
+    "AskEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "answer.delta"
+            },
+            "data": {
+              "$ref": "#/$defs/AnswerDelta"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "answer.done"
+            },
+            "data": {
+              "$ref": "#/$defs/AskDone"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "description": "The whole answer, read against the circuit: references and the `try` suggestion."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "error"
+            },
+            "data": {
+              "$ref": "#/$defs/ApiError"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ]
+        }
+      ],
+      "description": "One event of an answer's stream (the response to `POST /ask`, not resumable: a dropped stream\nasks again)."
+    },
+    "AnswerDelta": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "AskDone": {
+      "type": "object",
+      "properties": {
+        "ask_id": {
+          "type": "string"
+        },
+        "answer": {
+          "$ref": "#/$defs/Answer"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "ask_id",
+        "answer",
+        "usage"
+      ]
+    },
+    "Answer": {
+      "type": "object",
+      "properties": {
+        "body": {
+          "type": "string",
+          "description": "The answer without its `try` block."
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Ref"
+          }
+        },
+        "refs_valid": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "refs_invalid": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "try": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrySuggestion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "body",
+        "refs",
+        "refs_valid",
+        "refs_invalid"
+      ],
+      "description": "A tutor answer, read against the circuit it is about."
+    },
+    "Ref": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/RefKind"
+        },
+        "id": {
+          "type": "string"
+        },
+        "valid": {
+          "type": "boolean",
+          "description": "It names something in the circuit; an invalid one is shown as plain text (LLD §9)."
+        },
+        "start": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "The bracketed token's span in `body`, in UTF-16 code units (JavaScript string indices)."
+        },
+        "end": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "valid",
+        "start",
+        "end"
+      ],
+      "description": "One reference an answer cites, located in [`Answer::body`]."
+    },
+    "RefKind": {
+      "type": "string",
+      "enum": [
+        "part",
+        "net",
+        "block"
+      ]
+    },
+    "TrySuggestion": {
+      "type": "object",
+      "properties": {
+        "ops": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Op"
+          }
+        },
+        "predict": {
+          "type": "string"
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OpError"
+          },
+          "description": "Why it cannot be applied (a malformed block, an op a learner cannot make, or what `apply`\nrejected). Empty when the ops apply to the circuit as one undoable step."
+        }
+      },
+      "required": [
+        "ops",
+        "predict",
+        "problems"
+      ],
+      "description": "An experiment the tutor suggests (LLD §9, rule 5): ops the learner can apply, and what the\ntutor predicts will happen."
+    },
+    "AskFeedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "feedback": {
+          "type": "integer",
+          "format": "int8",
+          "minimum": -128,
+          "maximum": 127,
+          "description": "1 helpful, -1 not."
+        }
+      },
+      "required": [
+        "feedback"
+      ],
+      "description": "`POST /v1/asks/{id}/feedback`: the learner's verdict on an answer."
+    },
+    "TutorContext": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Compact text for the prompt (LLD §9)."
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The parts, nets and blocks the text describes."
+        },
+        "nets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dropped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Parts left out for the part limit or the token budget, nearest the selection first."
+        },
+        "hazards": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Parts anywhere in the circuit flagged `hazard: mains`: the answer gets a safety note."
+        },
+        "tokens": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Estimated tokens of `text`."
+        }
+      },
+      "required": [
+        "text",
+        "parts",
+        "nets",
+        "blocks",
+        "dropped",
+        "hazards",
+        "tokens"
+      ],
+      "description": "The slice of a circuit a question is about, as the model sees it."
     }
   }
 }

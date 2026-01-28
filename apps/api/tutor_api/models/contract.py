@@ -857,6 +857,127 @@ class JobAccepted(BaseModel):
     job_id: str
 
 
+class Selection1(BaseModel):
+    """
+    What the learner has selected in the editor.
+    """
+
+    refdes: str
+    kind: Literal["part"]
+
+
+class Selection2(BaseModel):
+    """
+    What the learner has selected in the editor.
+    """
+
+    id: str
+    kind: Literal["net"]
+
+
+class Selection3(BaseModel):
+    """
+    What the learner has selected in the editor.
+    """
+
+    id: str
+    kind: Literal["block"]
+
+
+class Selection(RootModel[Selection1 | Selection2 | Selection3]):
+    root: Annotated[
+        Selection1 | Selection2 | Selection3,
+        Field(description="What the learner has selected in the editor."),
+    ]
+
+
+class TutorMode(StrEnum):
+    """
+    Explain, or ask one guiding question first (LLD §9, rule 4).
+    """
+
+    explain = "explain"
+    socratic = "socratic"
+
+
+class AcValues(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    hz: float
+    v: Annotated[dict[str, float], Field(description="Net -> magnitude (volts).")]
+    deg: Annotated[
+        dict[str, float] | None, Field(description="Net -> phase (degrees).")
+    ] = {}
+
+
+class Span(BaseModel):
+    min: float
+    max: float
+
+
+class ReasoningEffort(StrEnum):
+    low = "low"
+    high = "high"
+
+
+class AskEvent3(BaseModel):
+    """
+    One event of an answer's stream (the response to `POST /ask`, not resumable: a dropped stream
+    asks again).
+    """
+
+    event: Literal["error"]
+    data: ApiError
+
+
+class AnswerDelta(BaseModel):
+    text: str
+
+
+class RefKind(StrEnum):
+    part = "part"
+    net = "net"
+    block = "block"
+
+
+class AskFeedback(BaseModel):
+    """
+    `POST /v1/asks/{id}/feedback`: the learner's verdict on an answer.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    feedback: Annotated[int, Field(description="1 helpful, -1 not.", ge=-128, le=127)]
+
+
+class TutorContext(BaseModel):
+    """
+    The slice of a circuit a question is about, as the model sees it.
+    """
+
+    text: Annotated[str, Field(description="Compact text for the prompt (LLD §9).")]
+    parts: Annotated[
+        list[str], Field(description="The parts, nets and blocks the text describes.")
+    ]
+    nets: list[str]
+    blocks: list[str]
+    dropped: Annotated[
+        list[str],
+        Field(
+            description="Parts left out for the part limit or the token budget, nearest the selection first."
+        ),
+    ]
+    hazards: Annotated[
+        list[str],
+        Field(
+            description="Parts anywhere in the circuit flagged `hazard: mains`: the answer gets a safety note."
+        ),
+    ]
+    tokens: Annotated[int, Field(description="Estimated tokens of `text`.", ge=0)]
+
+
 class Quantity(BaseModel):
     """
     A parsed physical value. `display` is canonical and round-trips exactly through [`parse_quantity`].
@@ -1527,6 +1648,50 @@ class GenerateRequest(BaseModel):
     level: LearnerLevel | None = "beginner"
 
 
+class TranValues(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    t_stop: float
+    v: Annotated[
+        dict[str, Span],
+        Field(description="Net -> lowest and highest voltage over the run."),
+    ]
+
+
+class AskEvent1(BaseModel):
+    """
+    One event of an answer's stream (the response to `POST /ask`, not resumable: a dropped stream
+    asks again).
+    """
+
+    event: Literal["answer.delta"]
+    data: AnswerDelta
+
+
+class Ref(BaseModel):
+    """
+    One reference an answer cites, located in [`Answer::body`].
+    """
+
+    kind: RefKind
+    id: str
+    valid: Annotated[
+        bool,
+        Field(
+            description="It names something in the circuit; an invalid one is shown as plain text (LLD §9)."
+        ),
+    ]
+    start: Annotated[
+        int,
+        Field(
+            description="The bracketed token's span in `body`, in UTF-16 code units (JavaScript string indices).",
+            ge=0,
+        ),
+    ]
+    end: Annotated[int, Field(ge=0)]
+
+
 class PartInstance(BaseModel):
     refdes: str
     part: str
@@ -2053,6 +2218,61 @@ class AppendOps(BaseModel):
     ops: list[OpEnvelope]
 
 
+class SimValues(BaseModel):
+    """
+    The learner's simulation of the circuit the question is about. The server never simulated an
+    edited circuit, so these come from the browser (LLD §5); the circuit itself does not.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    status: Annotated[
+        str | None,
+        Field(
+            description="The run's status (`ok`, `no_convergence`, `singular_matrix`, `timeout`, `error`); absent\nwhen nothing was simulated."
+        ),
+    ] = None
+    op_v: Annotated[
+        dict[str, float] | None, Field(description="Operating point: net -> volts.")
+    ] = {}
+    op_i: Annotated[
+        dict[str, float] | None,
+        Field(
+            description="Operating point: pin (`R3.1`) -> amps flowing into the pin."
+        ),
+    ] = {}
+    ac: Annotated[
+        AcValues | None, Field(description="AC response at the scope's frequency.")
+    ] = None
+    tran: Annotated[
+        TranValues | None, Field(description="The transient's range on each net.")
+    ] = None
+    checks: Annotated[
+        list[CheckResult] | None,
+        Field(
+            description="Spec checks as the browser measured them.",
+            validate_default=True,
+        ),
+    ] = []
+
+
+class TrySuggestion(BaseModel):
+    """
+    An experiment the tutor suggests (LLD §9, rule 5): ops the learner can apply, and what the
+    tutor predicts will happen.
+    """
+
+    ops: list[Op]
+    predict: str
+    problems: Annotated[
+        list[OpError],
+        Field(
+            description="Why it cannot be applied (a malformed block, an op a learner cannot make, or what `apply`\nrejected). Empty when the ops apply to the circuit as one undoable step."
+        ),
+    ]
+
+
 class Circuit(BaseModel):
     schema_version: Annotated[int, Field(ge=0, le=65535)]
     registry_version: str
@@ -2118,3 +2338,66 @@ class ProjectSnapshot(BaseModel):
             description="A generation job still running on this project, if any (the editor stays read-only)."
         ),
     ] = None
+
+
+class AskRequest(BaseModel):
+    """
+    `POST /v1/projects/{id}/ask`. The server reads its own circuit at `rev` (never a client
+    netlist) and takes the simulation values from the client, which ran them (LLD §5).
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    question: str
+    selection: Selection | None = None
+    rev: Annotated[int, Field(ge=0)]
+    level: LearnerLevel | None = "beginner"
+    mode: TutorMode | None = "explain"
+    sim: Annotated[SimValues | None, Field(validate_default=True)] = {
+        "op_v": {},
+        "op_i": {},
+        "checks": [],
+    }
+    effort: Annotated[
+        ReasoningEffort | None,
+        Field(
+            description="How hard a reasoning model thinks before it answers, the learner's choice; absent: the\nprovider's default. Models that do not reason ignore it."
+        ),
+    ] = None
+
+
+class Answer(BaseModel):
+    """
+    A tutor answer, read against the circuit it is about.
+    """
+
+    body: Annotated[str, Field(description="The answer without its `try` block.")]
+    refs: list[Ref]
+    refs_valid: Annotated[int, Field(ge=0)]
+    refs_invalid: Annotated[int, Field(ge=0)]
+    try_: Annotated[TrySuggestion | None, Field(alias="try")] = None
+
+
+class AskDone(BaseModel):
+    ask_id: str
+    answer: Answer
+    usage: Usage
+
+
+class AskEvent2(BaseModel):
+    """
+    The whole answer, read against the circuit: references and the `try` suggestion.
+    """
+
+    event: Literal["answer.done"]
+    data: AskDone
+
+
+class AskEvent(RootModel[AskEvent1 | AskEvent2 | AskEvent3]):
+    root: Annotated[
+        AskEvent1 | AskEvent2 | AskEvent3,
+        Field(
+            description="One event of an answer's stream (the response to `POST /ask`, not resumable: a dropped stream\nasks again)."
+        ),
+    ]

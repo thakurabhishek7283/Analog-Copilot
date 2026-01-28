@@ -102,3 +102,18 @@ test("a template block's verification bench", () => {
   assert.equal(JSON.parse(s.benchOps("b9")).err.code, "block_not_found");
   s.free();
 });
+
+test("tutor context and answers", () => {
+  const s = new core.CoreSession(registry);
+  const ins = JSON.parse(s.insertBlock(JSON.stringify({ template: "rc_lowpass" }))).ok;
+  JSON.parse(s.applyOps(JSON.stringify(ins.ops), "template")).ok;
+  const req = { question: "Why this R1?", selection: { kind: "part", refdes: "R1" }, rev: s.rev, sim: { status: "ok", op_v: { B1_OUT: 0.5 } } };
+  const ctx = JSON.parse(s.tutorContext(JSON.stringify(req))).ok;
+  assert.deepEqual([ctx.parts, ctx.blocks, ctx.hazards], [["R1", "C1"], ["b1"], []]);
+  assert.ok(ctx.text.includes("SELECTED: part R1") && ctx.text.includes("B1_OUT: C1.1 R1.2 | op 500mV"));
+  const text = "😀 [R1] and [R9].";
+  const a = JSON.parse(s.readAnswer(text));
+  assert.deepEqual([a.refs_valid, a.refs_invalid], [1, 1]);
+  assert.equal(a.body.slice(a.refs[0].start, a.refs[0].end), "[R1]", "spans are UTF-16 indices");
+  s.free();
+});

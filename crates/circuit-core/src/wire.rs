@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::ir::{BlockId, BlockRole, Circuit, PortDirection};
 use crate::ops::OpEnvelope;
 use crate::template::CheckResult;
+use crate::tutor::{Answer, Selection, SimValues, TutorMode};
 
 /// A generation job's state (LLD §6). `failed` and `cancelled` can follow any other state.
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -235,6 +236,70 @@ pub struct GenerateRequest {
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct JobAccepted {
     pub job_id: String,
+}
+
+// ---------------------------------------------------------------- tutor (LLD §9)
+
+/// `POST /v1/projects/{id}/ask`. The server reads its own circuit at `rev` (never a client
+/// netlist) and takes the simulation values from the client, which ran them (LLD §5).
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AskRequest {
+    pub question: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<Selection>,
+    pub rev: u64,
+    #[serde(default)]
+    pub level: LearnerLevel,
+    #[serde(default)]
+    pub mode: TutorMode,
+    #[serde(default)]
+    pub sim: SimValues,
+    /// How hard a reasoning model thinks before it answers, the learner's choice; absent: the
+    /// provider's default. Models that do not reason ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<ReasoningEffort>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningEffort {
+    Low,
+    High,
+}
+
+/// One event of an answer's stream (the response to `POST /ask`, not resumable: a dropped stream
+/// asks again).
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(tag = "event", content = "data")]
+pub enum AskEvent {
+    #[serde(rename = "answer.delta")]
+    Delta(AnswerDelta),
+    /// The whole answer, read against the circuit: references and the `try` suggestion.
+    #[serde(rename = "answer.done")]
+    Done(AskDone),
+    #[serde(rename = "error")]
+    Error(ApiError),
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+pub struct AnswerDelta {
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+pub struct AskDone {
+    pub ask_id: String,
+    pub answer: Answer,
+    pub usage: Usage,
+}
+
+/// `POST /v1/asks/{id}/feedback`: the learner's verdict on an answer.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AskFeedback {
+    /// 1 helpful, -1 not.
+    pub feedback: i8,
 }
 
 #[cfg(test)]

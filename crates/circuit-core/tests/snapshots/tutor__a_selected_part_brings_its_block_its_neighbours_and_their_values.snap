@@ -1,0 +1,30 @@
+---
+source: crates/circuit-core/tests/tutor.rs
+expression: ctx.text
+---
+SIM: ok
+SELECTED: part R1
+BLOCK b1 "Sine signal source" template sine_source, source, committed
+  ports: out:B1_OUT gnd:GND
+  spec: amplitude_v 1V ±2%
+  teaches: A function generator: a sine wave of the amplitude and frequency you set, for driving and testing other blocks.
+BLOCK b2 "Sallen-Key low-pass (2nd order)" template sallen_key_lp, filter, committed
+  ports: in:B1_OUT out:B2_OUT vcc:VCC vee:VEE gnd:GND
+  spec: fc_hz 1kHz ±10% measured 1kHz pass; q 0.707 ±15%
+  teaches: Two RC sections with feedback from the output through C1: a 40 dB/decade roll-off, and Q sets how sharp the knee is (0.707 is maximally flat).
+PARTS:
+  R1 resistor_th "Through-hole resistor, 1/4 W" [b2] resistance=18kΩ 1:B1_OUT 2:B2_N_A | I=-65nA into 1
+    teaches: Ohm's law: V = I·R. A 1/4 W part should stay well under 250 mW.
+  C1 cap_film "Film capacitor (non-polarized)" [b2] capacitance=10nF 1:B2_N_A 2:B2_OUT
+  C2 cap_film "Film capacitor (non-polarized)" [b2] capacitance=4.7nF 1:B2_N_B 2:GND
+  R2 resistor_th "Through-hole resistor, 1/4 W" [b2] resistance=30kΩ 1:B2_N_A 2:B2_N_B
+  U1 opamp_tl072 "TL072 dual JFET op-amp" [b2] OUT_A:B2_OUT INM_A:B2_OUT INP_A:B2_N_B VEE:VEE INP_B:- INM_B:- OUT_B:- VCC:VCC | I into OUT_A=1.2µA
+  V1 vsource_sine "Sine signal source" [b1] amplitude=1V frequency=1kHz offset=0V P:B1_OUT N:GND
+NETS:
+  B1_OUT: R1.1 V1.P | op 0V | ac 1V @100Hz
+  B2_N_A: C1.1 R1.2 R2.1 | op 1.2mV | ac 980mV -12.3° @100Hz
+  B2_OUT: C1.2 U1.INM_A U1.OUT_A | op 2.4mV | tran -710mV..700mV
+  B2_N_B: C2.1 R2.2 U1.INP_A
+RAILS: GND ground; VCC power 12V | op 12V; VEE power -12V
+ERC:
+  ERC010 info: U1 unit B is unused and left floating

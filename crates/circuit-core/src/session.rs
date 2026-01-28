@@ -17,6 +17,8 @@ use crate::ops::{Author, Op, OpEnvelope};
 use crate::registry::Registry;
 use crate::spice::{CompileError, CompileOpts, Netlist, compile};
 use crate::template::{self, BlockRequest, BlockTrial, InsertBlock, Inserted, Preview};
+use crate::tutor::{self, Answer, TutorContext};
+use crate::wire::AskRequest;
 
 /// What a successful `apply` reports to the UI: only what changed (LLD §10).
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
@@ -143,6 +145,17 @@ impl Session {
     /// Ops that put a template block in its verification bench ([`template::bench_ops`]).
     pub fn bench_ops(&self, block: &str) -> Result<Vec<Op>, OpError> {
         template::bench_ops(&self.circuit, &self.reg, block)
+    }
+
+    /// The slice of the circuit a question is about, as the tutor model sees it ([`tutor::context`]).
+    pub fn tutor_context(&self, req: &AskRequest) -> Result<TutorContext, OpError> {
+        tutor::context(&self.circuit, &self.reg, &req.question, req.selection.as_ref(), &req.sim)
+    }
+
+    /// A tutor answer read against the circuit: references and the `try` suggestion
+    /// ([`tutor::read_answer`]).
+    pub fn read_answer(&self, text: &str) -> Answer {
+        tutor::read_answer(&self.circuit, &self.reg, text)
     }
 }
 
@@ -302,6 +315,17 @@ pub mod json_api {
             Ok(template::evaluate_checks(&defs, &meas))
         });
         outcome(r)
+    }
+
+    /// `req_json` is an `AskRequest` → `Outcome<TutorContext, OpError>` (err for a malformed
+    /// request or a selection the circuit does not hold).
+    pub fn tutor_context(s: &Session, req_json: &str) -> String {
+        outcome(parse::<AskRequest>("ask request", req_json).and_then(|r| s.tutor_context(&r)))
+    }
+
+    /// `text` is a tutor answer, whole or streamed so far → `Answer` (never an error).
+    pub fn read_answer(s: &Session, text: &str) -> String {
+        to_json(&s.read_answer(text))
     }
 
     /// The 5 points CI verifies a template at → `Outcome<[VerifyPoint], OpError>`.

@@ -15,6 +15,7 @@ pub mod session;
 pub mod spice;
 pub mod symbol;
 pub mod template;
+pub mod tutor;
 pub mod units;
 pub mod wire;
 

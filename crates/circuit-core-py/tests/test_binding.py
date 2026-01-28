@@ -169,3 +169,19 @@ def test_heavy_calls_release_the_gil(reg):
     t.join()
     assert len(trial["circuit"]["parts"]) == 300 and trial["errors"] == []
     assert ticks > 0
+
+
+def test_tutor_context_and_answers(reg):
+    s = cc.Session(reg)
+    ins = cc.unwrap(s.insert_block(json.dumps({"template": "rc_lowpass"})))
+    cc.unwrap(s.apply_ops(json.dumps(ins["ops"]), "template"))
+    req = {"question": "Why this R1?", "selection": {"kind": "part", "refdes": "R1"}, "rev": s.rev,
+           "sim": {"status": "ok", "op_v": {"B1_OUT": 0.5}}}
+    ctx = cc.unwrap(s.tutor_context(json.dumps(req)))
+    assert ctx["parts"] == ["R1", "C1"] and ctx["blocks"] == ["b1"] and ctx["hazards"] == []
+    assert "SELECTED: part R1" in ctx["text"] and "B1_OUT: C1.1 R1.2 | op 500mV" in ctx["text"]
+    assert json.loads(s.tutor_context(json.dumps({**req, "selection": {"kind": "part", "refdes": "R9"}})))["err"]["code"] == "part_not_found"
+    a = json.loads(s.read_answer('µ [R1] and [R9].\n\n```try\n{"ops":[{"op":"part.set_param","body":{"refdes":"R1","key":"resistance","value":"2k"}}],"predict":"fc falls"}\n```'))
+    assert (a["refs_valid"], a["refs_invalid"]) == (1, 1)
+    assert a["refs"][0]["start"] == 2 and a["body"] == "µ [R1] and [R9]."
+    assert a["try"]["problems"] == [] and a["try"]["predict"] == "fc falls"
