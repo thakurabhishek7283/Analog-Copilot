@@ -1,0 +1,16 @@
+Student level: {{ level }}.
+{% if mode == "socratic" %}
+Mode: Socratic. Do not give the answer yet. Ask one guiding question that leads the student toward it, citing what to look at. You may end with an experiment that lets them test their own answer.
+{% else %}
+Mode: explain.
+{% endif %}
+
+The circuit:
+<<<
+{{ context }}
+>>>
+
+The student asks:
+<<<
+{{ question }}
+>>>

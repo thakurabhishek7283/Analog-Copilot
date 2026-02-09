@@ -5,6 +5,8 @@ cassettes, and provider configuration from the environment."""
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import hashlib
 import json
 import socket
 from collections.abc import AsyncIterator, Callable
@@ -118,6 +120,28 @@ async def test_a_reasoning_model_gets_max_completion_tokens_and_no_temperature(m
     await p.complete(REQ)
     body = mock.requests[0][1]
     assert body["max_completion_tokens"] == 100 and "max_tokens" not in body and "temperature" not in body
+    assert "reasoning_effort" not in body, "unset: the provider's default"
+
+
+async def test_a_reasoning_effort_goes_to_reasoning_models_only(mock_server, mock):
+    """The learner's choice on Ask (`low`, `high`); a model that does not reason never sees it."""
+    for _ in range(2):
+        mock.handlers.append(lambda body: completion('{"ok": true}'))
+    models = {"large": "m-large", "small": "m-small"}
+    low = dataclasses.replace(REQ, effort="low")
+    await OpenAICompatProvider("openai", mock_server[0], "k", models, reasoning=True).complete(low)
+    await OpenAICompatProvider("openai", mock_server[0], "k", models).complete(low)
+    assert mock.requests[0][1]["reasoning_effort"] == "low" and "reasoning_effort" not in mock.requests[1][1]
+
+
+def test_unset_later_fields_keep_cassette_keys():
+    """Requests recorded before `effort` and `timeout_s` existed replay under the same key."""
+    legacy = dataclasses.asdict(REQ)
+    del legacy["effort"], legacy["timeout_s"]
+    canon = json.dumps(legacy, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    assert REQ.key() == hashlib.sha256(canon.encode()).hexdigest()
+    assert dataclasses.replace(REQ, effort="high").key() != REQ.key()
+    assert dataclasses.replace(REQ, timeout_s=120.0).key() != REQ.key()
 
 
 async def test_json_object_mode_puts_the_schema_in_the_prompt(mock_server, mock):
@@ -217,6 +241,17 @@ async def test_a_slow_reply_hits_the_call_deadline(mock_server, mock):
     with pytest.raises(ProviderError) as e:
         await provider(mock_server, timeout_s=0.2).complete(REQ)
     assert e.value.code == "timeout" and e.value.retryable
+
+
+async def test_a_request_can_have_a_longer_deadline_than_the_provider(mock_server, mock):
+    """Ask on a reasoning model: nothing arrives while it thinks, past the provider's own deadline."""
+    async def slow(body):
+        await asyncio.sleep(0.5)
+        return completion("{}")
+
+    mock.handlers.append(slow)
+    resp = await provider(mock_server, timeout_s=0.2).complete(dataclasses.replace(REQ, timeout_s=3.0))
+    assert resp.text == "{}"
 
 
 async def test_gateway_retries_then_falls_back(mock_server, mock):

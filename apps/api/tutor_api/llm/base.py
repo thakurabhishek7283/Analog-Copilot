@@ -24,10 +24,18 @@ class LlmRequest:
     schema_name: str = "reply"
     max_tokens: int = 2000
     temperature: float = 0.2
+    effort: str | None = None  # a reasoning model's effort (`low`, `high`); None: the provider's default
+    timeout_s: float | None = None  # this call's deadline; None: the provider's (30 s, LLD §6)
 
     def key(self) -> str:
-        """sha256 of the request: what a cassette is keyed by. Any prompt change changes it."""
-        canon = json.dumps(asdict(self), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        """sha256 of the request: what a cassette is keyed by. Any prompt change changes it. Unset
+        later fields (`effort`, `timeout_s`) are left out, so requests recorded before they existed
+        keep their keys."""
+        d = asdict(self)
+        for later in ("effort", "timeout_s"):
+            if d[later] is None:
+                del d[later]
+        canon = json.dumps(d, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(canon.encode()).hexdigest()
 
 

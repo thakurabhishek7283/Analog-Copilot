@@ -17,6 +17,7 @@ class Settings:
     registry_dir: Path = REPO / "registry"
     # LLD §1/§6 limits
     job_timeout_s: float = 120.0
+    ask_timeout_s: float = 180.0  # a whole answer, retries included (each model call: 120 s)
     snapshot_every: int = 200  # ops between project snapshots (LLD §11)
     max_ops_per_request: int = 1000
     anonymous_token_ttl_s: int = 30 * 24 * 3600

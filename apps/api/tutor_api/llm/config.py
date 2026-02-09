@@ -9,6 +9,7 @@
   for both, else, for the primary provider only, `LLM_MODEL_LARGE` / `LLM_MODEL_SMALL`.
   `P_REASONING=1` for a reasoning model (GPT-5 and later, also on Azure): `max_completion_tokens`
   instead of `max_tokens`, and no temperature (only the default is accepted).
+- `LLM_TIER_ASK`: the tier the tutor answers with, `small` (default, LLD §6) or `large`.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-from .base import Provider
+from .base import Provider, Tier
 from .cassette import Replayer
 from .fake import FakeProvider
 from .gateway import Gateway
@@ -29,6 +30,23 @@ REAL = {
     "deepseek": (None, "json_object"),
     "openai": ("https://api.openai.com/v1", "json_schema"),
 }
+
+
+# The tutor's request kinds and their default tiers (LLD §6: Ask uses the small model).
+TUTOR_TIERS: dict[str, Tier] = {"ask": "small"}
+
+
+def tutor_tiers_from_env(env: Mapping[str, str] | None = None) -> dict[str, Tier]:
+    env = os.environ if env is None else env
+    tiers = dict(TUTOR_TIERS)
+    for kind in tiers:
+        name = f"LLM_TIER_{kind.upper()}"
+        value = (env.get(name) or "").strip().lower()
+        if value:
+            if value not in ("small", "large"):
+                raise RuntimeError(f"{name} must be small or large, not {value!r}")
+            tiers[kind] = value  # type: ignore[assignment]
+    return tiers
 
 
 def provider_from_env(name: str, env: Mapping[str, str], *, primary: bool) -> Provider:

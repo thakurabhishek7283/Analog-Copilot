@@ -45,8 +45,12 @@ class OpenAICompatProvider:
         self.timeout_s = timeout_s
         self.headers = {"Authorization": f"Bearer {api_key}"}
         # The deadline is enforced per call below; httpx's own timeouts (the same length) only bound a
-        # stalled socket, and either one is a `timeout`.
+        # stalled socket, and either one is a `timeout`. A request may set a longer deadline (a
+        # reasoning model sends nothing while it thinks), which then bounds both.
         self.client = client or httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=10.0))
+
+    def deadline(self, req: LlmRequest) -> float:
+        return req.timeout_s or self.timeout_s
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -56,6 +60,8 @@ class OpenAICompatProvider:
         body: dict[str, Any] = {"model": self.models[req.tier]}
         if self.reasoning:
             body["max_completion_tokens"] = req.max_tokens
+            if req.effort:
+                body["reasoning_effort"] = req.effort
         else:
             body |= {"max_tokens": req.max_tokens, "temperature": req.temperature}
         if req.schema is not None:
@@ -74,13 +80,15 @@ class OpenAICompatProvider:
         return body
 
     async def complete(self, req: LlmRequest) -> LlmResponse:
+        t = self.deadline(req)
         try:
-            async with asyncio.timeout(self.timeout_s):
-                r = await self.client.post(self.url, json=self.body(req, False), headers=self.headers)
+            async with asyncio.timeout(t):
+                r = await self.client.post(self.url, json=self.body(req, False), headers=self.headers,
+                                           timeout=httpx.Timeout(t, connect=10.0))
                 check(r, r.text)
                 data = r.json()
         except (TimeoutError, httpx.TimeoutException):
-            raise ProviderError("timeout", f"{self.name}: no reply within {self.timeout_s:g} s", True) from None
+            raise ProviderError("timeout", f"{self.name}: no reply within {t:g} s", True) from None
         except httpx.TransportError as e:
             raise ProviderError("network", f"{self.name}: {type(e).__name__}: {e}", True) from None
         except ValueError as e:  # not JSON
@@ -96,9 +104,11 @@ class OpenAICompatProvider:
     async def stream(self, req: LlmRequest, on_delta: OnDelta) -> LlmResponse:
         parts: list[str] = []
         used, model, finish = Usage(), self.models[req.tier], "stop"
+        t = self.deadline(req)
         try:
-            async with asyncio.timeout(self.timeout_s):
-                async with self.client.stream("POST", self.url, json=self.body(req, True), headers=self.headers) as r:
+            async with asyncio.timeout(t):
+                async with self.client.stream("POST", self.url, json=self.body(req, True), headers=self.headers,
+                                              timeout=httpx.Timeout(t, connect=10.0)) as r:
                     if r.status_code >= 400:
                         check(r, (await r.aread()).decode("utf-8", "replace"))
                     async for line in r.aiter_lines():
@@ -117,7 +127,7 @@ class OpenAICompatProvider:
                                 await on_delta(text)
                             finish = choice.get("finish_reason") or finish
         except (TimeoutError, httpx.TimeoutException):
-            raise ProviderError("timeout", f"{self.name}: stream not finished within {self.timeout_s:g} s", True) from None
+            raise ProviderError("timeout", f"{self.name}: stream not finished within {t:g} s", True) from None
         except httpx.TransportError as e:
             raise ProviderError("network", f"{self.name}: {type(e).__name__}: {e}", True) from None
         except ValueError as e:

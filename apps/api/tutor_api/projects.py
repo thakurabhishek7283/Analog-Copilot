@@ -78,18 +78,22 @@ async def get_owned(conn: AsyncConnection, project_id: str, owner: uuid.UUID, *,
     return row
 
 
-async def load_session(conn: AsyncConnection, regs: Registries, row: Any) -> cc.Session:
-    """The circuit at `row.head_rev`: the snapshot, then the ops after it, folded by circuit-core."""
+async def load_session(conn: AsyncConnection, regs: Registries, row: Any, at: int | None = None) -> cc.Session:
+    """The circuit at `at` (default `row.head_rev`, at most that): the snapshot, then the ops after
+    it, folded by circuit-core. A rev before the snapshot folds the op log from the start."""
     reg = regs.get(row.registry_version)
-    snapshot = json.dumps(row.snapshot) if row.snapshot is not None else None
-    s = cc.Session(reg, snapshot)
+    rev = row.head_rev if at is None else at
+    from_snapshot = row.snapshot is not None and row.snapshot_rev <= rev
+    s = cc.Session(reg, json.dumps(row.snapshot) if from_snapshot else None)
     later = await conn.execute(
-        select(ops.c.op).where(ops.c.project_id == row.id, ops.c.seq > row.snapshot_rev).order_by(ops.c.seq)
+        select(ops.c.op)
+        .where(ops.c.project_id == row.id, ops.c.seq > (row.snapshot_rev if from_snapshot else 0), ops.c.seq <= rev)
+        .order_by(ops.c.seq)
     )
     for (op,) in later:
         cc.unwrap(s.apply(json.dumps(op)))
-    if s.rev != row.head_rev:
-        raise RuntimeError(f"project {row.id}: op log folds to rev {s.rev}, head_rev is {row.head_rev}")
+    if s.rev != rev:
+        raise RuntimeError(f"project {row.id}: op log folds to rev {s.rev}, expected {rev}")
     return s
 
 

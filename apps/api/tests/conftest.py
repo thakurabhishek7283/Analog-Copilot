@@ -19,7 +19,10 @@ import uvicorn
 from scripted import Scripted
 from tutor_api.config import Settings
 from tutor_api.db import migrate
+from tutor_api.llm.fake import FakeProvider
+from tutor_api.llm.gateway import Gateway
 from tutor_api.main import create_app
+from tutor_api.tutor import Tutor
 
 
 def docker_available() -> bool:
@@ -130,6 +133,12 @@ def orchestrator() -> Scripted:
     return Scripted()
 
 
+@pytest.fixture(scope="session")
+def tutor_llm() -> FakeProvider:
+    """The tutor's model: tests queue its replies (`tutor_llm.script["ask"]`)."""
+    return FakeProvider({})
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -137,9 +146,9 @@ def free_port() -> int:
 
 
 @pytest.fixture(scope="session")
-async def server(settings, orchestrator) -> AsyncIterator[tuple[str, object]]:
+async def server(settings, orchestrator, tutor_llm) -> AsyncIterator[tuple[str, object]]:
     """(base URL, app) of the API running in this event loop."""
-    app = create_app(settings, orchestrator)
+    app = create_app(settings, orchestrator, Tutor(Gateway(tutor_llm, backoff_s=0.0)))
     port = free_port()
     srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="on"))
     task = asyncio.create_task(srv.serve())

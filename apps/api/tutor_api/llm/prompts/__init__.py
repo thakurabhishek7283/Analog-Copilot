@@ -6,6 +6,9 @@ it to every call of every job on a registry version, then what changes per call.
    own short prefix (it has its own cache, and narration needs no parts table).
 2. `plan.jinja`, `compose.jinja`, `narrate.jinja`: the student's request, the plan, the block,
    the circuit as compact text, and on a retry the previous attempt with its problems.
+
+The tutor (LLD §9) has its own: `tutor_system.jinja` (the rules and the `try` block's ops, the same
+for every registry version) and `ask.jinja` (level, mode, the core's context slice, the question).
 """
 
 from __future__ import annotations
@@ -112,3 +115,12 @@ class Prompts:
     def narrate(self, *, prompt: str, level: str, plan: list[dict[str, Any]]) -> str:
         blocks = [b | {"teach": self.templates[b["template"]].get("teach") or ""} for b in plan]
         return ENV.get_template("narrate.jinja").render(prompt=prompt, level=level, plan=blocks).strip() + "\n"
+
+
+TUTOR_SYSTEM = ENV.get_template("tutor_system.jinja").render().strip() + "\n"
+
+
+def ask(*, level: str, mode: str, context: str, question: str) -> str:
+    return ENV.get_template("ask.jinja").render(
+        level=level, mode=mode, context=context.strip(), question=question
+    ).strip() + "\n"

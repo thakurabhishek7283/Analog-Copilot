@@ -4,8 +4,9 @@ migrations in db/migrations; tests/test_db.py checks that the two agree.
 As built: `users.email` is nullable (anonymous users have none until Phase 4 auth); a partial
 unique index allows one unfinished job per project (v1 is single-writer, LLD §4); project
 snapshots and op envelopes are `json`, not `jsonb`, which reorders object keys (a reloaded circuit
-would list its parts in another order than the live one); `asks` and `usage_daily` arrive with the
-tutor (Phase 3) and quotas (Phase 4).
+would list its parts in another order than the live one); `usage_daily` arrives with quotas
+(Phase 4). `asks` (migration 0002): `selection` is nullable (a question about nothing selected),
+and each answer keeps its `mode`, `model` and tokens, as `jobs` does.
 """
 
 from __future__ import annotations
@@ -119,6 +120,26 @@ block_attempts = Table(
     Column("errors", JSONB, nullable=False, server_default="[]"),
     Column("sim_checks", JSONB),
     Column("latency_ms", Integer),
+)
+
+asks = Table(
+    "asks",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("project_id", Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False),
+    Column("user_id", Uuid, ForeignKey("users.id"), nullable=False),
+    Column("rev", BigInteger, nullable=False),
+    Column("selection", JSONB),
+    Column("question", Text, nullable=False),
+    Column("answer", Text, nullable=False),  # the text as streamed: the model's reply and any safety note
+    Column("mode", Text, nullable=False),
+    Column("refs_valid", Integer, nullable=False, server_default="0"),
+    Column("refs_invalid", Integer, nullable=False, server_default="0"),
+    Column("model", Text),
+    Column("in_tokens", Integer, nullable=False, server_default="0"),
+    Column("out_tokens", Integer, nullable=False, server_default="0"),
+    Column("feedback", SmallInteger),
+    Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
 templates = Table(

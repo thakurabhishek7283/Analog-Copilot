@@ -18,24 +18,30 @@ from .config import Settings
 from .jobs import reaper
 from .jobs.events import EventLog
 from .jobs.runner import JobRunner, Orchestrator
-from .llm.config import gateway_from_env
+from .llm.config import gateway_from_env, tutor_tiers_from_env
 from .orchestrator import Orchestrator as GenerationOrchestrator
 from .projects import Registries
-from .routers import auth, jobs, projects
+from .routers import ask, auth, jobs, projects
+from .tutor import Tutor
 
 
-def create_app(settings: Settings | None = None, orchestrator: Orchestrator | None = None) -> FastAPI:
-    """With no arguments (the server): settings and the orchestrator's LLM provider from the
-    environment; without `LLM_PROVIDER`, generation is unavailable (503)."""
+def create_app(
+    settings: Settings | None = None, orchestrator: Orchestrator | None = None, tutor: Tutor | None = None
+) -> FastAPI:
+    """With no arguments (the server): settings and the LLM provider from the environment, shared
+    by the orchestrator and the tutor; without `LLM_PROVIDER`, generation and Ask are unavailable
+    (503)."""
     if settings is None:
         settings = Settings.from_env()
-        if orchestrator is None and (gateway := gateway_from_env()) is not None:
-            orchestrator = GenerationOrchestrator(gateway)
+        if (orchestrator is None or tutor is None) and (gateway := gateway_from_env()) is not None:
+            orchestrator = orchestrator or GenerationOrchestrator(gateway)
+            tutor = tutor or Tutor(gateway, tutor_tiers_from_env())
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         st = app.state
         st.settings = settings
+        st.tutor = tutor
         st.regs = Registries(settings.registry_dir)
         st.engine = create_async_engine(settings.database_url, pool_size=10, max_overflow=10, pool_pre_ping=True)
         # One Redis pool for job events and the simulation queue (sim_runner's JSON-serializing arq pool).
@@ -60,7 +66,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             allow_methods=["GET", "POST"],
             allow_headers=["Authorization", "Content-Type", "Last-Event-ID"],
         )
-    for r in (auth.router, projects.router, jobs.router):
+    for r in (auth.router, projects.router, jobs.router, ask.router):
         app.include_router(r)
 
     @app.get("/healthz", include_in_schema=False)
