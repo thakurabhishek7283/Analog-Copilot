@@ -1124,3 +1124,240 @@ button.primary {
     animation: none;
   }
 }
+
+/* Ask (LLD §9): the thread, reference chips, experiments and the question form. */
+/* Never shorter than its heading and form (min-height: auto); the thread scrolls, and the lesson
+   below gives way first. */
+.ask {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  max-height: 50%;
+  border-top: 1px solid var(--line);
+  padding: 8px 16px 10px;
+}
+
+.ask h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.ask-thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin-bottom: 8px;
+}
+
+.ask-entry {
+  margin: 0 0 12px;
+}
+
+.ask-entry .question {
+  margin: 0 0 4px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ask-entry .about-tag {
+  font-weight: normal;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ask .muted {
+  color: var(--muted);
+  margin: 0;
+}
+
+.answer-text {
+  margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.answer-text .caret::after {
+  content: "▍";
+  color: var(--accent);
+  animation: caret 1s steps(2) infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+button.ref-chip {
+  display: inline;
+  padding: 0 5px;
+  margin: 0 1px;
+  border-radius: 4px;
+  border-color: var(--wire);
+  color: var(--wire);
+  background: var(--panel);
+  font: 12px var(--mono);
+  line-height: 1.5;
+  vertical-align: baseline;
+}
+
+button.ref-chip[data-ref-kind="block"] {
+  font-family: var(--font);
+}
+
+button.ref-chip:hover:not(:disabled) {
+  background: var(--wire);
+  color: var(--panel);
+}
+
+.ask-error {
+  color: var(--bad);
+  margin: 4px 0 0;
+}
+
+.try-card {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.try-card h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.try-card .ops {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  font: 12px var(--mono);
+}
+
+.try-card .predict {
+  margin: 0 0 6px;
+}
+
+.try-card .measured {
+  border-collapse: collapse;
+  margin: 0 0 6px;
+}
+
+.try-card .measured td {
+  padding: 1px 6px 1px 0;
+}
+
+.try-card .measured td.num {
+  font-family: var(--mono);
+  text-align: right;
+}
+
+.try-card .measured td.now {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.try-card .row-actions,
+.ask .feedback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ask .feedback {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.ask .feedback button {
+  padding: 1px 8px;
+}
+
+.ask form {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ask .about {
+  align-self: flex-start;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ask .about button.link {
+  text-decoration: none;
+  color: var(--muted);
+}
+
+.ask textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+  min-height: 2.6em;
+}
+
+.ask-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ask-row .spacer {
+  flex: 1;
+}
+
+.ask-row select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.segmented {
+  display: inline-flex;
+}
+
+.segmented button {
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 0;
+}
+
+.segmented button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.segmented button:last-child {
+  border-radius: 0 6px 6px 0;
+  margin-left: -1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .answer-text .caret::after {
+    animation: none;
+  }
+}

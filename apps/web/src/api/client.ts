@@ -1,11 +1,13 @@
-// The REST client (LLD §5): an anonymous session until Phase 4 auth, projects, the op log and
-// generation jobs. Every error is an `ApiError {code, message, retryable}`; a server that cannot be
-// reached is `offline` (retryable), so the editor keeps working locally (LLD §14).
+// The REST client (LLD §5): an anonymous session until Phase 4 auth, projects, the op log,
+// generation jobs and the tutor's feedback (Ask itself streams: tutor/askStream.ts). Every error is
+// an `ApiError {code, message, retryable}`; a server that cannot be reached is `offline`
+// (retryable), so the editor keeps working locally (LLD §14).
 import type {
   AnonymousSession,
   ApiError,
   AppendOk,
   AppendOps,
+  AskFeedback,
   GenerateRequest,
   JobAccepted,
   Project,
@@ -134,6 +136,15 @@ export class ApiClient {
     return this.url(`/v1/jobs/${encodeURIComponent(jobId)}/events`);
   }
 
+  askUrl(id: string): string {
+    return this.url(`/v1/projects/${encodeURIComponent(id)}/ask`);
+  }
+
+  /** The learner's verdict on an answer: 1 helpful, -1 not (a later one replaces it). */
+  async feedback(askId: string, feedback: 1 | -1): Promise<void> {
+    await this.authed("POST", `/v1/asks/${encodeURIComponent(askId)}/feedback`, { feedback } satisfies AskFeedback);
+  }
+
   /** A call with the session token. A 401 means the token is no longer valid: a new anonymous
    * session cannot open the old one's projects, so the 401 is passed on after dropping it. */
   private async authed<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -162,7 +173,7 @@ export class ApiClient {
       json = undefined;
     }
     if (res.ok && json !== undefined) return json as T;
-    if (res.ok && !text) return undefined as T; // 202 Accepted with no body (cancel)
+    if (res.ok && !text) return undefined as T; // 202 or 204 with no body (cancel, feedback)
     if (res.ok) throw new ApiFailure(res.status, { code: "bad_response", message: `${method} ${path}: not JSON`, retryable: true });
     const err = json as Partial<ApiError> | undefined;
     if (err && typeof err.code === "string" && typeof err.message === "string") throw new ApiFailure(res.status, err as ApiError);

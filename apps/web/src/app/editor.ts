@@ -2,11 +2,12 @@
 // layout and simulation workers kept in step with it.
 import init, { CoreRegistry, CoreSession, evaluateChecks, parseQuantity } from "@tutor/core";
 import { registryAssetUrl, registryBundleUrl } from "../config.ts";
-import type { Circuit, Registry } from "../gen/contract.ts";
+import type { Answer, Circuit, Registry } from "../gen/contract.ts";
 import { type CircuitStore, createCircuitStore } from "../store/circuitStore.ts";
 import { type Edits, createEdits } from "../store/edits.ts";
 import { type GenerationStore, createGenerationStore } from "../store/generationStore.ts";
 import { type UiStore, createUiStore } from "../store/uiStore.ts";
+import { type TutorStore, createTutorStore } from "../tutor/tutorStore.ts";
 import { Playback } from "../views/playback.ts";
 import { attachLayout } from "../store/layoutSync.ts";
 import { attachSimulation } from "../store/simulation.ts";
@@ -19,6 +20,10 @@ export interface Editor {
   edits: Edits;
   /** Generation progress, ghosts and narration (empty for a circuit that is not a server project). */
   gen: GenerationStore;
+  /** Questions to the tutor and their answers (asked only in a server project). */
+  tutor: TutorStore;
+  /** An answer, whole or streamed so far, read against the circuit (references, `try` block). */
+  readAnswer(text: string): Answer;
   registry: Registry;
   sprite: string;
   /** The core's unit parser, for value fields: `{"ok": Quantity} | {"err": string}`. */
@@ -69,6 +74,8 @@ export async function openEditor(snapshotJson: string): Promise<Editor> {
     ui,
     edits: createEdits(store, session),
     gen: createGenerationStore(),
+    tutor: createTutorStore(),
+    readAnswer: (text) => JSON.parse(session.readAnswer(text)) as Answer,
     registry,
     sprite,
     parseQuantity,

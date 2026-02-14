@@ -6,8 +6,9 @@ import type { AppendOps, GenerateRequest, ProjectSnapshot } from "../gen/contrac
 import { createCircuitStore } from "../store/circuitStore.ts";
 import { createGenerationStore } from "../store/generationStore.ts";
 import { memoryPendingStore } from "../store/pending.ts";
-import { bundleJson, loadCore, missingArtifacts } from "../test/artifacts.ts";
+import { bundle, bundleJson, loadCore, missingArtifacts } from "../test/artifacts.ts";
 import { envelopes } from "../test/jobs.ts";
+import { createTutorStore } from "../tutor/tutorStore.ts";
 import { openProject } from "./project.ts";
 
 const missing = missingArtifacts();
@@ -45,7 +46,7 @@ function setup(snap: ProjectSnapshot, generate: (req: GenerateRequest) => Promis
   } as unknown as ApiClient;
   const notices: string[] = [];
   const reloads: string[] = [];
-  return { store, gen, api, calls, notices, reloads, pending: memoryPendingStore() };
+  return { store, gen, tutor: createTutorStore(), registry: bundle(), api, calls, notices, reloads, pending: memoryPendingStore() };
 }
 
 const placeR1 = () => envelopes([{ op: "part.add", body: { refdes: "R1", part: "resistor_th" } }], 0, "", "user").map(({ job: _, block: __, ...e }) => e);

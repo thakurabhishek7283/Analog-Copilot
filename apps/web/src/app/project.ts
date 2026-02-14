@@ -1,16 +1,19 @@
 // One server project open in the editor (LLD §5, §10): user ops synced to its op log, generation
 // jobs started, streamed and played by the AnimationDirector, cancelled and retried. The editor is
 // read-only while a job runs, including after a reload (`ProjectSnapshot.active_job`). Anything
-// that shows this editor and the server disagree reloads the project from the server.
+// that shows this editor and the server disagree reloads the project from the server. Questions to
+// the tutor go through `asker`.
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { AnimationDirector } from "../anim/director.ts";
 import { type ApiClient, ApiFailure } from "../api/client.ts";
-import type { ApiError, GenerateRequest, JobEvent, OpEnvelope, ProjectSnapshot } from "../gen/contract.ts";
+import type { ApiError, GenerateRequest, JobEvent, OpEnvelope, ProjectSnapshot, Registry } from "../gen/contract.ts";
 import type { CircuitStore } from "../store/circuitStore.ts";
 import type { GenerationStore } from "../store/generationStore.ts";
 import type { PendingStore } from "../store/pending.ts";
 import { Sync, type SyncStatus } from "../store/sync.ts";
 import { type JobStream, openJobStream } from "../stream/jobStream.ts";
+import { type Asker, createAsker } from "../tutor/asker.ts";
+import type { TutorStore } from "../tutor/tutorStore.ts";
 
 export interface ProjectState {
   id: string;
@@ -22,6 +25,7 @@ export interface ProjectSession {
   readonly id: string;
   readonly state: StoreApi<ProjectState>;
   readonly director: AnimationDirector;
+  readonly asker: Asker;
   generate(req: GenerateRequest): Promise<void>;
   cancel(): Promise<void>;
   /** Run the last request again (after a retryable error). */
@@ -33,6 +37,8 @@ export interface OpenProjectOptions {
   api: ApiClient;
   store: CircuitStore;
   gen: GenerationStore;
+  tutor: TutorStore;
+  registry: Registry;
   snapshot: ProjectSnapshot;
   pending: PendingStore;
   /** Reopen the project from the server, telling the learner why. */
@@ -168,10 +174,13 @@ export async function openProject(opts: OpenProjectOptions): Promise<ProjectSess
     }
   };
 
+  const asker = createAsker({ api, project: id, store, tutor: opts.tutor, registry: opts.registry, flush: () => sync.flush() });
+
   return {
     id,
     state,
     director,
+    asker,
     generate,
     async cancel() {
       const job = gen.getState().job;
@@ -189,6 +198,7 @@ export async function openProject(opts: OpenProjectOptions): Promise<ProjectSess
     dispose() {
       disposed = true;
       stream?.close();
+      asker.dispose();
       director.dispose();
       sync.dispose();
     },

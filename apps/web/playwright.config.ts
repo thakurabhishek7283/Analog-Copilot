@@ -3,9 +3,10 @@
 //
 // - `local`: the editing flows with the API down (every /v1 request answers 503): editing and
 //   simulation work without a server (LLD §14).
-// - `api`: generation flows against the real API (tools/e2e/stack.py: Postgres and Redis in Docker,
-//   the sim_runner worker on the native ngspice, LLM_PROVIDER=fake with apps/api/fake/script.json),
-//   through a second preview server that proxies /v1 to it. E2E_API=0 leaves them out.
+// - `api`: generation and Ask flows against the real API (tools/e2e/stack.py: Postgres and Redis
+//   in Docker, the sim_runner worker on the native ngspice, LLM_PROVIDER=fake with
+//   apps/api/fake/script.json), through a second preview server that proxies /v1 to it.
+//   E2E_API=0 leaves them out.
 //
 // They drive the system browser through its channel instead of a downloaded build: Edge here and
 // on GitHub's Ubuntu runners, where it is preinstalled. PW_CHANNEL=chrome picks Chrome instead.
@@ -17,6 +18,7 @@ const apiPreviewPort = 4174;
 const apiPort = Number(process.env.E2E_API_PORT ?? 8100);
 const withApi = process.env.E2E_API !== "0";
 const repo = join(import.meta.dirname, "../..");
+const API_SPECS = /(generate|ask)\.spec\.ts/;
 const python = join(repo, process.platform === "win32" ? ".venv/Scripts/python.exe" : ".venv/bin/python");
 
 const preview = (port: number, apiOrigin: string) => ({
@@ -48,8 +50,8 @@ export default defineConfig({
     trace: process.env.CI ? "retain-on-failure" : "off",
   },
   projects: [
-    { name: "local", testIgnore: /generate\.spec\.ts/, use: { baseURL: `http://localhost:${localPort}` } },
-    ...(withApi ? [{ name: "api", testMatch: /generate\.spec\.ts/, use: { baseURL: `http://localhost:${apiPreviewPort}` } }] : []),
+    { name: "local", testIgnore: API_SPECS, use: { baseURL: `http://localhost:${localPort}` } },
+    ...(withApi ? [{ name: "api", testMatch: API_SPECS, use: { baseURL: `http://localhost:${apiPreviewPort}` } }] : []),
   ],
   webServer: [
     preview(localPort, "none"),

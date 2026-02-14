@@ -9,6 +9,7 @@ import { Schematic, SymbolDefs } from "../views/schematic/Schematic.tsx";
 import { Scope } from "../views/scope/Scope.tsx";
 import { bindShortcuts } from "./commands.ts";
 import { type Editor, openEditor } from "./editor.ts";
+import { AskPanel } from "./AskPanel.tsx";
 import { EditorContext, type EditorContextValue, useCircuit, useEditor, useGen, useProject, useUi } from "./editorContext.ts";
 import { GeneratePanel } from "./GeneratePanel.tsx";
 import { Inspector } from "./Inspector.tsx";
@@ -118,6 +119,8 @@ export function App() {
           api,
           store: editor.store,
           gen: editor.gen,
+          tutor: editor.tutor,
+          registry: editor.registry,
           snapshot: r.snapshot,
           pending,
           reload: (why) => {
@@ -180,6 +183,7 @@ export function App() {
           </div>
           <div className="side">
             <Inspector />
+            <AskPanel />
             <LessonPanel />
           </div>
         </main>

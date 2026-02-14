@@ -1655,7 +1655,9 @@ class TranValues(BaseModel):
     t_stop: float
     v: Annotated[
         dict[str, Span],
-        Field(description="Net -> lowest and highest voltage over the run."),
+        Field(
+            description="Net -> lowest and highest voltage over the run's second half (start-up swings left out)."
+        ),
     ]
 
 
@@ -2246,7 +2248,8 @@ class SimValues(BaseModel):
         AcValues | None, Field(description="AC response at the scope's frequency.")
     ] = None
     tran: Annotated[
-        TranValues | None, Field(description="The transient's range on each net.")
+        TranValues | None,
+        Field(description="The transient's range on each net, after start-up."),
     ] = None
     checks: Annotated[
         list[CheckResult] | None,

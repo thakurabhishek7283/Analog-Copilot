@@ -60,7 +60,7 @@ pub struct SimValues {
     /// AC response at the scope's frequency.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ac: Option<AcValues>,
-    /// The transient's range on each net.
+    /// The transient's range on each net, after start-up.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tran: Option<TranValues>,
     /// Spec checks as the browser measured them.
@@ -83,7 +83,7 @@ pub struct AcValues {
 #[serde(deny_unknown_fields)]
 pub struct TranValues {
     pub t_stop: f64,
-    /// Net -> lowest and highest voltage over the run.
+    /// Net -> lowest and highest voltage over the run's second half (start-up swings left out).
     pub v: BTreeMap<NetId, Span>,
 }
 

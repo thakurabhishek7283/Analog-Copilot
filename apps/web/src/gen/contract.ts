@@ -1811,7 +1811,7 @@ export interface SimValues {
    */
   ac?: AcValues | null;
   /**
-   * The transient's range on each net.
+   * The transient's range on each net, after start-up.
    */
   tran?: TranValues | null;
   /**
@@ -1845,7 +1845,7 @@ export interface AcValues {
 export interface TranValues {
   t_stop: number;
   /**
-   * Net -> lowest and highest voltage over the run.
+   * Net -> lowest and highest voltage over the run's second half (start-up swings left out).
    */
   v: {
     [k: string]: Span | undefined;
@@ -1889,7 +1889,7 @@ export interface SimValues1 {
    */
   ac?: AcValues | null;
   /**
-   * The transient's range on each net.
+   * The transient's range on each net, after start-up.
    */
   tran?: TranValues | null;
   /**

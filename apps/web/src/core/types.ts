@@ -22,6 +22,8 @@ export interface CoreSessionLike {
   previewBlock(req: string): string;
   /** Ops inserting a template block: `Inserted`; apply them as one batch, author "template". */
   insertBlock(req: string): string;
+  /** A tutor answer, whole or streamed so far, read against the circuit: `Answer` (never an error). */
+  readAnswer(text: string): string;
 }
 
 export interface CoreModule {

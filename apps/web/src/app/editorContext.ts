@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import type { CircuitState } from "../store/circuitStore.ts";
 import type { UiState } from "../store/uiStore.ts";
 import type { GenerationState } from "../store/generationStore.ts";
+import type { TutorState } from "../tutor/tutorStore.ts";
 import type { Editor } from "./editor.ts";
 import type { ProjectSession, ProjectState } from "./project.ts";
 
@@ -29,6 +30,10 @@ export function useUi<T>(selector: (s: UiState) => T): T {
 
 export function useGen<T>(selector: (s: GenerationState) => T): T {
   return useStore(useEditor().gen, selector);
+}
+
+export function useTutor<T>(selector: (s: TutorState) => T): T {
+  return useStore(useEditor().tutor, selector);
 }
 
 const NO_PROJECT = { getState: () => null, subscribe: () => () => {} };

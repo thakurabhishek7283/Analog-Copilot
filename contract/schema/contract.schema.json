@@ -3866,7 +3866,7 @@
               "type": "null"
             }
           ],
-          "description": "The transient's range on each net."
+          "description": "The transient's range on each net, after start-up."
         },
         "checks": {
           "type": "array",
@@ -3923,7 +3923,7 @@
           "additionalProperties": {
             "$ref": "#/$defs/Span"
           },
-          "description": "Net -> lowest and highest voltage over the run."
+          "description": "Net -> lowest and highest voltage over the run's second half (start-up swings left out)."
         }
       },
       "required": [

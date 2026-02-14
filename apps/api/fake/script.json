@@ -1,5 +1,5 @@
 {
-  "_comment": "Scripted model replies for LLM_PROVIDER=fake (tutor_api/llm/fake.py): the browser end-to-end flows and the local compose stack. Every prompt gets the same three-block circuit (a 300 Hz sine, an RC low-pass whose first draft has a wrong pin, a follower); a word in the prompt picks a variant: e2e-cancel and e2e-reload hold the filter's composer, e2e-retry fails the planner once, e2e-unsupported asks for what no template builds.",
+  "_comment": "Scripted model replies for LLM_PROVIDER=fake (tutor_api/llm/fake.py): the browser end-to-end flows and the local compose stack. Every prompt gets the same three-block circuit (a 300 Hz sine, an RC low-pass whose first draft has a wrong pin, a follower); a word in the prompt picks a variant: e2e-cancel and e2e-reload hold the filter's composer, e2e-retry fails the planner once, e2e-unsupported asks for what no template builds. Ask: e2e-ask answers about the RC filter with an experiment (R1 to 100k), e2e-ask-fail is a model outage, e2e-ask-slow holds its answer 30 s; any other question gets a note that this is the scripted tutor.",
   "rules": [
     {
       "kind": "plan",
@@ -73,6 +73,27 @@
       "kind": "compose",
       "when": [],
       "reply": {"use_template": true, "parts": [], "nets": []}
+    },
+    {
+      "kind": "ask",
+      "when": ["e2e-ask-fail"],
+      "error": {"code": "unavailable", "message": "scripted tutor outage", "retryable": false}
+    },
+    {
+      "kind": "ask",
+      "when": ["e2e-ask-slow"],
+      "delay_s": 30,
+      "reply": "This answer was held back."
+    },
+    {
+      "kind": "ask",
+      "when": ["e2e-ask"],
+      "reply": "[R1] and [C1] set the corner of [block:b2]: fc = 1/(2π·R·C). A larger [R1] charges [C1] more slowly, so the corner moves down. [R9] is not in this circuit.\n\n```try\n{\"ops\": [{\"op\": \"part.set_param\", \"body\": {\"refdes\": \"R1\", \"key\": \"resistance\", \"value\": \"100k\"}}], \"predict\": \"the cutoff drops well below 2 kHz\"}\n```"
+    },
+    {
+      "kind": "ask",
+      "when": [],
+      "reply": "This is the scripted tutor (LLM_PROVIDER=fake): every question gets this same answer. Set a real provider in .env to have your questions answered."
     }
   ]
 }

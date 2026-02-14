@@ -1,7 +1,7 @@
 """The API for the browser end-to-end flows (apps/web/e2e, Playwright project `api`): Postgres 16 +
 pgvector and Redis 7 in testcontainers, the migrations, the sim_runner worker in this process on the
-native ngspice, and the real app (`create_app`) under uvicorn, generating with `LLM_PROVIDER=fake`
-from `LLM_FAKE_SCRIPT` (default: apps/api/fake/script.json). The same setup as apps/api/tests.
+native ngspice, and the real app (`create_app`) under uvicorn, generating and answering Ask with
+`LLM_PROVIDER=fake` from `LLM_FAKE_SCRIPT` (default: apps/api/fake/script.json). The same setup as apps/api/tests.
 
     .venv/Scripts/python tools/e2e/stack.py [--port 8100]
     .venv/Scripts/python tools/e2e/stack.py --port 8000 --llm-from .env   # the provider in .env (real calls)
@@ -124,14 +124,15 @@ async def api(app, port: int | None = None) -> AsyncIterator[tuple[str, asyncio.
 
 async def serve(port: int, database_url: str, redis_url: str, llm: str) -> None:
     from tutor_api.config import Settings
-    from tutor_api.llm.config import gateway_from_env
+    from tutor_api.llm.config import gateway_from_env, tutor_tiers_from_env
     from tutor_api.main import create_app
     from tutor_api.orchestrator import Orchestrator
+    from tutor_api.tutor import Tutor
 
     gateway = gateway_from_env()
     assert gateway is not None
     settings = Settings(database_url=database_url, redis_url=redis_url, auth_secret=secrets.token_urlsafe(32))
-    app = create_app(settings, Orchestrator(gateway))
+    app = create_app(settings, Orchestrator(gateway), Tutor(gateway, tutor_tiers_from_env()))
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
