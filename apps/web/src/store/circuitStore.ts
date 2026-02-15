@@ -33,6 +33,16 @@ export interface Committed {
   baseRev: number;
 }
 
+/** A change the learner can see in the undo history (an edit, an undo, a generated block) and the
+ * rev it left the circuit at: what "What changed?" names. */
+export interface ChangeMark {
+  rev: number;
+  label: string;
+}
+
+/** At most this many recent changes are named. */
+export const MAX_CHANGE_MARKS = 50;
+
 /** One undo or redo step: the ops that take the circuit to the other side of it. */
 export interface Txn {
   label: string;
@@ -77,6 +87,8 @@ export interface CircuitState extends CircuitData {
   /** While a generation job streams, user edits are refused (LLD §4: single writer). */
   mode: "idle" | "generating" | "editing";
   history: { undo: Txn[]; redo: Txn[] };
+  /** Recent changes, oldest first (at most `MAX_CHANGE_MARKS`). */
+  changes: ChangeMark[];
   /** The last op the core refused, for the UI to explain. */
   lastError: OpError | null;
   /** Static ERC for user edits (LLD §7: warnings a learner may build through), after every change. */
@@ -156,6 +168,11 @@ export function createCircuitStore(core: CoreSessionLike): CircuitStore {
         return { err };
       };
 
+      const mark = (s: CircuitState, rev: number, label: string) => {
+        s.changes.push({ rev, label });
+        if (s.changes.length > MAX_CHANGE_MARKS) s.changes.splice(0, s.changes.length - MAX_CHANGE_MARKS);
+      };
+
       /** Record a user change as one undo step; a new change clears redo. */
       const commit = (r: Outcome<ApplyOk, OpError>, label: string, ops: Op[], author: Committed["author"], baseRev: number) => {
         if (r.err) return refuse(r.err);
@@ -164,6 +181,7 @@ export function createCircuitStore(core: CoreSessionLike): CircuitStore {
         set((s) => {
           s.history.undo.push({ label, ops: r.ok.inverse });
           s.history.redo = [];
+          mark(s, r.ok.rev, label);
         });
         return r;
       };
@@ -184,6 +202,7 @@ export function createCircuitStore(core: CoreSessionLike): CircuitStore {
         set((s) => {
           s.history[from].pop();
           s.history[to].push({ label: txn.label, ops: r.ok.inverse });
+          mark(s, r.ok.rev, `${from === "undo" ? "Undo" : "Redo"} ${txn.label}`);
         });
         return true;
       };
@@ -202,6 +221,7 @@ export function createCircuitStore(core: CoreSessionLike): CircuitStore {
         selection: null,
         mode: "idle",
         history: { undo: [], redo: [] },
+        changes: [],
         lastError: null,
         erc: erc(),
         bench: {},
@@ -232,10 +252,12 @@ export function createCircuitStore(core: CoreSessionLike): CircuitStore {
           }
           if (!last) return { err: { code: "unknown_op", message: "no ops" } as OpError };
           const inverse = inverses.reverse().flat(); // undo the last op first
+          const rev = last.rev;
           if (label) {
             set((s) => {
               s.history.undo.push({ label, ops: inverse });
               s.history.redo = [];
+              mark(s, rev, label);
             });
           }
           return { ok: { ...last, inverse } };

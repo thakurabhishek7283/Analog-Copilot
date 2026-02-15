@@ -7,8 +7,10 @@ it to every call of every job on a registry version, then what changes per call.
 2. `plan.jinja`, `compose.jinja`, `narrate.jinja`: the student's request, the plan, the block,
    the circuit as compact text, and on a retry the previous attempt with its problems.
 
-The tutor (LLD §9) has its own: `tutor_system.jinja` (the rules and the `try` block's ops, the same
-for every registry version) and `ask.jinja` (level, mode, the core's context slice, the question).
+The tutor (LLD §9) has its own: `tutor_system.jinja` (the rules, both inputs' sections and the `try`
+block's ops, the same for every registry version and both request kinds), `ask.jinja` (level, mode,
+the core's context slice, the question) and `what_changed.jinja` (level, mode, the core's change
+summary).
 """
 
 from __future__ import annotations
@@ -124,3 +126,7 @@ def ask(*, level: str, mode: str, context: str, question: str) -> str:
     return ENV.get_template("ask.jinja").render(
         level=level, mode=mode, context=context.strip(), question=question
     ).strip() + "\n"
+
+
+def what_changed(*, level: str, mode: str, context: str) -> str:
+    return ENV.get_template("what_changed.jinja").render(level=level, mode=mode, context=context.strip()).strip() + "\n"

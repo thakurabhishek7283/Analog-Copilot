@@ -173,6 +173,12 @@ impl Session {
         api::tutor_context(&self.inner, req)
     }
 
+    /// What the edits from `before` (the circuit at the request's `from_rev`) to this circuit did
+    /// (`ChangeRequest` JSON) → `{"ok": ChangeContext} | {"err": OpError}` (LLD §9).
+    fn tutor_changes(&self, before: PyRef<'_, Session>, req: &str) -> String {
+        api::tutor_changes(&self.inner, &before.inner, req)
+    }
+
     /// A tutor answer read against the circuit → `Answer` JSON: its references, each checked,
     /// and its `try` suggestion, validated.
     fn read_answer(&self, text: &str) -> String {

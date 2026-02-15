@@ -2,10 +2,13 @@
 // what a question is about (click a part, then ask). Answers stream; their references are chips
 // that select what they name, and one the circuit does not hold is plain text. An experiment is a
 // card: its ops, the tutor's prediction, Try it (one undo step), then what the simulation measured.
-// Text is rendered as text, never as HTML (LLD §14).
+// After an edit has been simulated, "What changed?" asks the tutor to explain what it did, from the
+// simulation before and after it. Text is rendered as text, never as HTML (LLD §14).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useStore } from "zustand";
 import type { Answer, LearnerLevel, ReasoningEffort, Ref, Selection } from "../gen/contract.ts";
 import { changedChecks, describeOp, segments } from "../tutor/answer.ts";
+import { type Change, type SimHistory, changeAt, changeName } from "../tutor/simHistory.ts";
 import type { AskEntry } from "../tutor/tutorStore.ts";
 import { useCircuit, useEditor, useTutor } from "./editorContext.ts";
 
@@ -38,6 +41,40 @@ function useSelectionName(sel: Selection | null): string | null {
     return s.blocks[sel.id]?.title ?? null;
   });
   return name;
+}
+
+const NO_RECORDS = { records: [] };
+const NO_SIMS = { getState: () => NO_RECORDS, subscribe: () => () => {} } as unknown as SimHistory;
+
+/** The change that ends at `rev` (the latest by default), if both its simulations are kept. */
+function useChange(rev?: number): Change | null {
+  const { project } = useEditor();
+  const records = useStore(project?.sims ?? NO_SIMS, (s) => s.records);
+  const marks = useCircuit((s) => s.changes);
+  return useMemo(() => changeAt(records, marks, rev), [records, marks, rev]);
+}
+
+const sameChange = (a: Change, b: Change) => a.fromRev === b.fromRev && a.rev === b.rev;
+
+/** "What changed?" for the learner's latest simulated change, until it has been asked. */
+function WhatChanged({ busy }: { busy: boolean }) {
+  const { project } = useEditor();
+  const rev = useCircuit((s) => s.rev);
+  const generating = useCircuit((s) => s.mode === "generating");
+  const change = useChange();
+  const asked = useTutor((s) => !!change && s.entries.some((e) => e.change && sameChange(e.change, change) && e.phase !== "failed" && e.phase !== "stopped"));
+  if (!project || !change || change.rev !== rev || asked) return null;
+  return (
+    <button
+      type="button"
+      className="what-changed"
+      disabled={busy || generating}
+      title="Ask the tutor what this did, from your simulation before and after it"
+      onClick={() => void project.asker.whatChanged(change)}
+    >
+      What changed? <span className="change-name">{changeName(change)}</span>
+    </button>
+  );
 }
 
 export function AskPanel() {
@@ -83,6 +120,7 @@ export function AskPanel() {
         <p className="hint">Asking needs a saved project: press New.</p>
       ) : (
         <form onSubmit={submit}>
+          <WhatChanged busy={busy} />
           {target && selectionName && (
             <span className="about">
               About <strong>{selectionName}</strong>
@@ -162,6 +200,7 @@ function Entry({ entry }: { entry: AskEntry }) {
       <p className="question">
         {entry.question}
         {aboutName && <span className="about-tag"> · about {aboutName}</span>}
+        {entry.change && <span className="about-tag"> · {changeName(entry.change)}</span>}
       </p>
       {entry.phase === "asking" && <p className="muted">Thinking…</p>}
       {answer && (
@@ -175,7 +214,11 @@ function Entry({ entry }: { entry: AskEntry }) {
         <p className="ask-error" title={entry.error.message}>
           {ERROR_TEXT[entry.error.code] ?? entry.error.message}{" "}
           {entry.error.retryable && project && (
-            <button type="button" className="link" onClick={() => void project.asker.ask(entry.question, entry.selection)}>
+            <button
+              type="button"
+              className="link"
+              onClick={() => void (entry.change ? project.asker.whatChanged(entry.change) : project.asker.ask(entry.question, entry.selection))}
+            >
               Ask again
             </button>
           )}
@@ -280,6 +323,7 @@ function TryCard({ entry }: { entry: AskEntry }) {
             Try it
           </button>
         )}
+        {trial?.state === "measured" && <TrialChanged rev={trial.rev} />}
         {trial && trial.state !== "undone" && (
           <button type="button" disabled={!undoable || generating} title={undoable ? undefined : "Other changes came after it: use Undo in the toolbar"} onClick={() => project?.asker.undoTrial(entry.key)}>
             Undo it
@@ -287,6 +331,19 @@ function TryCard({ entry }: { entry: AskEntry }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** "What changed?" for a measured experiment: the tutor explains the result next to its prediction. */
+function TrialChanged({ rev }: { rev: number }) {
+  const { project } = useEditor();
+  const change = useChange(rev);
+  const busy = useTutor((s) => s.entries.some((e) => e.phase === "asking" || e.phase === "streaming"));
+  if (!project || !change) return null;
+  return (
+    <button type="button" disabled={busy} title="Ask the tutor to explain what this experiment did" onClick={() => void project.asker.whatChanged(change)}>
+      What changed?
+    </button>
   );
 }
 

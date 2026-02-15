@@ -6,7 +6,8 @@ unique index allows one unfinished job per project (v1 is single-writer, LLD §4
 snapshots and op envelopes are `json`, not `jsonb`, which reorders object keys (a reloaded circuit
 would list its parts in another order than the live one); `usage_daily` arrives with quotas
 (Phase 4). `asks` (migration 0002): `selection` is nullable (a question about nothing selected),
-and each answer keeps its `mode`, `model` and tokens, as `jobs` does.
+and each answer keeps its `mode`, `model` and tokens, as `jobs` does. Migration 0003: `kind`
+(`ask`, or `what_changed` for an explained edit) and that edit's `from_rev`.
 """
 
 from __future__ import annotations
@@ -140,6 +141,8 @@ asks = Table(
     Column("out_tokens", Integer, nullable=False, server_default="0"),
     Column("feedback", SmallInteger),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("kind", Text, nullable=False, server_default="ask"),
+    Column("from_rev", BigInteger),
 )
 
 templates = Table(

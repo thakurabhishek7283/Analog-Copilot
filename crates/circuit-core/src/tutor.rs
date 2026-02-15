@@ -2,7 +2,8 @@
 //! the circuit a question is about, with the learner's own simulation values, as compact text for
 //! the model. [`read_answer`] finds the references an answer cites (`[R3]`, `[net:N_A]`,
 //! `[block:b2]`) and checks each against the circuit, and validates the answer's `try` block as
-//! ops on a scratch copy, so a suggestion the learner is shown always applies.
+//! ops on a scratch copy, so a suggestion the learner is shown always applies. [`changes`]
+//! renders what an edit changed ("What changed?"): the edit and the simulation before and after.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -18,6 +19,9 @@ use crate::ops::{Author, Op};
 use crate::registry::{Hazard, Registry};
 use crate::template::CheckResult;
 use crate::units::{Unit, format_sig};
+
+mod changes;
+pub use changes::{ChangeContext, MAX_CHANGED_NETS, changes};
 
 /// At most this many parts in a context (LLD §9).
 pub const MAX_CONTEXT_PARTS: usize = 15;
@@ -186,12 +190,7 @@ pub fn context(
     let mut dropped: Vec<RefDes> =
         if parts.len() > MAX_CONTEXT_PARTS { parts.split_off(MAX_CONTEXT_PARTS) } else { vec![] };
 
-    let hazards: Vec<RefDes> = c
-        .sorted_refdes()
-        .into_iter()
-        .filter(|r| reg.part(&c.parts[*r].part).is_some_and(|d| d.hazard == Some(Hazard::Mains)))
-        .cloned()
-        .collect();
+    let hazards = mains_parts(c, reg);
     let issues = erc(c, reg, ErcContext::UserEdit, None);
 
     loop {
@@ -204,6 +203,15 @@ pub fn context(
         }
         dropped.insert(0, parts.pop().expect("more parts than protected"));
     }
+}
+
+/// Parts anywhere in `c` flagged `hazard: mains`, in refdes order.
+fn mains_parts(c: &Circuit, reg: &Registry) -> Vec<RefDes> {
+    c.sorted_refdes()
+        .into_iter()
+        .filter(|r| reg.part(&c.parts[*r].part).is_some_and(|d| d.hazard == Some(Hazard::Mains)))
+        .cloned()
+        .collect()
 }
 
 fn sorted(it: impl Iterator<Item = RefDes>) -> Vec<RefDes> {

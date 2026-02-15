@@ -69,9 +69,11 @@ async def read_events(
     return events
 
 
-async def ask(http: httpx.AsyncClient, pid: str, headers: dict[str, str], body: dict[str, Any]) -> list[dict[str, Any]]:
-    """`POST /v1/projects/{id}/ask` read to its end; each event is checked against the wire `AskEvent`."""
-    async with http.stream("POST", f"/v1/projects/{pid}/ask", headers=headers, json=body) as r:
+async def ask(http: httpx.AsyncClient, pid: str, headers: dict[str, str], body: dict[str, Any],
+              path: str = "ask") -> list[dict[str, Any]]:
+    """`POST /v1/projects/{id}/ask` (or `what-changed`) read to its end; each event is checked
+    against the wire `AskEvent`."""
+    async with http.stream("POST", f"/v1/projects/{pid}/{path}", headers=headers, json=body) as r:
         assert r.status_code == 200, await r.aread()
         events = [e async for e in sse(r)]
     for e in events:

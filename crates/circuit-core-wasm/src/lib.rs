@@ -127,6 +127,13 @@ impl CoreSession {
         api::tutor_context(&self.inner, req)
     }
 
+    /// What the edits from `before` (the circuit at the request's `from_rev`) to this circuit did
+    /// (`ChangeRequest` JSON) → `{"ok": ChangeContext} | {"err": OpError}` (LLD §9).
+    #[wasm_bindgen(js_name = tutorChanges)]
+    pub fn tutor_changes(&self, before: &CoreSession, req: &str) -> String {
+        api::tutor_changes(&self.inner, &before.inner, req)
+    }
+
     /// A tutor answer, whole or streamed so far → `Answer` JSON: its references (spans in UTF-16
     /// units, as JS indexes strings), each checked, and its `try` suggestion, validated.
     #[wasm_bindgen(js_name = readAnswer)]

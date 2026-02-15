@@ -1,5 +1,5 @@
 {
-  "_comment": "Scripted model replies for LLM_PROVIDER=fake (tutor_api/llm/fake.py): the browser end-to-end flows and the local compose stack. Every prompt gets the same three-block circuit (a 300 Hz sine, an RC low-pass whose first draft has a wrong pin, a follower); a word in the prompt picks a variant: e2e-cancel and e2e-reload hold the filter's composer, e2e-retry fails the planner once, e2e-unsupported asks for what no template builds. Ask: e2e-ask answers about the RC filter with an experiment (R1 to 100k), e2e-ask-fail is a model outage, e2e-ask-slow holds its answer 30 s; any other question gets a note that this is the scripted tutor.",
+  "_comment": "Scripted model replies for LLM_PROVIDER=fake (tutor_api/llm/fake.py): the browser end-to-end flows and the local compose stack. Every prompt gets the same three-block circuit (a 300 Hz sine, an RC low-pass whose first draft has a wrong pin, a follower); a word in the prompt picks a variant: e2e-cancel and e2e-reload hold the filter's composer, e2e-retry fails the planner once, e2e-unsupported asks for what no template builds. Ask: e2e-ask answers about the RC filter with an experiment (R1 to 100k), e2e-ask-fail is a model outage, e2e-ask-slow holds its answer 30 s; any other question gets a note that this is the scripted tutor. What changed: an edit to R1 is explained citing R1, C1, the filter block and its output; any other change gets the same note.",
   "rules": [
     {
       "kind": "plan",
@@ -94,6 +94,16 @@
       "kind": "ask",
       "when": [],
       "reply": "This is the scripted tutor (LLM_PROVIDER=fake): every question gets this same answer. Set a real provider in .env to have your questions answered."
+    },
+    {
+      "kind": "what_changed",
+      "when": ["R1 [b2]: resistance"],
+      "reply": "You changed [R1], and with [C1] it sets the corner of [block:b2]: fc = 1/(2π·R·C), so the corner moves the opposite way to R. Compare the cutoff check before and after, and watch [net:B2_OUT] on the scope."
+    },
+    {
+      "kind": "what_changed",
+      "when": [],
+      "reply": "This is the scripted tutor (LLM_PROVIDER=fake): every change gets this same explanation. Set a real provider in .env to have your edits explained."
     }
   ]
 }

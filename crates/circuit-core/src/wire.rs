@@ -261,6 +261,27 @@ pub struct AskRequest {
     pub effort: Option<ReasoningEffort>,
 }
 
+/// `POST /v1/projects/{id}/what-changed` ("What changed?", LLD §9): explain what the edits from
+/// `from_rev` to `rev` did. The server reads its own circuits at both revs; the simulation values
+/// before and after come from the browser, which ran them. The model gets their difference, not
+/// the circuits.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ChangeRequest {
+    pub from_rev: u64,
+    pub rev: u64,
+    /// The learner's simulation of the circuit at `from_rev`.
+    pub before: SimValues,
+    /// The learner's simulation of the circuit at `rev`.
+    pub after: SimValues,
+    #[serde(default)]
+    pub level: LearnerLevel,
+    #[serde(default)]
+    pub mode: TutorMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<ReasoningEffort>,
+}
+
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningEffort {

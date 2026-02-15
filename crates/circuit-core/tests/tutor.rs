@@ -10,8 +10,8 @@ use circuit_core::ir::PortDirection;
 use circuit_core::ops::Author;
 use circuit_core::registry::Hazard;
 use circuit_core::template::{InsertBlock, PortBinding};
-use circuit_core::tutor::{AcValues, RefKind, Selection, SimValues, Span, TranValues};
-use circuit_core::wire::AskRequest;
+use circuit_core::tutor::{AcValues, MAX_CHANGED_NETS, RefKind, Selection, SimValues, Span, TranValues};
+use circuit_core::wire::{AskRequest, ChangeRequest};
 use circuit_core::{Registry, Session};
 use common::*;
 
@@ -214,4 +214,129 @@ fn the_json_api_matches_the_session() {
     let a: serde_json::Value = serde_json::from_str(&json_api::read_answer(&s, "See [R1].")).unwrap();
     assert_eq!(a["refs_valid"], 1);
     assert!(a.get("try").is_none());
+}
+
+// ---------------------------------------------------------------- what changed
+
+fn ops(list: &[serde_json::Value]) -> Vec<circuit_core::ops::Op> {
+    list.iter().map(|o| serde_json::from_value(o.clone()).unwrap()).collect()
+}
+
+fn change(from: SimValues, to: SimValues) -> ChangeRequest {
+    ChangeRequest {
+        from_rev: 0,
+        rev: 0,
+        before: from,
+        after: to,
+        level: Default::default(),
+        mode: Default::default(),
+        effort: None,
+    }
+}
+
+/// `sim()` after R1 went from 18k to 36k: the cutoff halves, so B2_OUT's AC swing drops.
+fn sim_after_r1_doubled() -> SimValues {
+    let mut s = sim();
+    s.op_i.insert("R1.1".into(), -3.3e-8);
+    s.op_i.insert("R1.2".into(), 3.3e-8);
+    s.op_v.insert("B2_N_A".into(), 0.0012); // within 1 mV: not listed
+    let ac = s.ac.as_mut().unwrap();
+    ac.v.insert("B2_N_A".into(), 0.71);
+    ac.deg.insert("B2_N_A".into(), -41.0);
+    s.tran.as_mut().unwrap().v.insert("B2_OUT".into(), Span { min: -0.45, max: 0.44 });
+    s.checks[0].measured = Some(503.0);
+    s.checks[0].measured_display = Some("503Hz".into());
+    s.checks[0].pass = false;
+    s
+}
+
+#[test]
+fn what_changed_lists_the_edit_the_checks_and_the_nets_that_moved() {
+    let reg = Arc::new(registry());
+    let before = filter(reg.clone());
+    let mut after = before.clone();
+    let set = op("part.set_param", serde_json::json!({"refdes": "R1", "key": "resistance", "value": "36k"}));
+    after.apply_ops(&ops(&[set]), Author::User).unwrap();
+
+    let ctx = after.tutor_changes(&before, &change(sim(), sim_after_r1_doubled()));
+    assert_eq!(ctx.parts, ["R1"]);
+    assert_eq!(ctx.blocks, ["b2"]);
+    assert_eq!(ctx.nets, ["B2_OUT", "B2_N_A"], "largest change first; B2_N_A's 0 mV op move is not listed");
+    assert_eq!(ctx.checks_moved, 1);
+    assert!(ctx.hazards.is_empty());
+    insta::assert_snapshot!(ctx.text);
+}
+
+#[test]
+fn what_changed_names_added_parts_whole_blocks_renames_and_layout_only_edits() {
+    let reg = Arc::new(registry());
+    let before = filter(reg.clone());
+    let mut after = before.clone();
+    let out = port_net(&after, "b2", PortDirection::Output);
+    insert(&mut after, "sallen_key_lp", &[("fc_hz", "2k")], &[("in", PortBinding::Net(out))]);
+    let add =
+        op("part.add", serde_json::json!({"refdes": "R9", "part": "resistor_th", "params": {"resistance": "1k"}}));
+    let wire = op("net.connect", serde_json::json!({"net": "B2_OUT", "pins": ["R9.1"]}));
+    let rename = op("net.rename", serde_json::json!({"from": "B2_N_B", "to": "N_SK"}));
+    after.apply_ops(&ops(&[add, wire, rename]), Author::User).unwrap();
+
+    let ctx = after.tutor_changes(&before, &change(SimValues::default(), SimValues::default()));
+    let edit = ctx.text.split("BLOCK").next().unwrap();
+    assert!(
+        edit.contains("block b3 \"Sallen-Key low-pass (2nd order)\" template sallen_key_lp added, with C3 C4 R3 R4 U2"),
+        "{edit}"
+    );
+    assert!(edit.contains("R9 added: resistor_th resistance=1kΩ 1:B2_OUT 2:-"), "{edit}");
+    assert!(edit.contains("net B2_N_B renamed N_SK"), "{edit}");
+    assert!(!edit.contains("pin INP_A"), "a renamed net's pins have not moved: {edit}");
+    assert_eq!(ctx.blocks, ["b3"]);
+    assert!(ctx.text.contains("VOLTAGES: not compared"), "{}", ctx.text);
+    assert!(ctx.text.contains("CHECKS: none measured"));
+
+    let mut moved = before.clone();
+    let pin = op("part.pin", serde_json::json!({"refdes": "R1", "placement": {"x": 10.0, "y": 20.0}}));
+    moved.apply_ops(&ops(&[pin]), Author::User).unwrap();
+    let ctx = moved.tutor_changes(&before, &change(sim(), sim()));
+    assert!(ctx.text.contains("nothing electrical"), "{}", ctx.text);
+    assert!(ctx.parts.is_empty() && ctx.nets.is_empty() && ctx.checks_moved == 0);
+    assert!(ctx.text.contains("VOLTAGES: no net moved"), "{}", ctx.text);
+    assert!(ctx.text.contains("unchanged: b2 fc_hz 1kHz pass"), "{}", ctx.text);
+}
+
+#[test]
+fn what_changed_keeps_the_nets_that_moved_most() {
+    let reg = Arc::new(registry());
+    let before = filter(reg.clone());
+    let mut after = before.clone();
+    let set = op("part.set_param", serde_json::json!({"refdes": "C2", "key": "capacitance", "value": "10n"}));
+    after.apply_ops(&ops(&[set]), Author::User).unwrap();
+    // Forty nets, net k moving by k%: N00 and N01 (1%, not over it) did not move; of the 38 that
+    // did, the twelve largest are kept, largest first.
+    let (mut from, mut to) = (SimValues::default(), SimValues::default());
+    for k in 0..40 {
+        from.op_v.insert(format!("N{k:02}"), 1.0);
+        to.op_v.insert(format!("N{k:02}"), 1.0 + k as f64 / 100.0);
+    }
+    let ctx = after.tutor_changes(&before, &change(from, to));
+    assert_eq!(ctx.nets.len(), MAX_CHANGED_NETS);
+    assert_eq!(ctx.nets[0], "N39");
+    assert_eq!(ctx.nets[11], "N28");
+    assert!(ctx.text.contains("(26 more nets moved less; 2 nets did not move)"), "{}", ctx.text);
+    assert!(ctx.tokens as usize <= circuit_core::tutor::CONTEXT_TOKENS);
+}
+
+#[test]
+fn what_changed_through_the_json_api() {
+    use circuit_core::session::json_api;
+    let reg = Arc::new(registry());
+    let before = filter(reg.clone());
+    let mut after = before.clone();
+    let set = op("part.set_param", serde_json::json!({"refdes": "R1", "key": "resistance", "value": "36k"}));
+    after.apply_ops(&ops(&[set]), Author::User).unwrap();
+    let req =
+        serde_json::json!({"from_rev": before.circuit().rev, "rev": after.circuit().rev, "before": {}, "after": {}});
+    let out: serde_json::Value =
+        serde_json::from_str(&json_api::tutor_changes(&after, &before, &req.to_string())).unwrap();
+    assert_eq!(out["ok"]["parts"][0], "R1");
+    assert!(json_api::tutor_changes(&after, &before, r#"{"rev": 3}"#).contains("schema_error"));
 }

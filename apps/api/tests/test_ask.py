@@ -190,3 +190,76 @@ async def test_feedback_is_stored_for_the_asker_only(http, alice, bob, app, tuto
     for r in (await give(1, headers=bob), await give(1, aid=str(uuid.uuid4())), await give(1, aid="nope")):
         assert r.status_code == 404 and ApiError.model_validate(r.json()).code == "not_found"
     assert (await saved(app, ask_id)).feedback == -1
+
+
+# ---------------------------------------------------------------- what changed
+
+def fc_check(measured: float, display: str, ok: bool) -> dict:
+    return {"block": "b1", "name": "fc_hz", "label": "Cutoff (−3 dB)", "symbol": "fc", "unit": "hertz", "target": 1000.0,
+            "tol_pct": 10.0, "measured": measured, "pass": ok, "target_display": "1kHz", "measured_display": display}
+
+
+async def edited_project(http, headers, app) -> tuple[str, int, int]:
+    """`rc_project`, then R1 set to 2k: (project, rev before the edit, rev after it)."""
+    pid, rev = await rc_project(http, headers, app)
+    set_r1 = [{"op": "part.set_param", "body": {"refdes": "R1", "key": "resistance", "value": "2k"}}]
+    r = await http.post(f"/v1/projects/{pid}/ops", json={"base_rev": rev, "ops": envelopes(set_r1, rev)}, headers=headers)
+    assert r.status_code == 200, r.text
+    return pid, rev, r.json()["rev"]
+
+
+async def test_what_changed_explains_the_edit_from_both_simulations_and_is_saved(http, alice, app, tutor_llm):
+    pid, before, after = await edited_project(http, alice, app)
+    reply = "Making [R1] smaller raised the cutoff of [block:b1], so [net:B1_OUT] passes more."
+    tutor_llm.script["what_changed"] = [reply]
+    body = {"from_rev": before, "rev": after, "mode": "socratic", "effort": "high",
+            "before": {"status": "ok", "op_v": {"B1_OUT": 0.5}, "checks": [fc_check(995.0, "995Hz", True)]},
+            "after": {"status": "ok", "op_v": {"B1_OUT": 0.25}, "checks": [fc_check(7960.0, "7.96kHz", False)]}}
+    events = await ask(http, pid, alice, body, path="what-changed")
+    assert events[-1]["event"] == "answer.done" and text_of(events) == reply
+    done = events[-1]["data"]
+    assert (done["answer"]["refs_valid"], done["answer"]["refs_invalid"]) == (3, 0)
+
+    (call,) = tutor_llm.calls
+    assert (call.kind, call.tier, call.system, call.effort) == ("what_changed", "small", prompts.TUTOR_SYSTEM, "high")
+    assert call.timeout_s == 120.0 and "Mode: Socratic." in call.user
+    assert f"EDIT (rev {before} → {after}):" in call.user and "R1 [b1]: resistance" in call.user and "→ 2kΩ" in call.user
+    assert "b1 fc_hz (1kHz ±10%): 995Hz pass → 7.96kHz FAIL" in call.user
+    assert "B1_OUT: op 500mV → 250mV" in call.user
+    assert "C1 " not in call.user.split("EDIT")[1].split("BLOCK")[0], "only what the edit touched, not the circuit"
+
+    row = await saved(app, done["ask_id"])
+    assert (row.kind, row.from_rev, row.rev, row.question, row.selection, row.mode) == (
+        "what_changed", before, after, "What changed?", None, "socratic")
+    assert (row.answer, row.refs_valid, row.model) == (reply, 3, "fake-small")
+    r = await http.post(f"/v1/asks/{done['ask_id']}/feedback", json={"feedback": 1}, headers=alice)
+    assert r.status_code == 204 and (await saved(app, done["ask_id"])).feedback == 1
+
+
+async def test_what_changed_refusals_come_before_the_stream(http, alice, bob, app, tutor_llm):
+    pid, before, after = await edited_project(http, alice, app)
+    ok = {"from_rev": before, "rev": after, "before": {}, "after": {}}
+
+    async def refused(body: dict, headers=alice) -> tuple[int, ApiError]:
+        r = await http.post(f"/v1/projects/{pid}/what-changed", json=body, headers=headers)
+        return r.status_code, ApiError.model_validate(r.json())
+
+    for from_rev, rev in ((after, after), (after, before)):
+        status, e = await refused({**ok, "from_rev": from_rev, "rev": rev})
+        assert (status, e.code) == (422, "invalid_request")
+    status, e = await refused({**ok, "rev": after + 1})
+    assert (status, e.code, e.retryable) == (409, "rev_not_synced", True)
+    status, e = await refused({**ok, "question": "Why?"})
+    assert (status, e.code) == (422, "invalid_request"), "a change request has no question"
+    status, e = await refused({k: v for k, v in ok.items() if k != "after"})
+    assert (status, e.code) == (422, "invalid_request")
+    status, e = await refused(ok, headers=bob)
+    assert (status, e.code) == (404, "not_found")
+    tutor = app.state.tutor
+    app.state.tutor = None
+    try:
+        status, e = await refused(ok)
+        assert (status, e.code) == (503, "tutor_unavailable")
+    finally:
+        app.state.tutor = tutor
+    assert tutor_llm.calls == [] and await count_asks(app, pid) == 0

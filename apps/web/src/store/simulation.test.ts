@@ -89,6 +89,20 @@ describe.skipIf(missing.length > 0)("simulation scheduling", () => {
     expect(store.getState().sim.voltages).toMatchObject({ N_OUT: 2, VCC: 12, GND: 0 });
   });
 
+  it("keeps a result that arrives while a newer run waits pending: it is not the circuit's", async () => {
+    const { store, session } = setup();
+    const runner = manualRunner();
+    attachSimulation(store, session, runner);
+    await vi.advanceTimersByTimeAsync(SIM_DEBOUNCE_MS);
+    store.getState().apply(setR1("1k")); // during the run, before the next one starts
+    runner.runs[0]!.resolve(ok(runner.runs[0]!.req.hash, 5));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().sim).toMatchObject({ status: "pending", voltages: { N_OUT: 5 } });
+    await vi.advanceTimersByTimeAsync(SIM_DEBOUNCE_MS);
+    expect(runner.runs).toHaveLength(2);
+    expect(store.getState().sim.status).toBe("running");
+  });
+
   it("does not re-run an unchanged netlist", async () => {
     const { store, session } = setup();
     const runner = manualRunner();

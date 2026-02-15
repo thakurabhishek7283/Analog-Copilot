@@ -1,7 +1,7 @@
 // Ask against the real API (project `api`, see playwright.config.ts): questions about the circuit
 // answered by the scripted model (apps/api/fake/script.json: a word in each question picks the
 // reply), streamed over SSE, read against the circuit by the core, with an experiment tried and
-// measured in the browser's own simulation.
+// measured in the browser's own simulation, then explained ("What changed?").
 import { expect, type Page, test } from "@playwright/test";
 import { EditorPage } from "./editor.ts";
 
@@ -19,7 +19,7 @@ async function ask(page: Page, question: string): Promise<void> {
   await panel(page).getByRole("button", { name: "Ask", exact: true }).click();
 }
 
-test("an answer about the selected part streams with chips, and its experiment is tried, measured and undone", async ({ page }) => {
+test("an answer about the selected part streams with chips, and its experiment is tried, measured, explained and undone", async ({ page }) => {
   const editor = new EditorPage(page);
   await newProject(page);
   await page.getByLabel("Describe a circuit").fill("e2e-build a sine source into a 2 kHz low-pass filter, buffered");
@@ -53,7 +53,8 @@ test("an answer about the selected part streams with chips, and its experiment i
   await expect(page.locator(".inspector h2")).toHaveText("C1");
 
   // Predict, then test: one undo step, simulated, the moved check shown next to the prediction.
-  const card = entry(page).locator(".try-card");
+  const first = panel(page).locator(".ask-entry").first();
+  const card = first.locator(".try-card");
   await expect(card.locator(".ops")).toHaveText("R1 resistance → 100k");
   await expect(card.locator(".predict")).toContainText("the cutoff drops well below 2 kHz");
   const before = await page.locator('g.part[data-refdes="R1"] .value').first().textContent();
@@ -62,14 +63,34 @@ test("an answer about the selected part streams with chips, and its experiment i
   await expect(card).toHaveAttribute("data-state", "measured");
   await expect(card.locator(".measured tr")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Undo", exact: true })).toHaveAttribute("title", "Undo Try: the cutoff drops well below 2 kHz (Ctrl+Z)");
+
+  // What changed? The server compares its circuits at both revs; the browser sends its simulation
+  // of each, and the cutoff check that moved is in both.
+  await expect(panel(page).locator("button.what-changed")).toContainText("Try: the cutoff drops well below 2 kHz");
+  const asked = page.waitForRequest((r) => r.url().endsWith("/what-changed") && r.method() === "POST");
+  await card.getByRole("button", { name: "What changed?" }).click();
+  const change = (await asked).postDataJSON();
+  expect(change.rev).toBe(change.from_rev + 1);
+  const fc = (sim: { checks: { block: string; name: string; measured?: number }[] }) => sim.checks.find((c) => c.block === "b2" && c.name === "fc_hz")!.measured;
+  expect(fc(change.after)).toBeLessThan(fc(change.before)!);
+  const explained = entry(page);
+  await expect(explained).toHaveAttribute("data-phase", "done");
+  await expect(explained.locator(".question")).toHaveText("What changed? · Try: the cutoff drops well below 2 kHz");
+  await expect(explained.locator(".answer-text")).toContainText("You changed");
+  await expect(explained.locator('.answer-text .ref-chip[data-ref="R1"]')).toHaveCount(1);
+  await expect(explained.locator('.answer-text .ref-chip[data-ref="b2"]')).toHaveCount(1);
+  await expect(panel(page).locator("button.what-changed")).toHaveCount(0); // asked already
+
   await card.getByRole("button", { name: "Undo it" }).click();
   await expect(card).toHaveAttribute("data-state", "undone");
   await expect(page.locator('g.part[data-refdes="R1"] .value').first()).toHaveText(before!);
+  await editor.simulated();
+  await expect(panel(page).locator("button.what-changed")).toContainText("Undo Try: the cutoff drops well below 2 kHz");
 
   const saved = page.waitForResponse((r) => r.url().endsWith("/feedback"));
-  await entry(page).getByRole("button", { name: "Yes" }).click();
+  await first.getByRole("button", { name: "Yes" }).click();
   expect((await saved).status()).toBe(204);
-  await expect(entry(page).getByRole("button", { name: "Yes" })).toHaveAttribute("aria-pressed", "true");
+  await expect(first.getByRole("button", { name: "Yes" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".save-status")).toHaveText("Saved");
 });
 

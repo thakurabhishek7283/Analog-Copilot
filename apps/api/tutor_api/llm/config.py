@@ -9,7 +9,8 @@
   for both, else, for the primary provider only, `LLM_MODEL_LARGE` / `LLM_MODEL_SMALL`.
   `P_REASONING=1` for a reasoning model (GPT-5 and later, also on Azure): `max_completion_tokens`
   instead of `max_tokens`, and no temperature (only the default is accepted).
-- `LLM_TIER_ASK`: the tier the tutor answers with, `small` (default, LLD §6) or `large`.
+- `LLM_TIER_ASK`, `LLM_TIER_WHAT_CHANGED`: the tier the tutor answers a question, or explains an
+  edit, with: `small` (default, LLD §6, §9) or `large`.
 """
 
 from __future__ import annotations
@@ -32,8 +33,9 @@ REAL = {
 }
 
 
-# The tutor's request kinds and their default tiers (LLD §6: Ask uses the small model).
-TUTOR_TIERS: dict[str, Tier] = {"ask": "small"}
+# The tutor's request kinds and their default tiers (LLD §6: Ask uses the small model; §9: so does
+# "What changed?").
+TUTOR_TIERS: dict[str, Tier] = {"ask": "small", "what_changed": "small"}
 
 
 def tutor_tiers_from_env(env: Mapping[str, str] | None = None) -> dict[str, Tier]:

@@ -2,7 +2,7 @@
 // jobs started, streamed and played by the AnimationDirector, cancelled and retried. The editor is
 // read-only while a job runs, including after a reload (`ProjectSnapshot.active_job`). Anything
 // that shows this editor and the server disagree reloads the project from the server. Questions to
-// the tutor go through `asker`.
+// the tutor go through `asker`; `sims` keeps the recent simulations "What changed?" compares.
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { AnimationDirector } from "../anim/director.ts";
 import { type ApiClient, ApiFailure } from "../api/client.ts";
@@ -13,6 +13,7 @@ import type { PendingStore } from "../store/pending.ts";
 import { Sync, type SyncStatus } from "../store/sync.ts";
 import { type JobStream, openJobStream } from "../stream/jobStream.ts";
 import { type Asker, createAsker } from "../tutor/asker.ts";
+import { type SimHistory, createSimHistory } from "../tutor/simHistory.ts";
 import type { TutorStore } from "../tutor/tutorStore.ts";
 
 export interface ProjectState {
@@ -26,6 +27,7 @@ export interface ProjectSession {
   readonly state: StoreApi<ProjectState>;
   readonly director: AnimationDirector;
   readonly asker: Asker;
+  readonly sims: SimHistory;
   generate(req: GenerateRequest): Promise<void>;
   cancel(): Promise<void>;
   /** Run the last request again (after a retryable error). */
@@ -175,12 +177,14 @@ export async function openProject(opts: OpenProjectOptions): Promise<ProjectSess
   };
 
   const asker = createAsker({ api, project: id, store, tutor: opts.tutor, registry: opts.registry, flush: () => sync.flush() });
+  const sims = createSimHistory(store, opts.registry);
 
   return {
     id,
     state,
     director,
     asker,
+    sims,
     generate,
     async cancel() {
       const job = gen.getState().job;
@@ -199,6 +203,7 @@ export async function openProject(opts: OpenProjectOptions): Promise<ProjectSess
       disposed = true;
       stream?.close();
       asker.dispose();
+      sims.dispose();
       director.dispose();
       sync.dispose();
     },

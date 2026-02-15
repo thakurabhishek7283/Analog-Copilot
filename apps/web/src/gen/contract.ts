@@ -1977,6 +1977,95 @@ export interface AskFeedback {
   feedback: number;
 }
 /**
+ * `POST /v1/projects/{id}/what-changed` ("What changed?", LLD §9): explain what the edits from
+ * `from_rev` to `rev` did. The server reads its own circuits at both revs; the simulation values
+ * before and after come from the browser, which ran them. The model gets their difference, not
+ * the circuits.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "ChangeRequest".
+ */
+export interface ChangeRequest {
+  from_rev: number;
+  rev: number;
+  before: SimValues2;
+  after: SimValues3;
+  level?: "beginner" | "intermediate" | "advanced";
+  /**
+   * Explain, or ask one guiding question first (LLD §9, rule 4).
+   */
+  mode?: "explain" | "socratic";
+  effort?: ReasoningEffort | null;
+}
+/**
+ * The learner's simulation of the circuit at `from_rev`.
+ */
+export interface SimValues2 {
+  /**
+   * The run's status (`ok`, `no_convergence`, `singular_matrix`, `timeout`, `error`); absent
+   * when nothing was simulated.
+   */
+  status?: string | null;
+  /**
+   * Operating point: net -> volts.
+   */
+  op_v?: {
+    [k: string]: number | undefined;
+  };
+  /**
+   * Operating point: pin (`R3.1`) -> amps flowing into the pin.
+   */
+  op_i?: {
+    [k: string]: number | undefined;
+  };
+  /**
+   * AC response at the scope's frequency.
+   */
+  ac?: AcValues | null;
+  /**
+   * The transient's range on each net, after start-up.
+   */
+  tran?: TranValues | null;
+  /**
+   * Spec checks as the browser measured them.
+   */
+  checks?: CheckResult[];
+}
+/**
+ * The learner's simulation of the circuit at `rev`.
+ */
+export interface SimValues3 {
+  /**
+   * The run's status (`ok`, `no_convergence`, `singular_matrix`, `timeout`, `error`); absent
+   * when nothing was simulated.
+   */
+  status?: string | null;
+  /**
+   * Operating point: net -> volts.
+   */
+  op_v?: {
+    [k: string]: number | undefined;
+  };
+  /**
+   * Operating point: pin (`R3.1`) -> amps flowing into the pin.
+   */
+  op_i?: {
+    [k: string]: number | undefined;
+  };
+  /**
+   * AC response at the scope's frequency.
+   */
+  ac?: AcValues | null;
+  /**
+   * The transient's range on each net, after start-up.
+   */
+  tran?: TranValues | null;
+  /**
+   * Spec checks as the browser measured them.
+   */
+  checks?: CheckResult[];
+}
+/**
  * The slice of a circuit a question is about, as the model sees it.
  *
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -1999,6 +2088,42 @@ export interface TutorContext {
   dropped: string[];
   /**
    * Parts anywhere in the circuit flagged `hazard: mains`: the answer gets a safety note.
+   */
+  hazards: string[];
+  /**
+   * Estimated tokens of `text`.
+   */
+  tokens: number;
+}
+/**
+ * What an edit changed, as the model sees it.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "ChangeContext".
+ */
+export interface ChangeContext {
+  /**
+   * Compact text for the prompt.
+   */
+  text: string;
+  /**
+   * Parts the edit added, removed or changed, in refdes order.
+   */
+  parts: string[];
+  /**
+   * Blocks the edit touched.
+   */
+  blocks: string[];
+  /**
+   * Nets whose values the text lists, largest change first.
+   */
+  nets: string[];
+  /**
+   * Spec checks whose result moved (or that appeared or went).
+   */
+  checks_moved: number;
+  /**
+   * Parts flagged `hazard: mains` in the circuit after the edit: the answer gets a safety note.
    */
   hazards: string[];
   /**

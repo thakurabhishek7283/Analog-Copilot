@@ -36,8 +36,11 @@ export function attachSimulation(
   const compileOpts = JSON.stringify({ shunt_floating: true, interactive: true, analyses: opts.analyses });
   const setSim = store.getState().setSim;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // An edit came after the run in flight: its result is shown, but it is not the circuit's (yet).
+  let scheduled = false;
 
   const run = () => {
+    scheduled = false;
     const state = store.getState();
     if (Object.keys(state.parts).length === 0) {
       setSim((s) => Object.assign(s, { hash: null, status: "idle", result: undefined, view: undefined, voltages: {}, checks: undefined, message: undefined }));
@@ -66,17 +69,19 @@ export function attachSimulation(
         const checks = opts.evaluateChecks
           ? expectOk<CheckResult[]>(opts.evaluateChecks(JSON.stringify(n.checks), JSON.stringify(result.meas)), "evaluateChecks")
           : undefined;
-        setSim((s) => Object.assign(s, { status: result.status, result, view, voltages, checks }));
+        // While a newer run waits, the status stays pending: these values are for an earlier circuit.
+        setSim((s) => Object.assign(s, { status: scheduled ? "pending" : result.status, result, view, voltages, checks }));
       },
       (e: unknown) => {
         if (store.getState().sim.hash !== n.hash) return;
-        setSim((s) => Object.assign(s, { status: "error", message: e instanceof Error ? e.message : String(e) }));
+        setSim((s) => Object.assign(s, { status: scheduled ? "pending" : "error", message: e instanceof Error ? e.message : String(e) }));
       },
     );
   };
 
   const schedule = () => {
     clearTimeout(timer);
+    scheduled = true;
     setSim((s) => {
       if (s.status !== "running") s.status = "pending";
     });

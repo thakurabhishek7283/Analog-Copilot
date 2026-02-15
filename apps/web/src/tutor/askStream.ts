@@ -1,9 +1,10 @@
-// One question's answer (LLD §5, §9): `POST /v1/projects/{id}/ask` over fetch with the bearer token,
+// One question's answer (LLD §5, §9): `POST /v1/projects/{id}/ask` (or `what-changed`, which
+// answers the same way) over fetch with the bearer token,
 // read as SSE: `answer.delta` while the model writes, then `answer.done` or `error`. Not resumable
 // (decided 2026-02-14): a stream that drops is asked again. A refusal before the stream starts is
 // an ordinary error response, thrown as an `ApiFailure`.
 import { ApiFailure } from "../api/client.ts";
-import type { AskEvent, AskRequest } from "../gen/contract.ts";
+import type { AskEvent, AskRequest, ChangeRequest } from "../gen/contract.ts";
 import { SseParser } from "../stream/sse.ts";
 
 const EVENTS: ReadonlySet<string> = new Set(["answer.delta", "answer.done", "error"]);
@@ -11,7 +12,7 @@ const EVENTS: ReadonlySet<string> = new Set(["answer.delta", "answer.done", "err
 export interface AskStreamOptions {
   url: string;
   headers: () => Promise<Record<string, string>>;
-  body: AskRequest;
+  body: AskRequest | ChangeRequest;
   onEvent: (event: AskEvent) => void;
   /** Aborting stops reading and cancels the answer on the server. */
   signal?: AbortSignal;

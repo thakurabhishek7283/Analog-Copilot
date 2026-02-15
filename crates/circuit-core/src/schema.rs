@@ -18,10 +18,10 @@ use crate::session::json_api::Outcome;
 use crate::session::{ApplyOk, PatchData};
 use crate::spice::{CompileError, CompileOpts, Netlist};
 use crate::template::{BlockRequest, BlockTrial, CheckResult, InsertBlock, Inserted, Preview, VerifyPoint};
-use crate::tutor::{Answer, TutorContext};
+use crate::tutor::{Answer, ChangeContext, TutorContext};
 use crate::wire::{
-    AnonymousSession, ApiError, AppendOk, AppendOps, AskEvent, AskFeedback, AskRequest, CreateProject, GenerateRequest,
-    JobAccepted, JobEvent, ProjectSnapshot,
+    AnonymousSession, ApiError, AppendOk, AppendOps, AskEvent, AskFeedback, AskRequest, ChangeRequest, CreateProject,
+    GenerateRequest, JobAccepted, JobEvent, ProjectSnapshot,
 };
 
 /// `(file name, schema)` for each contract type, in a fixed order.
@@ -87,7 +87,9 @@ pub fn contract_schema() -> Value {
     add::<AskRequest>(&mut generator);
     add::<AskEvent>(&mut generator);
     add::<AskFeedback>(&mut generator);
+    add::<ChangeRequest>(&mut generator);
     add::<TutorContext>(&mut generator);
+    add::<ChangeContext>(&mut generator);
     add::<Answer>(&mut generator);
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",

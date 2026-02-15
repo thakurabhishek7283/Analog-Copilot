@@ -1162,6 +1162,26 @@ button.primary {
   overflow-wrap: anywhere;
 }
 
+.ask .what-changed {
+  align-self: flex-start;
+  max-width: 100%;
+  white-space: nowrap;
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ask .what-changed .change-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .ask-entry .about-tag {
   font-weight: normal;
   color: var(--muted);

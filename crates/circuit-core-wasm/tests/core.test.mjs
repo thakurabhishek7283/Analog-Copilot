@@ -117,3 +117,18 @@ test("tutor context and answers", () => {
   assert.equal(a.body.slice(a.refs[0].start, a.refs[0].end), "[R1]", "spans are UTF-16 indices");
   s.free();
 });
+
+test("what changed between two sessions", () => {
+  const before = new core.CoreSession(registry);
+  const ins = JSON.parse(before.insertBlock(JSON.stringify({ template: "rc_lowpass" }))).ok;
+  JSON.parse(before.applyOps(JSON.stringify(ins.ops), "template")).ok;
+  const after = new core.CoreSession(registry, before.snapshot());
+  const set = [{ op: "part.set_param", body: { refdes: "R1", key: "resistance", value: "2k" } }];
+  JSON.parse(after.applyOps(JSON.stringify(set), "user")).ok;
+  const req = { from_rev: before.rev, rev: after.rev, before: { op_v: { B1_OUT: 0.5 } }, after: { op_v: { B1_OUT: 0.25 } } };
+  const ctx = JSON.parse(after.tutorChanges(before, JSON.stringify(req))).ok;
+  assert.deepEqual([ctx.parts, ctx.nets], [["R1"], ["B1_OUT"]]);
+  assert.ok(ctx.text.includes("B1_OUT: op 500mV → 250mV"), ctx.text);
+  before.free();
+  after.free();
+});

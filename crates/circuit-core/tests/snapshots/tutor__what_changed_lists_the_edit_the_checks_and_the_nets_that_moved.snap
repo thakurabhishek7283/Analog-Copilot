@@ -1,0 +1,18 @@
+---
+source: crates/circuit-core/tests/tutor.rs
+expression: ctx.text
+---
+EDIT (rev 20 → 21):
+  R1 [b2]: resistance 18kΩ → 36kΩ
+BLOCK b2 "Sallen-Key low-pass (2nd order)" template sallen_key_lp, filter
+  teaches: Two RC sections with feedback from the output through C1: a 40 dB/decade roll-off, and Q sets how sharp the knee is (0.707 is maximally flat).
+SIM: ok → ok
+CHECKS (spec target and tolerance; before → after):
+  b2 fc_hz (1kHz ±10%): 1kHz pass → 503Hz FAIL
+VOLTAGES (nets that moved, largest change first; before → after):
+  B2_OUT: tran -710mV..700mV → -450mV..440mV
+  B2_N_A: ac 980mV -12.3° → 710mV -41.0° @100Hz
+  (2 nets did not move)
+CURRENTS (edited parts, operating point, into each pin; before → after):
+  R1 into 1: -65nA → -33nA
+ERC: no change

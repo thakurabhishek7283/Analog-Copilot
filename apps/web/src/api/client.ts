@@ -140,6 +140,10 @@ export class ApiClient {
     return this.url(`/v1/projects/${encodeURIComponent(id)}/ask`);
   }
 
+  whatChangedUrl(id: string): string {
+    return this.url(`/v1/projects/${encodeURIComponent(id)}/what-changed`);
+  }
+
   /** The learner's verdict on an answer: 1 helpful, -1 not (a later one replaces it). */
   async feedback(askId: string, feedback: 1 | -1): Promise<void> {
     await this.authed("POST", `/v1/asks/${encodeURIComponent(askId)}/feedback`, { feedback } satisfies AskFeedback);

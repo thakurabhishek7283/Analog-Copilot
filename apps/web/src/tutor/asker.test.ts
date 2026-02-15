@@ -1,7 +1,8 @@
 // Asking against the real core and a scripted server: edits sent first, what the request carries,
-// the answer streamed into the thread, refusals, stop, feedback, and an experiment tried and undone.
+// the answer streamed into the thread, refusals, stop, feedback, an experiment tried and undone,
+// and "What changed?" with the simulations before and after an edit.
 import { describe, expect, it } from "vitest";
-import type { AskRequest, Inserted } from "../gen/contract.ts";
+import type { AskRequest, ChangeRequest, Inserted } from "../gen/contract.ts";
 import { createCircuitStore } from "../store/circuitStore.ts";
 import { bundle, bundleJson, loadCore, missingArtifacts } from "../test/artifacts.ts";
 import { createAsker } from "./asker.ts";
@@ -14,7 +15,7 @@ const REPLY = `[R1] and [C1] set the corner; [R9] is not here.\n\n\`\`\`try\n${J
 
 const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
-function setup(reply: (req: AskRequest) => Response | string[]) {
+function setup(reply: (req: AskRequest & ChangeRequest) => Response | string[]) {
   const core = loadCore();
   const session = new core.CoreSession(core.CoreRegistry.fromJson(bundleJson()), null);
   const store = createCircuitStore(session);
@@ -22,11 +23,11 @@ function setup(reply: (req: AskRequest) => Response | string[]) {
   store.getState().applyBatch(ins.ops, "Insert RC", "template");
   const tutor = createTutorStore();
   const log: string[] = [];
-  const sent: AskRequest[] = [];
-  const fetch = (async (_: RequestInfo | URL, init?: RequestInit) => {
-    const req = JSON.parse(init!.body as string) as AskRequest;
+  const sent: (AskRequest & ChangeRequest)[] = [];
+  const fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    const req = JSON.parse(init!.body as string) as AskRequest & ChangeRequest;
     sent.push(req);
-    log.push("ask");
+    log.push(String(url).split("/").at(-1)!);
     const out = reply(req);
     if (out instanceof Response) return out;
     const body = new ReadableStream<Uint8Array>({
@@ -39,6 +40,7 @@ function setup(reply: (req: AskRequest) => Response | string[]) {
   }) as typeof globalThis.fetch;
   const api = {
     askUrl: (id: string) => `/v1/projects/${id}/ask`,
+    whatChangedUrl: (id: string) => `/v1/projects/${id}/what-changed`,
     authHeaders: async () => ({}),
     feedback: async (id: string, v: number) => void log.push(`feedback ${id} ${v}`),
     dropToken: () => void log.push("drop token"),
@@ -128,5 +130,18 @@ describe.skipIf(missing.length > 0)("asker", () => {
     expect(await t.asker.tryIt(e.key)).toBeNull();
     expect(t.store.getState().rev).toBe(rev);
     expect(t.tutor.getState().entries[0]!.trial).toBeUndefined();
+  });
+
+  it("explains an edit from the simulations before and after it", async () => {
+    const t = setup(() => t.answer("Raising [R1] lowered the corner of [block:b1]."));
+    t.tutor.getState().setSettings({ effort: "low" });
+    const change = { fromRev: 4, rev: 5, labels: ["R1 resistance → 2k"], before: { op_v: { B1_OUT: 0.5 } }, after: { op_v: { B1_OUT: 0.25 } } };
+    await t.asker.whatChanged(change);
+
+    expect(t.log).toEqual(["flush", "what-changed"]);
+    expect(t.sent[0]).toEqual({ from_rev: 4, rev: 5, before: change.before, after: change.after, level: "beginner", mode: "explain", effort: "low" });
+    const [e] = t.tutor.getState().entries;
+    expect(e).toMatchObject({ kind: "what_changed", question: "What changed?", rev: 5, change, phase: "done", selection: null });
+    expect(e!.answer!.refs_valid).toBe(2);
   });
 });

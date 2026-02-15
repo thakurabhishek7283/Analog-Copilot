@@ -978,6 +978,37 @@ class TutorContext(BaseModel):
     tokens: Annotated[int, Field(description="Estimated tokens of `text`.", ge=0)]
 
 
+class ChangeContext(BaseModel):
+    """
+    What an edit changed, as the model sees it.
+    """
+
+    text: Annotated[str, Field(description="Compact text for the prompt.")]
+    parts: Annotated[
+        list[str],
+        Field(description="Parts the edit added, removed or changed, in refdes order."),
+    ]
+    blocks: Annotated[list[str], Field(description="Blocks the edit touched.")]
+    nets: Annotated[
+        list[str],
+        Field(description="Nets whose values the text lists, largest change first."),
+    ]
+    checks_moved: Annotated[
+        int,
+        Field(
+            description="Spec checks whose result moved (or that appeared or went).",
+            ge=0,
+        ),
+    ]
+    hazards: Annotated[
+        list[str],
+        Field(
+            description="Parts flagged `hazard: mains` in the circuit after the edit: the answer gets a safety note."
+        ),
+    ]
+    tokens: Annotated[int, Field(description="Estimated tokens of `text`.", ge=0)]
+
+
 class Quantity(BaseModel):
     """
     A parsed physical value. `display` is canonical and round-trips exactly through [`parse_quantity`].
@@ -2274,6 +2305,32 @@ class TrySuggestion(BaseModel):
             description="Why it cannot be applied (a malformed block, an op a learner cannot make, or what `apply`\nrejected). Empty when the ops apply to the circuit as one undoable step."
         ),
     ]
+
+
+class ChangeRequest(BaseModel):
+    """
+    `POST /v1/projects/{id}/what-changed` ("What changed?", LLD §9): explain what the edits from
+    `from_rev` to `rev` did. The server reads its own circuits at both revs; the simulation values
+    before and after come from the browser, which ran them. The model gets their difference, not
+    the circuits.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    from_rev: Annotated[int, Field(ge=0)]
+    rev: Annotated[int, Field(ge=0)]
+    before: Annotated[
+        SimValues,
+        Field(description="The learner's simulation of the circuit at `from_rev`."),
+    ]
+    after: Annotated[
+        SimValues,
+        Field(description="The learner's simulation of the circuit at `rev`."),
+    ]
+    level: LearnerLevel | None = "beginner"
+    mode: TutorMode | None = "explain"
+    effort: ReasoningEffort | None = None
 
 
 class Circuit(BaseModel):

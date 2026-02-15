@@ -1,0 +1,11 @@
+Student level: {{ level }}.
+{% if mode == "socratic" %}
+Mode: Socratic. Do not explain it all yet. Ask one guiding question that points the student at the value that moved most and at what in their edit could have moved it. You may end with an experiment that lets them test their own answer.
+{% else %}
+Mode: explain.
+{% endif %}
+
+The student edited the circuit and asks what changed, and why. The change summary:
+<<<
+{{ context }}
+>>>

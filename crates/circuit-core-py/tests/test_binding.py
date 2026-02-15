@@ -185,3 +185,16 @@ def test_tutor_context_and_answers(reg):
     assert (a["refs_valid"], a["refs_invalid"]) == (1, 1)
     assert a["refs"][0]["start"] == 2 and a["body"] == "µ [R1] and [R9]."
     assert a["try"]["problems"] == [] and a["try"]["predict"] == "fc falls"
+
+
+def test_tutor_changes(reg):
+    before = cc.Session(reg)
+    ins = cc.unwrap(before.insert_block(json.dumps({"template": "rc_lowpass"})))
+    cc.unwrap(before.apply_ops(json.dumps(ins["ops"]), "template"))
+    after = cc.Session(reg, before.snapshot())
+    cc.unwrap(after.apply_ops(json.dumps([{"op": "part.set_param", "body": {"refdes": "R1", "key": "resistance", "value": "2k"}}]), "user"))
+    req = {"from_rev": before.rev, "rev": after.rev, "before": {"op_v": {"B1_OUT": 0.5}}, "after": {"op_v": {"B1_OUT": 0.25}}}
+    ctx = cc.unwrap(after.tutor_changes(before, json.dumps(req)))
+    assert ctx["parts"] == ["R1"] and ctx["nets"] == ["B1_OUT"]
+    assert "B1_OUT: op 500mV → 250mV" in ctx["text"]
+    assert json.loads(after.tutor_changes(before, "{}"))["err"]["code"] == "schema_error"

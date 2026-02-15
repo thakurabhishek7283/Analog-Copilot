@@ -1,5 +1,5 @@
-"""The tutor service without a server (LLD §9, §14): the fixed safety note for mains-powered parts
-and the model tier per request kind."""
+"""The tutor service without a server (LLD §9, §14): the fixed safety note for mains-powered parts,
+the model tier per request kind, and what "What changed?" sends the model."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from tutor_api.config import REPO
 from tutor_api.llm.config import tutor_tiers_from_env
 from tutor_api.llm.fake import FakeProvider
 from tutor_api.llm.gateway import Gateway
-from tutor_api.models.contract import AskRequest
+from tutor_api.llm import prompts
+from tutor_api.models.contract import AskRequest, ChangeRequest
 from tutor_api.tutor import Tutor
 from tutor_api.tutor.service import safety_note
 
@@ -41,7 +42,8 @@ async def answer(reg: cc.Registry, reply: str) -> tuple[list[str], object]:
     async def on_delta(text: str) -> None:
         deltas.append(text)
 
-    asked = await tutor.answer(s, req, tutor.context(s, req), on_delta)
+    context = tutor.context(s, req)
+    asked = await tutor.answer(s, tutor.request(req, context), context["hazards"], on_delta)
     return deltas, asked
 
 
@@ -60,12 +62,29 @@ async def test_no_note_without_mains_parts():
     assert asked.text == "[R1] limits the current."
 
 
-def test_the_ask_tier_is_small_unless_configured():
-    assert tutor_tiers_from_env({}) == {"ask": "small"}
-    assert tutor_tiers_from_env({"LLM_TIER_ASK": " Large "}) == {"ask": "large"}
+def test_the_tutor_tiers_are_small_unless_configured():
+    assert tutor_tiers_from_env({}) == {"ask": "small", "what_changed": "small"}
+    assert tutor_tiers_from_env({"LLM_TIER_ASK": " Large "}) == {"ask": "large", "what_changed": "small"}
+    assert tutor_tiers_from_env({"LLM_TIER_WHAT_CHANGED": "large"}) == {"ask": "small", "what_changed": "large"}
     with pytest.raises(RuntimeError, match="LLM_TIER_ASK"):
         tutor_tiers_from_env({"LLM_TIER_ASK": "medium"})
     s = sine_into_rc(registry(mains=False))
     tutor = Tutor(Gateway(FakeProvider({})), {"ask": "large"})
     req = AskRequest.model_validate({"question": "Why?", "rev": s.rev})
     assert tutor.request(req, tutor.context(s, req)).tier == "large"
+
+
+def test_what_changed_sends_the_change_summary_with_the_same_system_prompt():
+    reg = registry(mains=True)
+    before = sine_into_rc(reg)
+    after = cc.Session(reg, before.snapshot())
+    cc.unwrap(after.apply_ops(json.dumps([{"op": "part.set_param", "body": {"refdes": "R1", "key": "resistance", "value": "2k"}}]), "user"))
+    req = ChangeRequest.model_validate({"from_rev": before.rev, "rev": after.rev, "before": {"op_v": {"B2_OUT": 0.5}},
+                                        "after": {"op_v": {"B2_OUT": 0.25}}, "mode": "socratic", "effort": "low"})
+    tutor = Tutor(Gateway(FakeProvider({})), tutor_tiers_from_env({"LLM_TIER_WHAT_CHANGED": "large"}))
+    context = tutor.changes(before, after, req)
+    assert context["parts"] == ["R1"] and context["hazards"] == ["V1"]
+    llm = tutor.change_request(req, context)
+    assert (llm.kind, llm.tier, llm.system, llm.effort) == ("what_changed", "large", prompts.TUTOR_SYSTEM, "low")
+    assert "Mode: Socratic." in llm.user and "R1 [b2]: resistance 16kΩ → 2kΩ" in llm.user
+    assert "B2_OUT: op 500mV → 250mV" in llm.user

@@ -1,5 +1,5 @@
-// The tutor's side of the editor (LLD §9): the questions asked in this visit and their answers as
-// they stream, the learner's settings (level, explain or Socratic, how hard a reasoning model
+// The tutor's side of the editor (LLD §9): the questions asked in this visit (and the edits it was
+// asked to explain, "What changed?") and their answers as they stream, the learner's settings (level, explain or Socratic, how hard a reasoning model
 // thinks), feedback, and each tried experiment's prediction next to what the simulation measured.
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type {
@@ -11,6 +11,7 @@ import type {
   Selection,
   TutorMode,
 } from "../gen/contract.ts";
+import type { Change } from "./simHistory.ts";
 
 /** An experiment from an answer's `try` block, applied as one undo step. */
 export interface Trial {
@@ -25,11 +26,15 @@ export interface Trial {
 
 export interface AskEntry {
   key: number;
+  /** A question, or "What changed?" about `change`. */
+  kind: "ask" | "what_changed";
   question: string;
   selection: Selection | null;
   mode: TutorMode;
   /** The circuit's rev the question was about. */
   rev: number;
+  /** The edit a "What changed?" entry explains. */
+  change?: Change;
   phase: "asking" | "streaming" | "done" | "failed" | "stopped";
   /** The answer as streamed so far. */
   text: string;
@@ -52,7 +57,7 @@ export interface TutorState {
   entries: AskEntry[];
   settings: TutorSettings;
   setSettings(s: Partial<TutorSettings>): void;
-  begin(e: Pick<AskEntry, "question" | "selection" | "mode" | "rev">): number;
+  begin(e: Pick<AskEntry, "kind" | "question" | "selection" | "mode" | "rev" | "change">): number;
   update(key: number, change: Partial<AskEntry> | ((e: AskEntry) => void)): void;
   delta(key: number, text: string): void;
   done(key: number, done: AskDone): void;

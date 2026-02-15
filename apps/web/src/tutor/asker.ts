@@ -1,17 +1,19 @@
 // Asking the tutor about the open project (LLD §9). A question is about the circuit as the server
 // holds it, so unsaved edits are sent first; it carries the learner's simulation of that circuit
-// (the server never simulated it). One question at a time: a new one stops the last. An answer's
-// experiment is applied as one undo step, then simulated, and its prediction is shown next to
-// what the simulation measured.
+// (the server never simulated it). "What changed?" sends the simulations before and after an edit
+// instead, and the server compares its circuits at both revs. One answer at a time: a new one
+// stops the last. An answer's experiment is applied as one undo step, then simulated, and its
+// prediction is shown next to what the simulation measured.
 import { type ApiClient, ApiFailure } from "../api/client.ts";
-import type { AskRequest, OpError, Registry, Selection } from "../gen/contract.ts";
+import type { AskRequest, ChangeRequest, OpError, Registry, Selection } from "../gen/contract.ts";
 import type { CircuitStore } from "../store/circuitStore.ts";
 import { askStream } from "./askStream.ts";
+import type { Change } from "./simHistory.ts";
 import { simSettled, simValues } from "./simValues.ts";
-import type { TutorStore } from "./tutorStore.ts";
+import type { TutorState, TutorStore } from "./tutorStore.ts";
 
 export interface AskerOptions {
-  api: Pick<ApiClient, "askUrl" | "authHeaders" | "feedback" | "dropToken">;
+  api: Pick<ApiClient, "askUrl" | "whatChangedUrl" | "authHeaders" | "feedback" | "dropToken">;
   project: string;
   store: CircuitStore;
   tutor: TutorStore;
@@ -25,6 +27,8 @@ export interface AskerOptions {
 
 export interface Asker {
   ask(question: string, selection: Selection | null): Promise<void>;
+  /** Explain an edit from the simulations before and after it ("What changed?"). */
+  whatChanged(change: Change): Promise<void>;
   /** Stop the answer being written (what arrived stays). */
   stop(): void;
   feedback(key: number, value: 1 | -1): Promise<void>;
@@ -43,33 +47,25 @@ export function createAsker(opts: AskerOptions): Asker {
   let current: AbortController | null = null;
   const entry = (key: number) => tutor.getState().entries.find((e) => e.key === key);
 
-  const ask = async (question: string, selection: Selection | null) => {
+  /** One answer into a new entry: unsaved edits sent first, then the request `body` builds (once
+   * the server holds the circuit) streamed into it. */
+  const answer = async (
+    init: Parameters<TutorState["begin"]>[0],
+    url: string,
+    body: (key: number) => Promise<AskRequest | ChangeRequest>,
+  ) => {
     current?.abort();
     const controller = new AbortController();
     current = controller;
-    const { level, mode, effort } = tutor.getState().settings;
-    const key = tutor.getState().begin({ question, selection, mode, rev: store.getState().rev });
+    const key = tutor.getState().begin(init);
     try {
       await opts.flush();
-      await simSettled(store, simWaitMs);
+      const request = await body(key);
       if (controller.signal.aborted) throw controller.signal.reason;
-      const state = store.getState();
-      const busy = state.sim.status === "pending" || state.sim.status === "running";
-      tutor.getState().update(key, { rev: state.rev });
-      const body: AskRequest = {
-        question,
-        rev: state.rev,
-        level,
-        mode,
-        // Values from an earlier circuit would mislead: none rather than stale ones.
-        sim: busy ? {} : simValues(state, opts.registry),
-        ...(selection ? { selection } : {}),
-        ...(effort ? { effort } : {}),
-      };
       await askStream({
-        url: api.askUrl(opts.project),
+        url,
         headers: () => api.authHeaders(),
-        body,
+        body: request,
         signal: controller.signal,
         fetch: opts.fetch,
         onEvent: (e) => {
@@ -92,8 +88,44 @@ export function createAsker(opts: AskerOptions): Asker {
     }
   };
 
+  const ask = (question: string, selection: Selection | null) => {
+    const { level, mode, effort } = tutor.getState().settings;
+    const init = { kind: "ask" as const, question, selection, mode, rev: store.getState().rev };
+    return answer(init, api.askUrl(opts.project), async (key) => {
+      await simSettled(store, simWaitMs);
+      const state = store.getState();
+      const busy = state.sim.status === "pending" || state.sim.status === "running";
+      tutor.getState().update(key, { rev: state.rev });
+      return {
+        question,
+        rev: state.rev,
+        level,
+        mode,
+        // Values from an earlier circuit would mislead: none rather than stale ones.
+        sim: busy ? {} : simValues(state, opts.registry),
+        ...(selection ? { selection } : {}),
+        ...(effort ? { effort } : {}),
+      } satisfies AskRequest;
+    });
+  };
+
+  const whatChanged = (change: Change) => {
+    const { level, mode, effort } = tutor.getState().settings;
+    const init = { kind: "what_changed" as const, question: "What changed?", selection: null, mode, rev: change.rev, change };
+    return answer(init, api.whatChangedUrl(opts.project), async () => ({
+      from_rev: change.fromRev,
+      rev: change.rev,
+      before: change.before,
+      after: change.after,
+      level,
+      mode,
+      ...(effort ? { effort } : {}),
+    } satisfies ChangeRequest));
+  };
+
   return {
     ask,
+    whatChanged,
     stop: () => current?.abort(),
 
     async feedback(key, value) {

@@ -4167,6 +4167,55 @@
       ],
       "description": "`POST /v1/asks/{id}/feedback`: the learner's verdict on an answer."
     },
+    "ChangeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from_rev": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "rev": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "before": {
+          "$ref": "#/$defs/SimValues",
+          "description": "The learner's simulation of the circuit at `from_rev`."
+        },
+        "after": {
+          "$ref": "#/$defs/SimValues",
+          "description": "The learner's simulation of the circuit at `rev`."
+        },
+        "level": {
+          "$ref": "#/$defs/LearnerLevel",
+          "default": "beginner"
+        },
+        "mode": {
+          "$ref": "#/$defs/TutorMode",
+          "default": "explain"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "from_rev",
+        "rev",
+        "before",
+        "after"
+      ],
+      "description": "`POST /v1/projects/{id}/what-changed` (\"What changed?\", LLD §9): explain what the edits from\n`from_rev` to `rev` did. The server reads its own circuits at both revs; the simulation values\nbefore and after come from the browser, which ran them. The model gets their difference, not\nthe circuits."
+    },
     "TutorContext": {
       "type": "object",
       "properties": {
@@ -4224,6 +4273,65 @@
         "tokens"
       ],
       "description": "The slice of a circuit a question is about, as the model sees it."
+    },
+    "ChangeContext": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Compact text for the prompt."
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Parts the edit added, removed or changed, in refdes order."
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Blocks the edit touched."
+        },
+        "nets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Nets whose values the text lists, largest change first."
+        },
+        "checks_moved": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Spec checks whose result moved (or that appeared or went)."
+        },
+        "hazards": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Parts flagged `hazard: mains` in the circuit after the edit: the answer gets a safety note."
+        },
+        "tokens": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Estimated tokens of `text`."
+        }
+      },
+      "required": [
+        "text",
+        "parts",
+        "blocks",
+        "nets",
+        "checks_moved",
+        "hazards",
+        "tokens"
+      ],
+      "description": "What an edit changed, as the model sees it."
     }
   }
 }

@@ -17,8 +17,8 @@ use crate::ops::{Author, Op, OpEnvelope};
 use crate::registry::Registry;
 use crate::spice::{CompileError, CompileOpts, Netlist, compile};
 use crate::template::{self, BlockRequest, BlockTrial, InsertBlock, Inserted, Preview};
-use crate::tutor::{self, Answer, TutorContext};
-use crate::wire::AskRequest;
+use crate::tutor::{self, Answer, ChangeContext, TutorContext};
+use crate::wire::{AskRequest, ChangeRequest};
 
 /// What a successful `apply` reports to the UI: only what changed (LLD §10).
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
@@ -150,6 +150,12 @@ impl Session {
     /// The slice of the circuit a question is about, as the tutor model sees it ([`tutor::context`]).
     pub fn tutor_context(&self, req: &AskRequest) -> Result<TutorContext, OpError> {
         tutor::context(&self.circuit, &self.reg, &req.question, req.selection.as_ref(), &req.sim)
+    }
+
+    /// What the edits from `before` to this circuit did, as the tutor model sees it
+    /// ([`tutor::changes`]), from the learner's simulation of each.
+    pub fn tutor_changes(&self, before: &Session, req: &ChangeRequest) -> ChangeContext {
+        tutor::changes(&before.circuit, &self.circuit, &self.reg, &req.before, &req.after)
     }
 
     /// A tutor answer read against the circuit: references and the `try` suggestion
@@ -321,6 +327,12 @@ pub mod json_api {
     /// request or a selection the circuit does not hold).
     pub fn tutor_context(s: &Session, req_json: &str) -> String {
         outcome(parse::<AskRequest>("ask request", req_json).and_then(|r| s.tutor_context(&r)))
+    }
+
+    /// `before` is the circuit at the request's `from_rev`, `s` the one at its `rev`; `req_json` is
+    /// a `ChangeRequest` → `Outcome<ChangeContext, OpError>` (err only for a malformed request).
+    pub fn tutor_changes(s: &Session, before: &Session, req_json: &str) -> String {
+        outcome(parse::<ChangeRequest>("change request", req_json).map(|r| s.tutor_changes(before, &r)))
     }
 
     /// `text` is a tutor answer, whole or streamed so far → `Answer` (never an error).
