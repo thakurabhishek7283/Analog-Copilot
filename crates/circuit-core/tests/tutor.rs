@@ -177,8 +177,10 @@ fn erc_findings_in_the_slice_are_listed() {
 #[test]
 fn answers_are_read_against_the_circuit() {
     let s = filter(Arc::new(registry()));
-    let a = s.read_answer("[R1] and [C1] set fc on [net:B2_N_A] in [block:b2]; [R9] does not exist.");
-    assert_eq!((a.refs_valid, a.refs_invalid), (4, 1));
+    let a = s.read_answer(
+        "[R1] and [C1] set fc on [net:B2_N_A] in [block:b2]; [R9] does not exist; [b2] is [block:b2], [b7] is not.",
+    );
+    assert_eq!((a.refs_valid, a.refs_invalid), (6, 2));
     assert_eq!(a.refs.iter().find(|r| !r.valid).map(|r| (r.kind, r.id.as_str())), Some((RefKind::Part, "R9")));
     assert!(a.try_.is_none());
 

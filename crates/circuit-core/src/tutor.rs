@@ -650,6 +650,11 @@ fn parse_ref(inner: &str) -> Option<(RefKind, String)> {
     if let Some(id) = inner.strip_prefix("block:") {
         return ident(id).then(|| (RefKind::Block, id.to_string()));
     }
+    // A block id without its prefix (`[b2]`), as the model writes it after the context's `BLOCK b2`
+    // and `b2 fc_hz` lines: block ids are `b` and digits, refdes are upper case, so it is unambiguous.
+    if inner.len() > 1 && inner.starts_with('b') && inner[1..].bytes().all(|b| b.is_ascii_digit()) {
+        return Some((RefKind::Block, inner.to_string()));
+    }
     let digits = inner.find(|ch: char| ch.is_ascii_digit())?;
     let refdes = digits > 0
         && inner[..digits].bytes().all(|b| b.is_ascii_alphabetic())
@@ -668,6 +673,13 @@ mod tests {
         let got: Vec<(RefKind, &str)> = refs.iter().map(|r| (r.kind, r.id.as_str())).collect();
         assert_eq!(got, [(RefKind::Part, "R3"), (RefKind::Net, "N_A"), (RefKind::Block, "b2"), (RefKind::Part, "U12")]);
         assert!(refs.iter().all(|r| !r.valid), "an empty circuit has none of them");
+        let bare: Vec<(RefKind, String)> =
+            scan_refs(&c, "[b2] [B2] [b] [bb2]").into_iter().map(|r| (r.kind, r.id)).collect();
+        assert_eq!(
+            bare,
+            [(RefKind::Block, "b2".into()), (RefKind::Part, "B2".into()), (RefKind::Part, "bb2".into())],
+            "a block id without its prefix"
+        );
         // UTF-16 spans: "—" and "µ" are one code unit each.
         let text: Vec<u16> = "Raise [R3] (see [net:N_A], [block:b2]) — [1], [docs](http://x), [R3.1], [µ] [U12]"
             .encode_utf16()
