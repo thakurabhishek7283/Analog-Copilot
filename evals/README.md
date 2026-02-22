@@ -1,4 +1,8 @@
-# Generation evals
+# Evals
+
+Two harnesses: generation (this part) and the tutor ([Tutor evals](#tutor-evals), the Phase 3 gate).
+
+## Generation evals
 
 The Phase 2 gate (LLD 16) and the CI gate on prompts, models and templates (LLD 15). `run_evals.py` runs
 every prompt in `prompts.yaml` as a real generation job: the real API and orchestrator, Postgres and
@@ -14,9 +18,10 @@ like the API tests.
 | `metrics.py` | The metrics, the gate and the Markdown report (pure functions) |
 | `golden/` | The accepted run, once there is one: `report.json` (the baseline) and `cassette.json` (its model replies) |
 | `results/` | Each run's `report.json`, `report.md` and, with `--record`, `cassette.json` (not committed) |
-| `tests/` | The harness's own tests, on scripted replies |
+| `tests/` | Both harnesses' own tests, on scripted replies |
+| `run_tutor_evals.py`, `tutor_metrics.py`, `tutor_judge.py`, `tutor/`, `tutor_golden/` | The tutor evals (below) |
 
-## Metrics
+### Metrics
 
 From each block's outcome (`jobs.plan.blocks[].outcome.how`): `draft` (the model's block passed),
 `use_template` (the model kept the template; its choice, not a fallback), `fallback` (three failed
@@ -40,7 +45,7 @@ The report also has plans that miss the expected templates, out-of-scope request
 fallbacks with each attempt's error codes, results by role and by level, and per call kind (plan, compose,
 narrate): calls, errors, tokens, cached tokens and latency.
 
-## Running
+### Running
 
 ```sh
 # Scripted replies (no network). apps/api/fake/script.json gives every prompt the same circuit: a smoke run.
@@ -66,7 +71,7 @@ the gate. Since waits count toward a job's time, live runs allow 3600 s per job 
 wait happened, the report leaves out job latency and keeps the per-call model latency (Model calls table).
 On a rate-limited account, use `--concurrency 2`.
 
-## The gate
+### The gate
 
 `--gate` exits 1 when:
 
@@ -84,7 +89,7 @@ Replaying is deterministic: the same cassette gives the same plans, blocks, outc
 A change to a prompt, a template, the registry or the orchestrator changes the requests, and the replay fails
 with "not in the cassette". The change then needs a new live run, which is the real measurement.
 
-## Replies from a chat: the exchange (`exchange.py`)
+### Replies from a chat: the exchange (`exchange.py`)
 
 Measures replies from any chat model (Gemini or DeepSeek in their web apps, Claude, a person) the way a
 live run measures an API. The run hands out the exact requests the API would get, one round at a time, and
@@ -120,10 +125,87 @@ To keep the run a measurement:
 Add `--record` to the last round to keep its cassette. That is a recording like a live run's, and it can be
 replayed or accepted into `golden/`.
 
-## Accepting a live run
+### Accepting a live run
 
 After a live run you agree with, replay it through the gate first (`--replay evals/results/<run>/cassette.json
 --gate`). A call the job cancelled (a narration still waiting out a rate limit when its job finished) is in
 the cassette as `cancelled`, and its replay waits to be cancelled again. If the run replays cleanly, copy its `report.json` and `cassette.json` from
 `evals/results/<run>/` into `evals/golden/`. CI then replays it on every push (the "Generation evals gate" step runs once
 `evals/golden/cassette.json` exists).
+
+## Tutor evals
+
+The Phase 3 gate (LLD 16: ≥ 99% valid references) and the tutor's CI gate (LLD 15). `run_tutor_evals.py`
+asks every case in `tutor/cases.yaml` through the real API (Postgres and Redis in testcontainers): it
+builds the case's circuit from its ops, sends `POST /ask` or `POST /what-changed` with the simulation
+values the editor would send, and reads the answer from the stream. Then it checks each answer and,
+with `--rubric`, has a judge grade a sample. Needs Docker and the native ngspice.
+
+| File | What |
+| --- | --- |
+| `tutor/circuits.yaml` | 26 circuits as a student builds them (Insert block, or parts and wires): every template in a bench with a source, two chains, two from parts, and four broken ones (a detuned filter, an unwired feedback resistor, not simulated yet, shorted sources) |
+| `tutor/cases.yaml` | 120 cases: 90 questions (why a value, what a part does, change a spec, predict an edit, read the simulation, debug, missing data, a wrong premise, off topic and injection) and 30 "What changed?" edits (a check that fails or recovers, tweaks, swaps, parts added or removed, rewiring, a drag, an analysis change, several edits). Three levels, 24 in Socratic mode, 50 tagged `rubric` (35 + 15) |
+| `tutor/fixtures.py`, `tutor/sim_values.mts` | Build the circuits and edits with circuit-core and simulate each the way the editor does (its own store, scheduler and `simValues`, on ngspice.wasm in Node), frozen into `tutor/fixtures.json` |
+| `run_tutor_evals.py` | The runner: providers, recording and replay, the report |
+| `tutor_metrics.py` | The metrics, numeric grounding, the gate, the report; `compare` and `agreement` commands |
+| `tutor_judge.py` | The LLM rubric |
+| `tutor_golden/` | The accepted run, once there is one: `report.json` and `cassette.json` |
+
+Frozen values make every run send the model the same text on any OS, so a recording replays in CI
+(the generation evals learned this from a threshold that read differently on Linux ngspice). After a
+change to the circuits, the cases' edits, the registry or the editor's simulation, rebuild them:
+`.venv/Scripts/python evals/tutor/fixtures.py` (needs `node`, the WASM core and ngspice.wasm, as the
+web tests do). `tests/test_tutor_fixtures.py` fails until then.
+
+### Tutor metrics
+
+| Metric | How | Target |
+| --- | --- | --- |
+| Valid references | circuit-core's reading of each answer (`refs_valid` / all). A "What changed?" answer is read against the circuit after the edit, so a part the edit removed is not in it; one the change summary names counts as valid here (the editor shows it as plain text) | ≥ 99% (gated) |
+| Numeric grounding | every quantity in the answer's body (LaTeX read as the plain text it means): in the context, the question, a `target ±tol%` band edge, or the answer's own experiment, at the precision shown (rounded by at most 5%); the result of arithmetic the answer shows, before (`= 884 Hz`) or after it (`6.83 V (12 V − 5.17 V)`), evaluated when numeric (an error is ungrounded); a textbook constant (2π, 0.707, −3 dB, 90°, 0.7 V, 26 mV); or part of a name the context uses (the 555 of NE555). The rest are ungrounded and listed: those one step of arithmetic from the context (996 Hz − 956 Hz = 40 Hz, not shown) apart from those from nowhere. Reported as answers fully grounded, and grounded or only one step short | vs baseline |
+| Experiments | the `try` block validated by circuit-core; a valid one is applied to the circuit and both are simulated on the native ngspice: each number in the prediction against the checks of its unit that the experiment moved, a source's own checks left out (held when one agrees within 10% or the check's tolerance; not judged when nothing comparable moved) | vs baseline |
+| Behaviour | expected citations made, an experiment when one is expected and none when not, words (≤ 150), Socratic answers that ask a question | report |
+| Rubric | the judge scores correct, grounded, answers, level, mode and teaching from 1 to 5, with a pass or fail | report |
+
+Also: references valid in the circuit but outside the slice, arithmetic errors, tokens (cached
+included), latency to the first token and to the whole answer, and every metric by kind, category,
+level and mode.
+
+The gate (`--gate`) fails a run whose references are below 99%, with more than 2% of cases unanswered,
+or with a cassette miss; with `--baseline`, when valid references drop more than 1 point, grounded
+answers more than 3, valid experiments more than 5, or tokens per answer rise more than 15%. Grounding
+is gated against the baseline only until a live run shows how often the checker is wrong.
+
+### Running the tutor evals
+
+```sh
+# Scripted replies (no network): a smoke run of the harness.
+.venv/Scripts/python evals/run_tutor_evals.py --fake SCRIPT.json --limit 10
+
+# Live, recorded, graded: one run per setting to compare (the learner's Quick and Deep thinking).
+.venv/Scripts/python evals/run_tutor_evals.py --env-file .env --live --record --rubric --effort low
+.venv/Scripts/python evals/run_tutor_evals.py --env-file .env --live --record --rubric --effort high
+.venv/Scripts/python evals/tutor_metrics.py compare evals/results/<run-a> evals/results/<run-b>
+
+# What CI does: replay the accepted run (its tiers, effort and rubric come from the baseline).
+.venv/Scripts/python evals/run_tutor_evals.py --replay evals/tutor_golden/cassette.json --gate --baseline evals/tutor_golden/report.json
+```
+
+`--tier small|large` answers both kinds on that tier (default: `LLM_TIER_ASK`, `LLM_TIER_WHAT_CHANGED`);
+comparing tiers means something only when they name different models. `--kind`, `--only`, `--tags`
+and `--limit` pick cases. `--exchange DIR` works as for generation: a chat or a person answers.
+
+The judge (`--rubric`) grades the cases tagged `rubric`. With `--live` it is `--judge` (default
+`deepseek`: another model family than the tutor's, so it does not grade its own style); otherwise it
+answers from the same script, cassette or exchange as the tutor. Its calls go into the run's cassette,
+so a replay grades the same way. For that the judge's request holds only facts that are the same on
+every machine and every version of these checkers: the answer, its input, and circuit-core's reading
+of its references and experiment (not the re-simulation, which differs slightly between Windows and
+Linux ngspice). `--judge-live` regrades a recorded run: the tutor's replies replay, the judge is live.
+Each graded run writes `review.csv`: the sample with the judge's scores
+and empty columns for a human reviewer's on the same scale (LLD 15: "plus one human reviewer");
+`python evals/tutor_metrics.py agreement review.csv` then reports how often the verdicts agree and how
+far the scores are apart.
+
+To accept a live run, replay it through the gate first, then copy its `report.json` and `cassette.json`
+into `evals/tutor_golden/`; the "Tutor evals gate" CI step replays it on every push.

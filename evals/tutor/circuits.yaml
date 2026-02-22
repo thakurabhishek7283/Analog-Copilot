@@ -1,0 +1,189 @@
+# The circuits the tutor evals ask about (cases.yaml), each built the way a student builds it in the
+# editor: `insert` is the Insert block form (one batch, author `template`), `ops` are the student's own
+# edits (author `user`). fixtures.py builds them with circuit-core and simulates them the way the editor
+# does (sim_values.mts); `sim: none` sends no values, as when nothing has been simulated yet.
+#
+# Port bindings: {net: B1_OUT} an existing net, new, or {rail: {net: VIN, volts: 9}}.
+
+# ---------------------------------------------------------------- one template, driven like a student would
+- id: sk_lp
+  title: 1 kHz sine into a Sallen-Key low-pass
+  steps:
+    - insert: {template: sine_source}
+    - insert: {template: sallen_key_lp, ports: {in: {net: B1_OUT}}}
+
+- id: rc_lp
+  title: 1 kHz sine into an RC low-pass at 2 kHz
+  steps:
+    - insert: {template: sine_source}
+    - insert: {template: rc_lowpass, targets: {fc_hz: 2k}, ports: {in: {net: B1_OUT}}}
+
+- id: rc_hp
+  title: 200 Hz sine into an RC high-pass at 500 Hz
+  steps:
+    - insert: {template: sine_source, targets: {freq_hz: "200"}}
+    - insert: {template: rc_highpass, targets: {fc_hz: "500"}, ports: {in: {net: B1_OUT}}}
+
+- id: sk_hp
+  title: 1 kHz sine into a Sallen-Key high-pass at 500 Hz
+  steps:
+    - insert: {template: sine_source}
+    - insert: {template: sallen_key_hp, targets: {fc_hz: "500"}, ports: {in: {net: B1_OUT}}}
+
+- id: mfb_bp
+  title: 1 kHz sine into a band-pass at 1 kHz, Q 2
+  steps:
+    - insert: {template: sine_source}
+    - insert: {template: mfb_bandpass, ports: {in: {net: B1_OUT}}}
+
+- id: inv_amp
+  title: 100 mV sine into an inverting amplifier, gain 10
+  steps:
+    - insert: {template: sine_source, targets: {amplitude_v: 100m}}
+    - insert: {template: inverting_amp, ports: {in: {net: B1_OUT}}}
+
+- id: noninv_amp
+  title: 100 mV sine into a non-inverting amplifier, gain 11
+  steps:
+    - insert: {template: sine_source, targets: {amplitude_v: 100m}}
+    - insert: {template: noninverting_amp, ports: {in: {net: B1_OUT}}}
+
+- id: follower
+  title: 1 V sine into an op-amp voltage follower
+  steps:
+    - insert: {template: sine_source}
+    - insert: {template: voltage_follower, ports: {in: {net: B1_OUT}}}
+
+- id: diff_amp
+  title: Two 1 kHz sines (200 mV and 100 mV) into a difference amplifier, gain 2
+  steps:
+    - insert: {template: sine_source, targets: {amplitude_v: 200m}}
+    - insert: {template: sine_source, targets: {amplitude_v: 100m}}
+    - insert: {template: difference_amp, ports: {in_p: {net: B1_OUT}, in_n: {net: B2_OUT}}}
+
+- id: ce_amp
+  title: 10 mV sine into a common-emitter amplifier, gain 5
+  steps:
+    - insert: {template: sine_source, targets: {amplitude_v: 10m}}
+    - insert: {template: ce_amp, ports: {in: {net: B1_OUT}}}
+
+- id: emitter_follower
+  title: 1 V sine into an emitter follower
+  steps:
+    - insert: {template: sine_source}
+    - insert: {template: emitter_follower, ports: {in: {net: B1_OUT}}}
+
+- id: divider
+  title: A divider biasing 2.5 V from 5 V
+  steps:
+    - insert: {template: divider_bias}
+
+- id: comparator
+  title: A 100 Hz sine around 2.5 V into a 2.5 V comparator
+  steps:
+    - insert: {template: sine_source, targets: {amplitude_v: "2", freq_hz: "100"}}
+    - ops:
+        - {op: part.set_param, body: {refdes: V1, key: offset, value: "2.5"}}
+    - insert: {template: comparator, ports: {in: {net: B1_OUT}}}
+
+- id: schmitt
+  title: A 100 Hz sine around 3 V into a Schmitt trigger
+  steps:
+    - insert: {template: sine_source, targets: {amplitude_v: "2", freq_hz: "100"}}
+    - ops:
+        - {op: part.set_param, body: {refdes: V1, key: offset, value: "3"}}
+    - insert: {template: schmitt_trigger, ports: {in: {net: B1_OUT}}}
+
+- id: astable
+  title: A 555 astable at 1 kHz, duty 0.6
+  steps:
+    - insert: {template: astable_555}
+
+- id: led_flasher
+  title: A 555 LED flasher at 2 Hz
+  steps:
+    - insert: {template: led_flasher}
+
+- id: reg_7805
+  title: A 7805 regulator from a 9 V rail
+  steps:
+    - insert: {template: reg_7805, ports: {vin: {rail: {net: VIN, volts: 9}}}}
+
+- id: zener
+  title: A 5.1 V Zener regulator from 12 V
+  steps:
+    - insert: {template: zener_regulator, ports: {vin: {rail: {net: VIN, volts: 12}}}}
+
+# ---------------------------------------------------------------- chains
+- id: chain_lp_gain
+  title: 100 mV sine, Sallen-Key low-pass, then a non-inverting amplifier
+  steps:
+    - insert: {template: sine_source, targets: {amplitude_v: 100m}}
+    - insert: {template: sallen_key_lp, ports: {in: {net: B1_OUT}}}
+    - insert: {template: noninverting_amp, ports: {in: {net: B2_OUT}}}
+
+- id: chain_bias_follower
+  title: A divider bias buffered by a voltage follower
+  steps:
+    - insert: {template: divider_bias}
+    - insert: {template: voltage_follower, ports: {in: {net: B1_OUT}}}
+
+# ---------------------------------------------------------------- built from parts (the Phase 1 gate's way)
+- id: parts_rc_buffer
+  title: An RC low-pass from parts, buffered by a TL072 on ±12 V rails
+  steps:
+    - ops:
+        - {op: part.add, body: {refdes: V1, part: vsource_sine, params: {amplitude: "1", frequency: "500"}}}
+        - {op: part.add, body: {refdes: R1, part: resistor_th, params: {resistance: 10k}}}
+        - {op: part.add, body: {refdes: C1, part: cap_film, params: {capacitance: 22n}}}
+        - {op: part.add, body: {refdes: U1, part: opamp_tl072}}
+        - {op: net.connect, body: {net: N1, pins: [V1.P, R1.1]}}
+        - {op: net.connect, body: {net: N2, pins: [R1.2, C1.1, U1.INP_A]}}
+        - {op: net.connect, body: {net: N3, pins: [U1.INM_A, U1.OUT_A]}}
+        - {op: net.connect, body: {net: GND, pins: [V1.N, C1.2], kind: {kind: ground}}}
+        - {op: net.connect, body: {net: VCC, pins: [U1.VCC], kind: {kind: power, volts: 12}}}
+        - {op: net.connect, body: {net: VEE, pins: [U1.VEE], kind: {kind: power, volts: -12}}}
+
+- id: parts_divider
+  title: Two resistors from parts dividing 9 V
+  steps:
+    - ops:
+        - {op: part.add, body: {refdes: R1, part: resistor_th, params: {resistance: 10k}}}
+        - {op: part.add, body: {refdes: R2, part: resistor_th, params: {resistance: 4.7k}}}
+        - {op: net.connect, body: {net: VIN, pins: [R1.1], kind: {kind: power, volts: 9}}}
+        - {op: net.connect, body: {net: N1, pins: [R1.2, R2.1]}}
+        - {op: net.connect, body: {net: GND, pins: [R2.2], kind: {kind: ground}}}
+
+# ---------------------------------------------------------------- broken
+- id: sk_lp_detuned
+  title: The Sallen-Key low-pass after the student changed C2 to 1 nF (fc fails)
+  steps:
+    - insert: {template: sine_source}
+    - insert: {template: sallen_key_lp, ports: {in: {net: B1_OUT}}}
+    - ops:
+        - {op: part.set_param, body: {refdes: C2, key: capacitance, value: 1n}}
+
+- id: noninv_open_feedback
+  title: The non-inverting amplifier with its feedback resistor unwired (ERC)
+  steps:
+    - insert: {template: sine_source, targets: {amplitude_v: 100m}}
+    - insert: {template: noninverting_amp, ports: {in: {net: B1_OUT}}}
+    - ops:
+        - {op: net.disconnect, body: {net: B2_OUT, pins: [R2.2]}}
+
+- id: sk_lp_unsimulated
+  title: The Sallen-Key low-pass before any simulation
+  sim: none
+  steps:
+    - insert: {template: sine_source}
+    - insert: {template: sallen_key_lp, ports: {in: {net: B1_OUT}}}
+
+- id: shorted_source
+  title: A sine source and a 5 V source shorted together (the simulation fails)
+  steps:
+    - ops:
+        - {op: part.add, body: {refdes: V1, part: vsource_sine, params: {amplitude: "1", frequency: 1k}}}
+        - {op: part.add, body: {refdes: V2, part: vsource_dc, params: {voltage: "5"}}}
+        - {op: part.add, body: {refdes: R1, part: resistor_th, params: {resistance: 1k}}}
+        - {op: net.connect, body: {net: N1, pins: [V1.P, V2.P, R1.1]}}
+        - {op: net.connect, body: {net: GND, pins: [V1.N, V2.N, R1.2], kind: {kind: ground}}}

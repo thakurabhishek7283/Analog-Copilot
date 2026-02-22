@@ -14,6 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import run_evals  # noqa: E402,F401  (puts tools/e2e on the path)
+import run_tutor_evals  # noqa: E402,F401  (puts evals/tutor on the path)
 import stack  # noqa: E402
 
 

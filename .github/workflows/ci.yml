@@ -97,8 +97,9 @@ jobs:
           REQUIRE_DOCKER: "1"
           REQUIRE_NGSPICE: "1"
         run: .venv/bin/python -m pytest -q apps/api/tests
-      # The eval harness on scripted replies: metrics, gate, report, and a recorded run replayed.
-      - name: Generation eval harness
+      # The eval harnesses on scripted replies: metrics, gate, report, and a recorded run replayed; the
+      # tutor cases and their frozen circuits still match the registry.
+      - name: Eval harnesses (generation, tutor)
         env:
           REQUIRE_DOCKER: "1"
           REQUIRE_NGSPICE: "1"
@@ -110,6 +111,15 @@ jobs:
         run: >-
           .venv/bin/python evals/run_evals.py --replay evals/golden/cassette.json --gate
           --baseline evals/golden/report.json --out target/evals
+      # The same for the tutor (LLD 15, the Phase 3 gate): the accepted live run (evals/tutor_golden)
+      # replayed, its answers checked again (references, grounding, experiments re-simulated) and gated.
+      - name: Tutor evals gate (replays evals/tutor_golden)
+        if: hashFiles('evals/tutor_golden/cassette.json') != ''
+        env:
+          REQUIRE_NGSPICE: "1"
+        run: >-
+          .venv/bin/python evals/run_tutor_evals.py --replay evals/tutor_golden/cassette.json --gate
+          --baseline evals/tutor_golden/report.json --out target/tutor-evals
       - name: circuit-core browser build (@tutor/core for Vite)
         run: node crates/circuit-core-wasm/build.mjs
       # Store, layout, schematic and sim worker against the real core, registry bundle and
