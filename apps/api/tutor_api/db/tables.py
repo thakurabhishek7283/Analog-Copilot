@@ -143,6 +143,11 @@ asks = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("kind", Text, nullable=False, server_default="ask"),
     Column("from_rev", BigInteger),
+    Column("level", Text),
+    Column("effort", Text),  # low | high; null: the provider's default
+    Column("context", Text),  # the core's slice or change summary, as the model got it
+    Column("first_token_ms", Integer),  # from the request to the first answer text
+    Column("ms", Integer),  # to the complete answer
 )
 
 templates = Table(

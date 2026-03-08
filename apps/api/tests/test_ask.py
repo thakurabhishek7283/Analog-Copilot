@@ -89,6 +89,9 @@ async def test_an_answer_streams_is_read_against_the_circuit_and_saved(http, ali
     assert (row.refs_valid, row.refs_invalid, row.model, row.feedback) == (3, 1, "fake-small", None)
     assert str(row.user_id) == user_id(alice) and str(row.project_id) == pid
     assert (row.in_tokens, row.out_tokens) == (done["usage"]["in_tokens"], done["usage"]["out_tokens"])
+    assert (row.level, row.effort) == ("beginner", None)
+    assert row.context.startswith("SIM: ok\nSELECTED: part R1") and row.context in call.user, "what the model was given"
+    assert 0 <= row.first_token_ms <= row.ms
 
 
 async def test_level_mode_and_effort_reach_the_model(http, alice, app, tutor_llm):
@@ -101,7 +104,7 @@ async def test_level_mode_and_effort_reach_the_model(http, alice, app, tutor_llm
     assert call.effort == "high", "the learner picks how hard a reasoning model thinks"
     assert "SELECTED: nothing" in call.user
     row = await saved(app, events[-1]["data"]["ask_id"])
-    assert (row.mode, row.selection) == ("socratic", None)
+    assert (row.mode, row.selection, row.level, row.effort) == ("socratic", None, "advanced", "high")
 
 
 async def test_the_answer_is_about_the_circuit_at_the_asked_rev(http, alice, app, tutor_llm):
@@ -232,6 +235,7 @@ async def test_what_changed_explains_the_edit_from_both_simulations_and_is_saved
     assert (row.kind, row.from_rev, row.rev, row.question, row.selection, row.mode) == (
         "what_changed", before, after, "What changed?", None, "socratic")
     assert (row.answer, row.refs_valid, row.model) == (reply, 3, "fake-small")
+    assert (row.level, row.effort) == ("beginner", "high") and row.context.startswith(f"EDIT (rev {before} → {after}):")
     r = await http.post(f"/v1/asks/{done['ask_id']}/feedback", json={"feedback": 1}, headers=alice)
     assert r.status_code == 204 and (await saved(app, done["ask_id"])).feedback == 1
 

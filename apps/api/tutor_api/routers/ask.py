@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -48,7 +49,7 @@ class Prepared:
     session: cc.Session  # the circuit the answer is read against, at `rev`
     llm: LlmRequest
     hazards: list[str]
-    row: dict[str, Any]  # the rest of its `asks` row: kind, rev, from_rev, selection, question, mode
+    row: dict[str, Any]  # the rest of its `asks` row: kind, rev, from_rev, selection, question, mode, level, effort, context
 
 
 def available(request: Request) -> Tutor:
@@ -77,7 +78,7 @@ async def prepared_ask(project_id: str, body: AskRequest, request: Request, user
     req = body.model_copy(update={"question": question})
     context = tutor.context(session, req)
     saved = {"kind": "ask", "rev": req.rev, "from_rev": None, "question": question, "mode": str(req.mode or "explain"),
-             "selection": req.selection.model_dump(mode="json") if req.selection else None}
+             "selection": req.selection.model_dump(mode="json") if req.selection else None, **details(req, context)}
     return Prepared(tutor, row.id, user, session, tutor.request(req, context), context["hazards"], saved)
 
 
@@ -93,8 +94,14 @@ async def prepared_change(project_id: str, body: ChangeRequest, request: Request
         after = await projects.load_session(conn, st.regs, row, at=body.rev)
     context = tutor.changes(before, after, body)
     saved = {"kind": "what_changed", "rev": body.rev, "from_rev": body.from_rev, "question": WHAT_CHANGED,
-             "mode": str(body.mode or "explain"), "selection": None}
+             "mode": str(body.mode or "explain"), "selection": None, **details(body, context)}
     return Prepared(tutor, row.id, user, after, tutor.change_request(body, context), context["hazards"], saved)
+
+
+def details(req: AskRequest | ChangeRequest, context: dict[str, Any]) -> dict[str, Any]:
+    """What the learner chose and what the model was given, kept with the answer (LLD §11)."""
+    return {"level": str(req.level or "beginner"), "effort": str(req.effort) if req.effort else None,
+            "context": context["text"]}
 
 
 def error(code: str, message: str, retryable: bool) -> ServerSentEvent:
@@ -105,6 +112,8 @@ async def answered(p: Prepared, request: Request) -> AsyncIterator[ServerSentEve
     """The model's answer as `answer.delta` events, saved, then `answer.done`; or one `error`."""
     st = request.app.state
     deltas: asyncio.Queue[str | None] = asyncio.Queue()
+    started = time.perf_counter()
+    first: float | None = None
 
     async def answer() -> Asked:
         async with asyncio.timeout(st.settings.ask_timeout_s):
@@ -114,6 +123,7 @@ async def answered(p: Prepared, request: Request) -> AsyncIterator[ServerSentEve
     work.add_done_callback(lambda _: deltas.put_nowait(None))
     try:
         while (text := await deltas.get()) is not None:
+            first = first or time.perf_counter()
             yield ServerSentEvent(event="answer.delta", data={"text": text})
         asked = work.result()
     except TimeoutError:
@@ -131,12 +141,14 @@ async def answered(p: Prepared, request: Request) -> AsyncIterator[ServerSentEve
 
     ask_id = uuid.uuid4()
     answer = asked.answer
+    elapsed = {"first_token_ms": round((first - started) * 1e3) if first else None,
+               "ms": round((time.perf_counter() - started) * 1e3)}
     async with st.engine.begin() as conn:
         await conn.execute(insert(asks).values(
             id=ask_id, project_id=p.project_id, user_id=p.user, answer=asked.text,
             refs_valid=answer["refs_valid"], refs_invalid=answer["refs_invalid"], model=asked.model,
             in_tokens=asked.usage.in_tokens, out_tokens=asked.usage.out_tokens, created_at=datetime.now(UTC),
-            **p.row,
+            **p.row, **elapsed,
         ))
     usage = {"in_tokens": asked.usage.in_tokens, "out_tokens": asked.usage.out_tokens}
     yield ServerSentEvent(event="answer.done", data={"ask_id": str(ask_id), "answer": answer, "usage": usage})

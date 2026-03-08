@@ -16,3 +16,4 @@ __pycache__/
 /apps/web/test-results/
 /apps/web/playwright-report/
 /evals/results/
+/evals/sessions/results/

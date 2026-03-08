@@ -8,7 +8,9 @@ native ngspice, and the real app (`create_app`) under uvicorn, generating and an
 
 With `--llm-from FILE` it generates with the provider that file's LLM_* settings name (variables already set
 win), for trying the editor against a real model without building the compose images. The databases
-live as long as the process.
+live as long as the process, unless `--database-url` and `--redis-url` name databases that outlive it
+(compose's: `docker compose up -d postgres redis`, which builds nothing), as the student test sessions
+do (evals/sessions).
 
 Ready when `GET /healthz` answers. Stops on Ctrl+C or SIGTERM; the containers go with the process
 (testcontainers' reaper removes them if it is killed).
@@ -53,6 +55,16 @@ def redis():
 
     ready = LogMessageWaitStrategy("Ready to accept connections").with_startup_timeout(60)
     return DockerContainer("redis:7-alpine").with_exposed_ports(6379).waiting_for(ready)
+
+
+@contextlib.contextmanager
+def existing(database_url: str, redis_url: str) -> Iterator[tuple[str, str]]:
+    """Databases this process does not own (they outlive it), migrated to the current schema."""
+    from tutor_api.db import migrate
+
+    migrate.wait_until_ready(database_url)
+    migrate.upgrade(database_url)
+    yield database_url, redis_url
 
 
 @contextlib.contextmanager
@@ -148,7 +160,12 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=int(os.environ.get("E2E_API_PORT") or 8100))
     ap.add_argument("--llm-from", type=Path, metavar="ENV_FILE",
                     help="generate with the provider this file's LLM_* settings name, not the fake script")
+    ap.add_argument("--database-url", help="a Postgres that outlives this process, e.g. compose's: "
+                    "postgresql+asyncpg://tutor:tutor@127.0.0.1:5432/tutor (needs --redis-url)")
+    ap.add_argument("--redis-url", help="its Redis, e.g. redis://127.0.0.1:6379/0")
     args = ap.parse_args()
+    if bool(args.database_url) != bool(args.redis_url):
+        ap.error("--database-url and --redis-url go together")
     if args.llm_from:
         for line in args.llm_from.read_text(encoding="utf-8").splitlines():
             key, sep, value = line.strip().partition("=")
@@ -160,7 +177,8 @@ def main() -> None:
         os.environ.setdefault("LLM_FAKE_SCRIPT", str(REPO / "apps/api/fake/script.json"))
         llm = f"LLM_PROVIDER=fake, {os.environ['LLM_FAKE_SCRIPT']}"
 
-    with databases() as (database_url, redis_url), contextlib.suppress(KeyboardInterrupt):
+    dbs = existing(args.database_url, args.redis_url) if args.database_url else databases()
+    with dbs as (database_url, redis_url), contextlib.suppress(KeyboardInterrupt):
         asyncio.run(serve(args.port, database_url, redis_url, llm))
 
 
