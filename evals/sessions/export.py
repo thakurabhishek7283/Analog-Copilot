@@ -4,7 +4,8 @@ student test sessions"; how to run them is in README.md).
     python evals/sessions/export.py [--database-url URL] [--since 2026-03-11T09:00] [--until ...] [--out DIR]
 
 Every answer in `asks` in the window, grouped by session (one anonymous user per browser profile, so
-one per student), with the checks the tutor evals make: references (as saved), numeric grounding
+one per student), with the checks the tutor evals make: references (as saved, and the invalid ones
+named by reading the answer against the circuit at its rev, folded from the op log), numeric grounding
 against the context the model was given (`asks.context`), whether its experiment was tried (the
 student's own ops after the answer equal the suggested ones), and the student's Yes/No. Writes
 `answers.csv` (one row per answer, for reading every answer) and `sessions.md` (per session and in
@@ -71,13 +72,30 @@ async def load(database_url: str, since: datetime | None, until: datetime | None
     return rows, log
 
 
+def circuit_at(folds: dict[Any, cc.Session], reg: cc.Registry, ops_log: list[Any], project: Any, rev: int) -> cc.Session:
+    """The project's circuit at `rev`, folded from its op log; kept per project, since answers come
+    in time order and revs only grow."""
+    s = folds.get(project)
+    if s is None or s.rev > rev:
+        s = folds[project] = cc.Session(reg)
+    for o in ops_log:
+        if s.rev < o.seq <= rev:
+            cc.unwrap(s.apply(json.dumps(o.op)))
+    return s
+
+
+def ref_text(ref: dict[str, Any]) -> str:
+    return f"[{ref['id']}]" if ref["kind"] == "part" else f"[{ref['kind']}:{ref['id']}]"
+
+
 def answers(rows: list[Any], log: dict[Any, list[Any]], reg: cc.Registry) -> list[dict[str, Any]]:
-    reader = cc.Session(reg)  # only to cut the `try` block from the text; its references are saved
+    folds: dict[Any, cc.Session] = {}
     sessions: dict[Any, str] = {}
     out = []
     for r in rows:
         session = sessions.setdefault(r.user_id, f"S{len(sessions) + 1:02d}")
-        a = json.loads(reader.read_answer(r.answer))
+        a = json.loads(circuit_at(folds, reg, log[r.project_id], r.project_id, r.rev).read_answer(r.answer))
+        invalid = dict.fromkeys(ref_text(ref) for ref in a["refs"] if not ref["valid"])
         t = a.get("try")
         later = [o.op for o in log[r.project_id] if o.rev_after > r.rev and o.author == "user" and o.created_at >= r.created_at]
         g = ground(a["body"], r.context, r.question if r.kind == "ask" else "") if r.context else None
@@ -85,11 +103,12 @@ def answers(rows: list[Any], log: dict[Any, list[Any]], reg: cc.Registry) -> lis
             "session": session, "time": r.created_at.astimezone().isoformat(timespec="seconds"), "project": str(r.project_id),
             "kind": r.kind, "level": r.level, "mode": r.mode, "effort": r.effort or "normal", "question": r.question,
             "selection": json.dumps(r.selection) if r.selection else "", "answer": r.answer,
-            "refs_valid": r.refs_valid, "refs_invalid": r.refs_invalid,
+            "refs_valid": r.refs_valid, "refs_invalid": r.refs_invalid, "invalid_refs": " ".join(invalid),
             "quantities": g.quantities if g else "", "ungrounded": "; ".join(f"{u['text']} ({u['why']})" for u in g.ungrounded) if g else "",
             "try": "yes" if t else "", "try_predict": (t or {}).get("predict", ""),
             "try_applied": ("yes" if tried(t["ops"], later) else "no") if t else "",
-            "feedback": {1: "yes", -1: "no"}.get(r.feedback, ""), "first_token_ms": r.first_token_ms or "", "ms": r.ms or "",
+            "feedback": {1: "yes", -1: "no"}.get(r.feedback, ""),
+            "first_token_ms": "" if r.first_token_ms is None else r.first_token_ms, "ms": "" if r.ms is None else r.ms,
             "model": r.model or "", "in_tokens": r.in_tokens, "out_tokens": r.out_tokens,
         })
     return out
@@ -132,7 +151,8 @@ def markdown(rows: list[dict[str, Any]], window: str) -> str:
         if hits:
             out += ["", f"## {title} ({len(hits)})", ""]
             for r in hits:
-                extra = f" — {r['ungrounded']}" if title == "Ungrounded numbers" else ""
+                extra = {"Invalid references": f" — {r['invalid_refs']}",
+                         "Ungrounded numbers": f" — {r['ungrounded']}"}.get(title, "")
                 out.append(f"- {r['session']} {r['time']} ({r['kind']}): “{r['question']}”{extra}")
     return "\n".join(out) + "\n"
 

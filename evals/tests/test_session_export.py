@@ -65,10 +65,12 @@ def test_the_export_reads_each_answer_with_its_checks(databases, tmp_path):
     assert ask["ungrounded"] == "42 kHz (not in the context)" and ask["quantities"] == 2
     assert (ask["try"], ask["try_applied"], ask["try_predict"]) == ("yes", "yes", TRY["predict"])
     assert (changed["kind"], changed["refs_invalid"], changed["try"], changed["effort"]) == ("what_changed", 1, "", "normal")
+    assert (ask["invalid_refs"], changed["invalid_refs"]) == ("", "[R7]"), "named from the circuit at the answer's rev"
     assert ask["session"] == changed["session"] and int(ask["ms"]) >= int(ask["first_token_ms"]) >= 0
 
     md = export.markdown(mine, "test")
     assert "| **All** | 2 | 1 | 0 | 75.0% (4) | 50.0% | 1/1 | 0.0% (1) |" in md
     assert "## Invalid references (1)" in md and "## Answers marked not helpful (1)" in md
+    assert "(what_changed): “What changed?” — [R7]" in md
     assert export.main(["--database-url", databases[0], "--out", str(tmp_path)]) == 0
     assert (tmp_path / "answers.csv").read_text(encoding="utf-8-sig").startswith("session,time,project,kind")
