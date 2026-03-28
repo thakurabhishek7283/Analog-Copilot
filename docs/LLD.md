@@ -654,6 +654,14 @@ As built (Ask in the editor, `apps/web/src/tutor`, `app/AskPanel.tsx`, Phase 3 p
 - Try-it card: the ops in words (`R1 resistance → 100k`), the prediction, and Try it. That applies the ops as one undo step labelled `Try: <prediction>`, waits for the simulation and shows each spec check that moved, before → after, next to the prediction (predict, then test). With no check moved it points at the scope. "Undo it" undoes the step while it is still the last change. A suggestion with `problems` is shown with them and cannot be applied. Feedback is Yes or No under each answer (a later click replaces it).
 - Browser tests (`e2e/ask.spec.ts`, project `api`): the scripted model answers by a word in the question (`e2e-ask`, `e2e-ask-fail`, `e2e-ask-slow`; anything else gets a note that the tutor is scripted). `tools/e2e/stack.py` builds the app with the tutor on the same gateway.
 
+As built (panel layout, `app/Workspace.tsx`, `app/panels.ts`): the fixed grid (palette 200 px, side column 300 px with the Ask panel capped at half its height) left the tutor one answer's room on a laptop, and the user found the editor too cluttered to run the student sessions on. The learner now lays it out:
+
+- Drag handles between the palette, the schematic and the side column, above the scope, and between the side panes (inspector, Ask the tutor, lesson). They take no space: a 9 px grab area over the border, an accent line on hover. Arrow keys move a focused handle 16 px; a double click puts its size back. The side column never leaves the schematic less than 340 px.
+- Each side pane and the palette collapse to their headers (the palette to a strip). The tutor fills whatever height the others leave, at least 220 px. A collapsed pane stays mounted, so a half-written question survives, and Insert block opens a collapsed inspector for its form.
+- "Focus" in the tutor's header widens the side column to at least 45% of the window and collapses the palette, inspector and lesson; "Exit focus" puts the earlier layout back.
+- The layout is per browser (localStorage, read defensively, saved 150 ms after it stops changing), never synced with the project. "Reset layout" appears in the toolbar once it differs from the defaults: palette 200 px, side column 400 px, scope 220 px, inspector 200 px, lesson 140 px. Below 900 px wide the stacked layouts are unchanged and the column handles are hidden. No new dependency.
+- The schematic refits when its panel is resized, until the user pans or zooms (Fit resumes it). Tests: `panels.test.ts` (7), `e2e/layout.spec.ts` (2, project `local`: drag, keyboard, collapse, reload, Insert block into a collapsed inspector, Focus, Reset, double click).
+
 ## 11. Persistence: Postgres schema
 
 Projects are event-sourced: an append-only `ops` table plus a periodic snapshot. Every generation attempt is stored, failures included, because that table becomes your eval set and future fine-tuning data.

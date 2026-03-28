@@ -6,6 +6,7 @@ import type { Category, Quantity, TemplateDef } from "../gen/contract.ts";
 import type { Tool } from "../store/uiStore.ts";
 import { useCircuit, useEditor, useUi } from "./editorContext.ts";
 import { ROLE_ORDER, roleTitle } from "./InsertBlock.tsx";
+import { panels } from "./panels.ts";
 
 const CATEGORY_TITLES: Record<Category, string> = {
   V: "Sources",
@@ -36,7 +37,12 @@ export function Palette() {
 
   return (
     <nav className="palette" aria-label="Tools and parts">
-      <h3>Tools</h3>
+      <div className="palette-head">
+        <h3>Tools</h3>
+        <button type="button" className="pane-action" aria-label="Hide tools and parts" title="Hide tools and parts" onClick={() => panels.getState().toggle("palette", true)}>
+          «
+        </button>
+      </div>
       <div className="tools">
         {toolButton({ kind: "select" }, "Select", "Select and drag parts (V, Esc)")}
         {toolButton({ kind: "wire", from: null }, "Wire", "Click a pin, then another pin or a wire (W)")}

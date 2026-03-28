@@ -107,7 +107,6 @@ export function AskPanel() {
 
   return (
     <section className="ask" aria-label="Ask the tutor">
-      <h3>Ask the tutor</h3>
       {entries.length > 0 && (
         <div className="ask-thread">
           {entries.map((e) => (

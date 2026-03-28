@@ -5,17 +5,13 @@ import { ApiClient, ApiFailure, isOffline, localTokenStore } from "../api/client
 import { API_URL } from "../config.ts";
 import type { Circuit, ProjectSnapshot } from "../gen/contract.ts";
 import { indexedDbPendingStore } from "../store/pending.ts";
-import { Schematic, SymbolDefs } from "../views/schematic/Schematic.tsx";
-import { Scope } from "../views/scope/Scope.tsx";
+import { SymbolDefs } from "../views/schematic/Schematic.tsx";
 import { bindShortcuts } from "./commands.ts";
 import { type Editor, openEditor } from "./editor.ts";
-import { AskPanel } from "./AskPanel.tsx";
 import { EditorContext, type EditorContextValue, useCircuit, useEditor, useGen, useProject, useUi } from "./editorContext.ts";
-import { GeneratePanel } from "./GeneratePanel.tsx";
-import { Inspector } from "./Inspector.tsx";
-import { LessonPanel } from "./LessonPanel.tsx";
-import { Palette } from "./Palette.tsx";
+import { isDefaultLayout, panels, usePanels } from "./panels.ts";
 import { type ProjectSession, openProject } from "./project.ts";
+import { Workspace } from "./Workspace.tsx";
 
 /** An empty circuit on the demo's registry version. */
 function emptySnapshot(): string {
@@ -174,19 +170,7 @@ export function App() {
             </button>
           </div>
         )}
-        <main>
-          <Palette />
-          <div className="center">
-            <GeneratePanel />
-            <Schematic />
-            <Scope />
-          </div>
-          <div className="side">
-            <Inspector />
-            <AskPanel />
-            <LessonPanel />
-          </div>
-        </main>
+        <Workspace />
       </div>
     </EditorContext.Provider>
   );
@@ -244,6 +228,7 @@ function Toolbar({ demo, onRetryServer }: { demo: boolean; onRetryServer: () => 
   const overlays = useUi((s) => s.overlays);
   const tool = useUi((s) => s.tool);
   const issues = useCircuit((s) => s.erc.length);
+  const customLayout = usePanels((s) => !isDefaultLayout(s));
 
   const ok = sim.status === "ok" || sim.status === "pending" || sim.status === "running" || sim.status === "idle";
   const toolHint =
@@ -283,6 +268,11 @@ function Toolbar({ demo, onRetryServer }: { demo: boolean; onRetryServer: () => 
           Currents
         </button>
       </div>
+      {customLayout && (
+        <button type="button" className="link reset-layout" title="Put the panels back where they started" onClick={() => panels.getState().reset()}>
+          Reset layout
+        </button>
+      )}
       {lastError ? <span className="notice">{lastError.message}</span> : toolHint && <span className="tool-hint">{toolHint}</span>}
       <span className={ok ? "sim-status" : "sim-status bad"} title={sim.message ?? sim.result?.log.split("\n").slice(-3).join("\n")}>
         {issues > 0 && (

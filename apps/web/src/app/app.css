@@ -150,27 +150,121 @@ button:disabled {
   background: var(--bad);
 }
 
+/* The learner sizes the columns (Workspace.tsx sets the variables); the side column never leaves
+   the schematic less than 340 px. */
 main {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) 300px;
+  grid-template-columns:
+    var(--palette-w, 200px) auto minmax(340px, 1fr) auto
+    min(var(--side-w, 400px), calc(100vw - var(--palette-w, 200px) - 340px));
+  grid-template-areas: "palette lsplit center rsplit side";
   min-height: 0;
 }
 
+main > .palette {
+  grid-area: palette;
+}
+
+.col-split.left {
+  grid-area: lsplit;
+}
+
 .center {
+  grid-area: center;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   min-width: 0;
   min-height: 0;
 }
 
+.col-split.right {
+  grid-area: rsplit;
+}
+
+main > .side {
+  grid-area: side;
+}
+
+/* A drag handle takes no space: a 9 px grab area over the border, an accent line on hover. */
+.splitter {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  outline: none;
+  touch-action: none;
+}
+
+.splitter::before,
+.splitter::after {
+  content: "";
+  position: absolute;
+}
+
+.splitter::after {
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.splitter[aria-orientation="vertical"] {
+  width: 0;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.splitter[aria-orientation="vertical"]::before {
+  inset: 0 -4px;
+}
+
+.splitter[aria-orientation="vertical"]::after {
+  inset: 0 -1px;
+}
+
+.splitter[aria-orientation="horizontal"] {
+  height: 0;
+  cursor: row-resize;
+}
+
+.splitter[aria-orientation="horizontal"]::before {
+  inset: -4px 0;
+}
+
+.splitter[aria-orientation="horizontal"]::after {
+  inset: -1px 0;
+}
+
+.splitter:hover::after,
+.splitter:focus-visible::after,
+.splitter:active::after {
+  opacity: 1;
+}
+
+html[data-resizing] {
+  user-select: none;
+}
+
+html[data-resizing="x"] * {
+  cursor: col-resize !important;
+}
+
+html[data-resizing="y"] * {
+  cursor: row-resize !important;
+}
+
 @media (max-width: 900px) {
   main {
-    grid-template-columns: 160px minmax(0, 1fr);
+    grid-template-columns: min(var(--palette-w, 200px), 160px) minmax(0, 1fr);
     grid-template-rows: 1fr auto;
+    grid-template-areas:
+      "palette center"
+      "side side";
+  }
+
+  .col-split {
+    display: none;
   }
 
   .side {
-    grid-column: 1 / -1;
     border-left: none;
     border-top: 1px solid var(--line);
     max-height: 35vh;
@@ -181,6 +275,10 @@ main {
   main {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "palette"
+      "center"
+      "side";
   }
 
   .palette {
@@ -246,6 +344,21 @@ input[aria-invalid="true"] {
   background: var(--panel);
   padding: 8px 10px 16px;
   overflow: auto;
+}
+
+.palette-head {
+  display: flex;
+  align-items: center;
+}
+
+.palette.collapsed {
+  padding: 8px 4px;
+  overflow: hidden;
+}
+
+.palette.collapsed button {
+  width: 100%;
+  padding: 4px 0;
 }
 
 .palette h3 {
@@ -733,7 +846,7 @@ button.primary {
   border-top: 1px solid var(--line);
   background: var(--panel);
   display: grid;
-  grid-template-rows: auto 220px;
+  grid-template-rows: auto min(var(--scope-h, 220px), 65vh);
   min-width: 0;
 }
 
@@ -835,15 +948,106 @@ button.primary {
 .side {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
   border-left: 1px solid var(--line);
   background: var(--panel);
 }
 
-.side .inspector {
+/* Side panes (Workspace.tsx): each collapses to its header; the tutor fills what the others leave. */
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+}
+
+.pane:first-child {
+  border-top: none;
+}
+
+.pane.fill {
+  flex: 1 1 0;
+  min-height: 120px;
+}
+
+.pane.fill[data-pane="ask"] {
+  min-height: 220px;
+}
+
+.pane.sized {
+  flex-grow: 0;
+  flex-shrink: 1;
+  min-height: 60px;
+}
+
+.pane.collapsed {
+  flex: none;
+}
+
+.pane-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 2px 16px;
+}
+
+.pane-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.pane-toggle:hover {
+  color: var(--text);
+}
+
+.pane-toggle .chevron {
+  width: 10px;
+  font-size: 10px;
+}
+
+.pane-action {
+  margin-left: auto;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+.pane-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane-body[hidden] {
+  display: none;
+}
+
+.pane-body > * {
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.side .inspector {
+  overflow: auto;
   border-left: none;
+  padding: 4px 16px 16px;
+}
+
+.reset-layout {
+  white-space: nowrap;
 }
 
 fieldset.plain {
@@ -993,20 +1197,10 @@ button.primary {
 }
 
 .lesson {
-  flex: 0 1 auto;
-  max-height: 45%;
   overflow: auto;
-  border-top: 1px solid var(--line);
-  padding: 8px 16px 12px;
+  padding: 2px 16px 12px;
 }
 
-.lesson h3 {
-  margin: 0 0 6px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
 
 .lesson ol {
   list-style: none;
@@ -1126,24 +1320,13 @@ button.primary {
 }
 
 /* Ask (LLD §9): the thread, reference chips, experiments and the question form. */
-/* Never shorter than its heading and form (min-height: auto); the thread scrolls, and the lesson
-   below gives way first. */
+/* It fills its pane: the thread scrolls, the question form stays at the bottom. */
 .ask {
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
-  max-height: 50%;
-  border-top: 1px solid var(--line);
-  padding: 8px 16px 10px;
+  padding: 2px 16px 10px;
 }
 
-.ask h3 {
-  margin: 0 0 6px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
 
 .ask-thread {
   flex: 1 1 auto;
@@ -1303,6 +1486,7 @@ button.ref-chip:hover:not(:disabled) {
 
 .ask form {
   flex: none;
+  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;

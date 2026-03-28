@@ -11,18 +11,24 @@ interface Line {
   text: string;
 }
 
-export function LessonPanel() {
-  const { store } = useEditor();
+/** The saved lesson, then a running job's narration. */
+export function useLessonLines(): Line[] {
   const lesson = useGen((s) => s.lesson);
   const live = useGen((s) => (s.phase === "running" || s.phase === "starting" ? s.narration : null));
+  return [
+    ...lesson.map((e) => ({ key: `s${e.seq}`, block: e.block ?? null, kind: e.kind, text: e.text })),
+    ...(live ?? []).map((n, i) => ({ key: `l${i}`, block: n.block, kind: "narration" as const, text: n.text.trim() })),
+  ];
+}
+
+export function LessonPanel() {
+  const { store } = useEditor();
+  const live = useGen((s) => s.phase === "running" || s.phase === "starting");
   const speaking = useGen((s) => s.speaking);
   const blocks = useCircuit((s) => s.blocks);
   const end = useRef<HTMLDivElement>(null);
 
-  const lines: Line[] = [
-    ...lesson.map((e) => ({ key: `s${e.seq}`, block: e.block ?? null, kind: e.kind, text: e.text })),
-    ...(live ?? []).map((n, i) => ({ key: `l${i}`, block: n.block, kind: "narration" as const, text: n.text.trim() })),
-  ];
+  const lines = useLessonLines();
   const count = lines.length;
   const lastText = lines.at(-1)?.text;
 
@@ -33,7 +39,6 @@ export function LessonPanel() {
   if (!count) return null;
   return (
     <section className="lesson" aria-label="Lesson">
-      <h3>Lesson</h3>
       <ol>
         {lines.map((l) => (
           <li key={l.key} data-kind={l.kind} className={l.block && l.block === speaking && live ? "speaking" : undefined}>

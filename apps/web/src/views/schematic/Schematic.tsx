@@ -425,6 +425,17 @@ export function Schematic() {
   useEffect(() => {
     if (view && autoFit.current && !drag.current) fitView();
   }, [view, bench]);
+  // A resized panel refits too, until the user takes over the view.
+  const fitLatest = useRef(fitView);
+  fitLatest.current = fitView;
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (autoFit.current && !drag.current) fitLatest.current();
+    });
+    ro.observe(svgRef.current!);
+    return () => ro.disconnect();
+  }, []);
 
   // A new layout has a dropped part in place: clear the drag offsets.
   useEffect(() => {
