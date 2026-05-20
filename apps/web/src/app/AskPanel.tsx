@@ -6,8 +6,9 @@
 // simulation before and after it. Text is rendered as text, never as HTML (LLD §14).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
-import type { Answer, LearnerLevel, ReasoningEffort, Ref, Selection } from "../gen/contract.ts";
+import type { Answer, CheckResult, LearnerLevel, ReasoningEffort, Ref, Selection } from "../gen/contract.ts";
 import { changedChecks, describeOp, segments } from "../tutor/answer.ts";
+import { prediction } from "../tutor/predict.ts";
 import { type Change, type SimHistory, changeAt, changeName } from "../tutor/simHistory.ts";
 import type { AskEntry } from "../tutor/tutorStore.ts";
 import { useCircuit, useEditor, useTutor } from "./editorContext.ts";
@@ -270,6 +271,16 @@ function TryCard({ entry }: { entry: AskEntry }) {
   const [refused, setRefused] = useState<string | null>(null);
   const changes = trial?.after ? changedChecks(trial.before, trial.after) : [];
   const blocked = suggestion.problems.length > 0;
+  const blocks = useCircuit((s) => s.blocks);
+  const verdict = useMemo(() => {
+    if (!trial?.after) return null;
+    // A source block's checks measure the stimulus, not what the circuit did with it.
+    const response = (cs: CheckResult[]) => cs.filter((c) => blocks[c.block]?.role !== "source");
+    const p = prediction(suggestion.predict, response(trial.before), response(trial.after));
+    if (p.held === null) return null;
+    const measured = trial.after.find((c) => `${c.block} ${c.name}` === p.check)?.measured_display;
+    return { ...p, shown: measured ?? String(p.measured) };
+  }, [trial, suggestion.predict, blocks]);
 
   return (
     <div className="try-card" data-state={trial?.state ?? (blocked ? "blocked" : "ready")}>
@@ -298,6 +309,7 @@ function TryCard({ entry }: { entry: AskEntry }) {
                   <td className="num">{c.before}</td>
                   <td aria-hidden="true">→</td>
                   <td className="num now">{c.after}</td>
+                  <td className="target">{c.pass ? "" : `target ${c.target}`}</td>
                 </tr>
               ))}
             </tbody>
@@ -305,6 +317,11 @@ function TryCard({ entry }: { entry: AskEntry }) {
         ) : (
           <p className="muted">No spec check changed: compare the scope and the values on the schematic.</p>
         )
+      )}
+      {trial?.state !== "applied" && verdict && (
+        <p className={`verdict ${verdict.held ? "held" : "missed"}`}>
+          {verdict.held ? "✓ Prediction held" : "Prediction missed"}: predicted {verdict.number}, measured {verdict.shown}.
+        </p>
       )}
       {trial?.state === "undone" && <p className="muted">Undone.</p>}
       {refused && <p className="ask-error">{refused}</p>}

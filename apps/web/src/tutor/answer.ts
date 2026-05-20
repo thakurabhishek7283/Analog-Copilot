@@ -57,6 +57,9 @@ export interface CheckChange {
   label: string;
   before: string;
   after: string;
+  /** Whether it meets its target after the change, and the target. */
+  pass: boolean;
+  target: string;
 }
 
 const shown = (c: CheckResult | undefined) => c?.measured_display ?? "—";
@@ -67,5 +70,5 @@ export function changedChecks(before: CheckResult[], after: CheckResult[]): Chec
   const was = new Map(before.map((c) => [key(c), c]));
   return after
     .filter((c) => shown(was.get(key(c))) !== shown(c))
-    .map((c) => ({ block: c.block, name: c.name, label: c.label, before: shown(was.get(key(c))), after: shown(c) }));
+    .map((c) => ({ block: c.block, name: c.name, label: c.label, before: shown(was.get(key(c))), after: shown(c), pass: c.pass, target: c.target_display }));
 }

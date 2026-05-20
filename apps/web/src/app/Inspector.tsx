@@ -6,7 +6,8 @@ import type { CheckResult, ErcIssue, ParamDef, Quantity } from "../gen/contract.
 import type { Selection } from "../store/circuitStore.ts";
 import { formatSi, formatVolts } from "../views/schematic/labels.ts";
 import { rotatePart } from "./commands.ts";
-import { useCircuit, useEditor, useUi } from "./editorContext.ts";
+import { checkKey } from "../tutor/predict.ts";
+import { useCircuit, useEditor, useRetuned, useUi } from "./editorContext.ts";
 import { InsertBlockPanel } from "./InsertBlock.tsx";
 
 export function Inspector() {
@@ -234,6 +235,7 @@ function BlockPanel({ id }: { id: string }) {
   const voltages = useCircuit((s) => s.sim.voltages);
   const checks = useCircuit((s) => s.sim.checks);
   const status = useCircuit((s) => s.sim.status);
+  const retuned = useRetuned();
   if (!block) return null;
   const template = block.template ? registry.templates?.[block.template] : undefined;
   const mine = (checks ?? []).filter((c) => c.block === id);
@@ -249,13 +251,19 @@ function BlockPanel({ id }: { id: string }) {
           <table className="checks" aria-label="Spec checks">
             <tbody>
               {mine.map((c) => (
-                <tr key={c.name} data-check={c.name} data-pass={c.pass}>
+                <tr key={c.name} data-check={c.name} data-pass={c.pass} data-retuned={retuned.has(checkKey(c)) || undefined}>
                   <td>{c.label}</td>
                   <td className="num">
                     {c.target_display} ±{c.tol_pct}%
                   </td>
                   <td className="num">{c.measured_display ?? "—"}</td>
-                  <td className={checkClass(c)}>{c.pass ? "✓" : c.measured_display ? "✗" : "?"}</td>
+                  {retuned.has(checkKey(c)) ? (
+                    <td className="check retuned" title="Your experiment moved it off the target on purpose">
+                      retuned
+                    </td>
+                  ) : (
+                    <td className={checkClass(c)}>{c.pass ? "✓" : c.measured_display ? "✗" : "?"}</td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -269,7 +277,7 @@ function BlockPanel({ id }: { id: string }) {
               ))}
             </ul>
           )}
-          {mine.some((c) => !c.pass && c.measured_display) && status === "ok" && (
+          {mine.some((c) => !c.pass && c.measured_display && !retuned.has(checkKey(c))) && status === "ok" && (
             <p className="hint">A check fails when the measured value is outside its tolerance: changed parts, or a heavy load, move it.</p>
           )}
         </>

@@ -598,6 +598,10 @@ input[aria-invalid="true"] {
   fill: var(--bad);
 }
 
+.block .badge.retuned {
+  fill: var(--wire);
+}
+
 .block .badge.unknown {
   fill: var(--muted);
 }
@@ -729,6 +733,11 @@ input[aria-invalid="true"] {
 
 .inspector .check.fail {
   color: var(--bad);
+}
+
+.inspector .check.retuned {
+  color: var(--wire);
+  font-size: 11px;
 }
 
 .inspector .check.unknown,
@@ -1465,7 +1474,21 @@ button.ref-chip:hover:not(:disabled) {
 
 .try-card .measured td.now {
   font-weight: 600;
-  color: var(--accent);
+}
+
+/* Off its target because the experiment moved it: the learner's choice, not a failure. */
+.try-card .measured td.target {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.try-card .verdict {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.try-card .verdict.held {
+  color: var(--ok);
 }
 
 .try-card .row-actions,

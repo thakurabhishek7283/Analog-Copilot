@@ -1,8 +1,9 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { useStore } from "zustand";
 import type { CircuitState } from "../store/circuitStore.ts";
 import type { UiState } from "../store/uiStore.ts";
 import type { GenerationState } from "../store/generationStore.ts";
+import { retunedChecks } from "../tutor/predict.ts";
 import type { TutorState } from "../tutor/tutorStore.ts";
 import type { Editor } from "./editor.ts";
 import type { ProjectSession, ProjectState } from "./project.ts";
@@ -34,6 +35,13 @@ export function useGen<T>(selector: (s: GenerationState) => T): T {
 
 export function useTutor<T>(selector: (s: TutorState) => T): T {
   return useStore(useEditor().tutor, selector);
+}
+
+/** The spec checks the learner's experiments retuned on purpose (`checkKey`s): shown as retuned, not failed. */
+export function useRetuned(): Set<string> {
+  const entries = useTutor((s) => s.entries);
+  const checks = useCircuit((s) => s.sim.checks);
+  return useMemo(() => retunedChecks(entries, checks ?? []), [entries, checks]);
 }
 
 const NO_PROJECT = { getState: () => null, subscribe: () => () => {} };

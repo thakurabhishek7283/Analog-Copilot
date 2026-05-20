@@ -3,7 +3,9 @@ predictions against re-simulated checks, the summary, the gate and the reviewer 
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 from pytest import approx
 
@@ -83,17 +85,15 @@ def test_what_answers_write_besides_plain_quantities():
 
 
 def test_a_prediction_is_compared_with_the_check_that_moved():
-    fc = {"block": "b2", "name": "fc_hz", "unit": "hertz", "tol_pct": 10.0}
-    q = {"block": "b2", "name": "q", "unit": "unitless", "tol_pct": 15.0}
-    before = [fc | {"measured": 996.0}, q | {"measured": 0.706}]
-    after = [fc | {"measured": 499.0}, q | {"measured": 0.706}]
-    assert prediction("fc drops to about 500 Hz", before, after) == {
-        "number": "500 Hz", "check": "b2 fc_hz", "measured": 499.0, "held": True}
-    assert prediction("fc drops to 300 Hz", before, after)["held"] is False
-    assert prediction("Q stays near 0.7", before, after)["held"] is None, "Q did not move: nothing to compare"
-    assert prediction("fc drops from 996 Hz to about 500 Hz; Q stays 0.706", before, after)["held"] is True, "not the from value"
-    assert prediction("the output gets smaller", before, after)["held"] is None
-    assert prediction("about 2 V", before, after)["check"] is None, "no check in volts"
+    # The same cases run in the editor (apps/web/src/tutor/predict.test.ts): one rule, two readings.
+    spec = json.loads((Path(__file__).parent / "prediction_cases.json").read_text(encoding="utf-8"))
+
+    def checks(values: dict[str, float | None]) -> list[dict]:
+        return [spec["checks"][k] | {"measured": v} for k, v in values.items()]
+
+    for case in spec["cases"]:
+        got = prediction(case["predict"], checks(case["before"]), checks(case["after"]))
+        assert {k: got[k] for k in case["expect"]} == case["expect"], case["why"]
 
 
 def answered(rid: str, body: str, *, refs=(("R1", True),), try_=None, tried=None, kind="ask", mode="explain",

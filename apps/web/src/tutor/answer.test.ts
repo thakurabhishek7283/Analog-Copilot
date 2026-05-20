@@ -49,7 +49,7 @@ describe("changedChecks", () => {
   it("lists the checks whose measured value moved", () => {
     const before = [check("fc_hz", "996Hz"), check("q", "0.706")];
     const after = [check("fc_hz", "499Hz"), check("q", "0.706"), check("gain", null)];
-    expect(changedChecks(before, after)).toEqual([{ block: "b2", name: "fc_hz", label: "fc_hz", before: "996Hz", after: "499Hz" }]);
-    expect(changedChecks([], [check("fc_hz", "1kHz")])).toEqual([{ block: "b2", name: "fc_hz", label: "fc_hz", before: "—", after: "1kHz" }]);
+    expect(changedChecks(before, after)).toEqual([{ block: "b2", name: "fc_hz", label: "fc_hz", before: "996Hz", after: "499Hz", pass: true, target: "1kHz" }]);
+    expect(changedChecks([], [check("fc_hz", "1kHz")])).toEqual([{ block: "b2", name: "fc_hz", label: "fc_hz", before: "—", after: "1kHz", pass: true, target: "1kHz" }]);
   });
 });

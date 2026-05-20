@@ -362,6 +362,8 @@ def fmt(v: float) -> str:
 # ---------------------------------------------------------------- try blocks
 
 CHECK_UNIT = {"hertz": "Hz", "volt": "V", "ampere": "A", "ohm": "ohm", "unitless": "", "second": "s"}
+# A bound, not a value: "well below 2 kHz" is not a prediction of 2 kHz.
+BOUND = re.compile(r"(?:\b(?:below|above|under|over|less than|more than|at least|at most|up to)|[<>≤≥])\s*$", re.I)
 
 
 def prediction(predict: str, before: list[dict[str, Any]], after: list[dict[str, Any]]) -> dict[str, Any]:
@@ -369,8 +371,10 @@ def prediction(predict: str, before: list[dict[str, Any]], after: list[dict[str,
     caller leaves out stimulus checks, such as a source's amplitude). Each quantity in it is compared
     with every check of its unit that the experiment moved by more than 1%: the prediction held when
     one is within 10% or the check's tolerance, whichever is wider; it missed when there were checks
-    to compare and none agreed; with nothing to compare, it is not judged."""
-    qs = quantities(plain(predict))
+    to compare and none agreed; with nothing to compare, it is not judged. A number after a bound
+    ("below", "more than", "<") is not a value to compare."""
+    text = plain(predict)
+    qs = [q for q in quantities(text) if not BOUND.search(text[:q.start])]
     out: dict[str, Any] = {"number": qs[0].text if qs else None, "check": None, "measured": None, "held": None}
     was = {(c["block"], c["name"]): c.get("measured") for c in before}
 

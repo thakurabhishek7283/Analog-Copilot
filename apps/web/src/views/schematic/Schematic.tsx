@@ -11,7 +11,8 @@ import { type D3ZoomEvent, type ZoomBehavior, type ZoomTransform, zoom, zoomIden
 import { memo, useEffect, useMemo, useRef } from "react";
 import { DomStage } from "../../anim/stage.ts";
 import type { CheckResult, PartDef, PartInstance } from "../../gen/contract.ts";
-import { useCircuit, useEditor, useGen, useUi } from "../../app/editorContext.ts";
+import { useCircuit, useEditor, useGen, useRetuned, useUi } from "../../app/editorContext.ts";
+import { checkKey } from "../../tutor/predict.ts";
 import type { GhostView } from "../../store/generationStore.ts";
 import type { Selection } from "../../store/circuitStore.ts";
 import type { Tool } from "../../store/uiStore.ts";
@@ -157,7 +158,7 @@ const Frame = memo(function Frame({
         {checks && checks.length > 0 && (
           <title>
             {checks
-              .map((c) => `${c.label}: ${c.measured_display ?? c.note ?? "—"} (target ${c.target_display} ±${c.tol_pct}%)${c.bench ? ", measured in its test bench" : ""}`)
+              .map((c) => `${c.label}: ${c.measured_display ?? c.note ?? "—"} (target ${c.target_display} ±${c.tol_pct}%)${c.bench ? ", measured in its test bench" : ""}${c.retuned ? ", moved on purpose by your experiment" : ""}`)
               .join("\n")}
           </title>
         )}
@@ -166,11 +167,11 @@ const Frame = memo(function Frame({
           <tspan
             key={c.name}
             dx={8}
-            className={`badge ${c.pass ? "pass" : c.measured_display ? "fail" : "unknown"}${c.bench ? " bench" : ""}`}
+            className={`badge ${c.pass ? "pass" : c.retuned ? "retuned" : c.measured_display ? "fail" : "unknown"}${c.bench ? " bench" : ""}`}
             data-check={c.name}
             data-source={c.bench ? "bench" : "live"}
           >
-            {`${c.symbol} ${c.measured_display ?? "?"} ${c.pass ? "✓" : c.measured_display ? "✗" : ""}`.trimEnd()}
+            {`${c.symbol} ${c.measured_display ?? "?"} ${c.pass ? "✓" : c.retuned ? "(retuned)" : c.measured_display ? "✗" : ""}`.trimEnd()}
           </tspan>
         ))}
       </text>
@@ -180,15 +181,17 @@ const Frame = memo(function Frame({
 
 const NO_CHECKS: CheckResult[] = [];
 const NO_BENCH: Record<string, CheckResult[]> = {};
+const NO_RETUNED = new Set<string>();
 
 /** A check as its badge shows it: `bench` when the live simulation has no measurement for it and
- * the server's test-bench result (`sim.summary` of a generated block) stands in. */
-export type Badge = CheckResult & { bench?: boolean };
+ * the server's test-bench result (`sim.summary` of a generated block) stands in; `retuned` when the
+ * learner's experiment moved it off its target on purpose (neutral, not a failure). */
+export type Badge = CheckResult & { bench?: boolean; retuned?: boolean };
 
 /** Badges per block: the live result of each check, or else its test-bench result. */
-export function badges(live: CheckResult[], bench: Record<string, CheckResult[]>): Map<string, Badge[]> {
+export function badges(live: CheckResult[], bench: Record<string, CheckResult[]>, retuned: Set<string> = NO_RETUNED): Map<string, Badge[]> {
   const m = new Map<string, Badge[]>();
-  for (const c of live) m.set(c.block, [...(m.get(c.block) ?? []), c]);
+  for (const c of live) m.set(c.block, [...(m.get(c.block) ?? []), retuned.has(checkKey(c)) ? { ...c, retuned: true } : c]);
   for (const [block, checks] of Object.entries(bench)) {
     const have = m.get(block);
     if (!have) {
@@ -215,6 +218,7 @@ export function SchematicContent({
   selection,
   checks = NO_CHECKS,
   bench = NO_BENCH,
+  retuned = NO_RETUNED,
   speaking = null,
   onSelect,
 }: {
@@ -227,12 +231,14 @@ export function SchematicContent({
   checks?: CheckResult[];
   /** Test-bench results of generated blocks (sim.summary), shown where the live result has none. */
   bench?: Record<string, CheckResult[]>;
+  /** Checks the learner's experiments retuned on purpose (`checkKey`s). */
+  retuned?: Set<string>;
   /** The block whose narration is playing. */
   speaking?: string | null;
   onSelect: (s: Selection) => void;
 }) {
   const named = new Set<string>();
-  const byBlock = useMemo(() => badges(checks, bench), [checks, bench]);
+  const byBlock = useMemo(() => badges(checks, bench, retuned), [checks, bench, retuned]);
   return (
     <>
       <g className="blocks">
@@ -352,6 +358,7 @@ export function Schematic() {
   const selection = useCircuit((s) => s.selection);
   const checks = useCircuit((s) => s.sim.checks);
   const bench = useCircuit((s) => s.bench);
+  const retuned = useRetuned();
   const ghosts = useGen((s) => s.ghosts);
   const speaking = useGen((s) => s.speaking);
   const tool = useUi((s) => s.tool);
@@ -558,6 +565,7 @@ export function Schematic() {
                 selection={selection}
                 checks={checks}
                 bench={bench}
+                retuned={retuned}
                 speaking={speaking}
                 onSelect={pick}
               />

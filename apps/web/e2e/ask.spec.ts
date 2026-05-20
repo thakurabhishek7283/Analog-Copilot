@@ -55,18 +55,23 @@ test("an answer about the selected part streams with chips, and its experiment i
   // Predict, then test: one undo step, simulated, the moved check shown next to the prediction.
   const first = panel(page).locator(".ask-entry").first();
   const card = first.locator(".try-card");
-  await expect(card.locator(".ops")).toHaveText("R1 resistance → 100k");
-  await expect(card.locator(".predict")).toContainText("the cutoff drops well below 2 kHz");
+  await expect(card.locator(".ops")).toHaveText("R1 resistance → 16k");
+  await expect(card.locator(".predict")).toContainText("the cutoff drops to about 1 kHz");
   const before = await page.locator('g.part[data-refdes="R1"] .value').first().textContent();
   await card.getByRole("button", { name: "Try it" }).click();
-  await expect(page.locator('g.part[data-refdes="R1"] .value').first()).toHaveText("100kΩ");
+  await expect(page.locator('g.part[data-refdes="R1"] .value').first()).toHaveText("16kΩ");
   await expect(card).toHaveAttribute("data-state", "measured");
   await expect(card.locator(".measured tr")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Undo", exact: true })).toHaveAttribute("title", "Undo Try: the cutoff drops well below 2 kHz (Ctrl+Z)");
+  // The prediction held, and the cutoff it moved off its 2 kHz target on purpose is not a failure.
+  await expect(card.locator(".verdict.held")).toContainText("✓ Prediction held: predicted 1 kHz, measured");
+  const badge = page.locator('g.block[data-block="b2"] .badge[data-check="fc_hz"]');
+  await expect(badge).toHaveClass(/retuned/);
+  await expect(badge).toContainText("(retuned)");
+  await expect(page.getByRole("button", { name: "Undo", exact: true })).toHaveAttribute("title", "Undo Try: the cutoff drops to about 1 kHz (Ctrl+Z)");
 
   // What changed? The server compares its circuits at both revs; the browser sends its simulation
   // of each, and the cutoff check that moved is in both.
-  await expect(panel(page).locator("button.what-changed")).toContainText("Try: the cutoff drops well below 2 kHz");
+  await expect(panel(page).locator("button.what-changed")).toContainText("Try: the cutoff drops to about 1 kHz");
   const asked = page.waitForRequest((r) => r.url().endsWith("/what-changed") && r.method() === "POST");
   await card.getByRole("button", { name: "What changed?" }).click();
   const change = (await asked).postDataJSON();
@@ -75,7 +80,7 @@ test("an answer about the selected part streams with chips, and its experiment i
   expect(fc(change.after)).toBeLessThan(fc(change.before)!);
   const explained = entry(page);
   await expect(explained).toHaveAttribute("data-phase", "done");
-  await expect(explained.locator(".question")).toHaveText("What changed? · Try: the cutoff drops well below 2 kHz");
+  await expect(explained.locator(".question")).toHaveText("What changed? · Try: the cutoff drops to about 1 kHz");
   await expect(explained.locator(".answer-text")).toContainText("You changed");
   await expect(explained.locator('.answer-text .ref-chip[data-ref="R1"]')).toHaveCount(1);
   await expect(explained.locator('.answer-text .ref-chip[data-ref="b2"]')).toHaveCount(1);
@@ -85,7 +90,8 @@ test("an answer about the selected part streams with chips, and its experiment i
   await expect(card).toHaveAttribute("data-state", "undone");
   await expect(page.locator('g.part[data-refdes="R1"] .value').first()).toHaveText(before!);
   await editor.simulated();
-  await expect(panel(page).locator("button.what-changed")).toContainText("Undo Try: the cutoff drops well below 2 kHz");
+  await expect(badge).toHaveClass(/pass/);
+  await expect(panel(page).locator("button.what-changed")).toContainText("Undo Try: the cutoff drops to about 1 kHz");
 
   const saved = page.waitForResponse((r) => r.url().endsWith("/feedback"));
   await first.getByRole("button", { name: "Yes" }).click();
