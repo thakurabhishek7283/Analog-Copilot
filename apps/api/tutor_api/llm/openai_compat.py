@@ -4,8 +4,8 @@
 
 Structured output is either `json_schema` (the reply is constrained to the schema) or
 `json_object` (any JSON object; the schema goes into the prompt), whichever the endpoint supports.
-Each call has a 30 s deadline (LLD §6); timeouts, 408, 429 and 5xx are retryable, and the gateway
-does the retrying.
+Each call has a 30 s deadline (LLD §6); timeouts, a dropped connection, 408, 429 and 5xx are
+retryable, and the gateway does the retrying.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ class OpenAICompatProvider:
                 data = r.json()
         except (TimeoutError, httpx.TimeoutException):
             raise ProviderError("timeout", f"{self.name}: no reply within {t:g} s", True) from None
-        except httpx.TransportError as e:
+        except (httpx.TransportError, OSError) as e:  # OSError: an SSL or socket error httpx did not wrap
             raise ProviderError("network", f"{self.name}: {type(e).__name__}: {e}", True) from None
         except ValueError as e:  # not JSON
             raise ProviderError("bad_response", f"{self.name}: {e}", True) from None
@@ -128,7 +128,9 @@ class OpenAICompatProvider:
                             finish = choice.get("finish_reason") or finish
         except (TimeoutError, httpx.TimeoutException):
             raise ProviderError("timeout", f"{self.name}: stream not finished within {t:g} s", True) from None
-        except httpx.TransportError as e:
+        except (httpx.TransportError, OSError) as e:
+            # OSError: httpcore does not wrap an SSL error raised while reading the body (live, 2026-05-22:
+            # "ssl.SSLError: record layer failure" mid-answer reached the router as an internal error).
             raise ProviderError("network", f"{self.name}: {type(e).__name__}: {e}", True) from None
         except ValueError as e:
             raise ProviderError("bad_response", f"{self.name}: {e}", True) from None

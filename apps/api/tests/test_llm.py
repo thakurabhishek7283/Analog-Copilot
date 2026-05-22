@@ -9,9 +9,11 @@ import dataclasses
 import hashlib
 import json
 import socket
+import ssl
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
+import httpx
 import pytest
 import uvicorn
 from starlette.applications import Starlette
@@ -230,6 +232,26 @@ async def test_streamed_errors_are_classified_too(mock_server, mock):
     with pytest.raises(ProviderError) as e:
         await provider(mock_server).stream(REQ, on_delta)
     assert e.value.code == "server_error" and "busy" in e.value.message
+
+
+async def test_a_connection_dropped_mid_stream_is_a_retryable_network_error():
+    """An SSL error while reading the body is not wrapped by httpx: it must still be a provider error."""
+
+    class Dropped(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'data: {"choices": [{"delta": {"content": "Half "}}]}\n\n'
+            raise ssl.SSLError("record layer failure")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, stream=Dropped())))
+    p = OpenAICompatProvider("azure", "http://llm.test", "k", {"large": "m", "small": "m"}, client=client)
+    seen: list[str] = []
+
+    async def on_delta(t: str) -> None:
+        seen.append(t)
+
+    with pytest.raises(ProviderError) as e:
+        await p.stream(REQ, on_delta)
+    assert (e.value.code, e.value.retryable, seen) == ("network", True, ["Half "])
 
 
 async def test_a_slow_reply_hits_the_call_deadline(mock_server, mock):
