@@ -1,10 +1,23 @@
 Student level: {{ level }}.
 {% if mode == "socratic" %}
-Mode: Socratic. Do not give the answer yet. Ask one guiding question that leads the student toward it, citing what to look at. You may end with an experiment that lets them test their own answer.
+Mode: Socratic. Do not give the answer away. Ask one guiding question that leads the student toward it, citing what to look at; if they just answered your last question, say first whether they are right. You may end with an experiment that lets them test their own answer.
 {% else %}
 Mode: explain.
 {% endif %}
 
+{% if history %}
+The conversation so far, oldest first:
+<<<
+{% for t in history %}
+Student{{ " (before later edits)" if t.earlier else "" }}: {{ t.question }}
+Tutor: {{ t.answer }}
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+>>>
+
+{% endif %}
 The circuit:
 <<<
 {{ context }}

@@ -127,6 +127,50 @@ async def test_the_answer_is_about_the_circuit_at_the_asked_rev(http, alice, app
     assert (empty["refs_valid"], empty["refs_invalid"]) == (0, 2) and "PARTS:" not in prompt
 
 
+async def test_a_question_carries_the_conversation_so_far(http, alice, bob, app, tutor_llm):
+    pid, rev = await rc_project(http, alice, app)
+    guide = "What does [C1] do to the signal as the frequency rises?"
+    tutor_llm.script["ask"] = [REPLY, guide, "Yes: it passes less and less."]
+
+    async def asked(body: dict) -> str:
+        return (await ask(http, pid, alice, body))[-1]["data"]["ask_id"]
+
+    first = await asked({"question": "Why is R1 1k?", "rev": rev})
+    add_r9 = [{"op": "part.add", "body": {"refdes": "R9", "part": "resistor_th"}}]
+    r = await http.post(f"/v1/projects/{pid}/ops", json={"base_rev": rev, "ops": envelopes(add_r9, rev)}, headers=alice)
+    assert r.status_code == 200, r.text
+    second = await asked({"question": "Why does it roll off?", "rev": rev + 1, "mode": "socratic", "history": [first]})
+    third = await asked({"question": "It lets less through?", "rev": rev + 1, "mode": "socratic",
+                         "history": [first, second]})
+
+    assert "The conversation so far" not in tutor_llm.calls[0].user
+    user = tutor_llm.calls[2].user
+    conversation = user.split("The conversation so far, oldest first:\n<<<\n")[1].split("\n>>>")[0]
+    assert conversation == (
+        "Student (before later edits): Why is R1 1k?\n"
+        "Tutor: [R1] and [C1] set the corner on [net:B1_OUT]; [R7] is not here.\n\n(Suggested an experiment: fc halves.)\n\n"
+        f"Student: Why does it roll off?\nTutor: {guide}"
+    ), "oldest first; the try block as one line; an answer about an older rev is marked"
+    assert user.index("The conversation so far") < user.index("The circuit:") < user.index("The student asks:")
+    assert [(await saved(app, a)).history for a in (first, second, third)] == [
+        None, [uuid.UUID(first)], [uuid.UUID(first), uuid.UUID(second)]]
+
+    async def refused(body: dict, project: str = pid, headers=alice) -> tuple[int, str]:
+        r = await http.post(f"/v1/projects/{project}/ask", json=body, headers=headers)
+        return r.status_code, ApiError.model_validate(r.json()).code
+
+    calls = len(tutor_llm.calls)
+    for history in ([str(uuid.uuid4())], [first, first], [first, second, third, str(uuid.uuid4())], ["a1"]):
+        assert await refused({"question": "And?", "rev": rev + 1, "history": history}) == (422, "invalid_request"), history
+    other = await create_project(http, bob)
+    assert await refused({"question": "And?", "rev": 0, "history": [first]}, other, bob) == (422, "invalid_request"), \
+        "another learner's answer"
+    mine = await create_project(http, alice)
+    assert await refused({"question": "And?", "rev": 0, "history": [first]}, mine) == (422, "invalid_request"), \
+        "an answer from another project"
+    assert len(tutor_llm.calls) == calls
+
+
 async def test_refusals_come_before_the_stream_and_ask_no_model(http, alice, bob, app, tutor_llm):
     pid, rev = await rc_project(http, alice, app)
 

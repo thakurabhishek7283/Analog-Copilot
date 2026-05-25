@@ -7,7 +7,8 @@ Every answer in `asks` in the window, grouped by session (one anonymous user per
 one per student), with the checks the tutor evals make: references (as saved, and the invalid ones
 named by reading the answer against the circuit at its rev, folded from the op log), numeric grounding
 against the context the model was given (`asks.context`), whether its experiment was tried (the
-student's own ops after the answer equal the suggested ones), and the student's Yes/No. Writes
+student's own ops after the answer equal the suggested ones), the student's Yes/No, and for a
+follow-up the earlier questions it was sent with (`asks.history`). Writes
 `answers.csv` (one row per answer, for reading every answer) and `sessions.md` (per session and in
 all, with every invalid reference and ungrounded number listed for review).
 """
@@ -91,18 +92,23 @@ def ref_text(ref: dict[str, Any]) -> str:
 def answers(rows: list[Any], log: dict[Any, list[Any]], reg: cc.Registry) -> list[dict[str, Any]]:
     folds: dict[Any, cc.Session] = {}
     sessions: dict[Any, str] = {}
+    by_id = {r.id: r for r in rows}
     out = []
     for r in rows:
+        earlier = [by_id.get(h) for h in r.history or ()]
         session = sessions.setdefault(r.user_id, f"S{len(sessions) + 1:02d}")
         a = json.loads(circuit_at(folds, reg, log[r.project_id], r.project_id, r.rev).read_answer(r.answer))
         invalid = dict.fromkeys(ref_text(ref) for ref in a["refs"] if not ref["valid"])
         t = a.get("try")
         later = [o.op for o in log[r.project_id] if o.rev_after > r.rev and o.author == "user" and o.created_at >= r.created_at]
-        g = ground(a["body"], r.context, r.question if r.kind == "ask" else "") if r.context else None
+        # The conversation so far was part of the model's input: its numbers count as given.
+        said = [x for e in earlier if e for x in (e.question, e.answer)]
+        g = ground(a["body"], r.context, "\n".join([*said, r.question if r.kind == "ask" else ""])) if r.context else None
         out.append({
             "session": session, "time": r.created_at.astimezone().isoformat(timespec="seconds"), "project": str(r.project_id),
             "kind": r.kind, "level": r.level, "mode": r.mode, "effort": r.effort or "normal", "question": r.question,
-            "selection": json.dumps(r.selection) if r.selection else "", "answer": r.answer,
+            "selection": json.dumps(r.selection) if r.selection else "",
+            "follows": " → ".join(f"“{e.question}”" if e else "(before the window)" for e in earlier), "answer": r.answer,
             "refs_valid": r.refs_valid, "refs_invalid": r.refs_invalid, "invalid_refs": " ".join(invalid),
             "quantities": g.quantities if g else "", "ungrounded": "; ".join(f"{u['text']} ({u['why']})" for u in g.ungrounded) if g else "",
             "try": "yes" if t else "", "try_predict": (t or {}).get("predict", ""),

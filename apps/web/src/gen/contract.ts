@@ -1783,6 +1783,12 @@ export interface AskRequest {
    * provider's default. Models that do not reason ignore it.
    */
   effort?: ReasoningEffort | null;
+  /**
+   * The conversation so far: ids of the learner's earlier answers in this project (`ask_id`),
+   * oldest first, at most 3. The server reads their questions and answers from `asks` and gives
+   * them to the model with the new question; the context builder does not use them.
+   */
+  history?: string[];
 }
 /**
  * The learner's simulation of the circuit the question is about. The server never simulated an

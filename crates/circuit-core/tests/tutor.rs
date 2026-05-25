@@ -49,6 +49,7 @@ fn ask(question: &str, selection: Option<Selection>, sim: SimValues) -> AskReque
         mode: Default::default(),
         sim,
         effort: None,
+        history: vec![],
     }
 }
 

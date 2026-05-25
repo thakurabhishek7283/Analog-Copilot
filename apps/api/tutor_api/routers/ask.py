@@ -21,7 +21,8 @@ from typing import Annotated, Any
 import circuit_core as cc
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-from sqlalchemy import insert, update
+from sqlalchemy import insert, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .. import projects
 from ..auth import User
@@ -30,7 +31,7 @@ from ..errors import ApiException, not_found
 from ..llm.base import LlmRequest
 from ..llm.gateway import LlmUnavailable
 from ..models.contract import AskFeedback, AskRequest, ChangeRequest
-from ..tutor import Asked, Tutor
+from ..tutor import MAX_HISTORY, Asked, Turn, Tutor
 
 log = logging.getLogger("tutor_api.ask")
 
@@ -49,7 +50,7 @@ class Prepared:
     session: cc.Session  # the circuit the answer is read against, at `rev`
     llm: LlmRequest
     hazards: list[str]
-    row: dict[str, Any]  # the rest of its `asks` row: kind, rev, from_rev, selection, question, mode, level, effort, context
+    row: dict[str, Any]  # the rest of its `asks` row: kind, rev, from_rev, selection, question, mode, level, effort, context, history
 
 
 def available(request: Request) -> Tutor:
@@ -65,21 +66,48 @@ def synced(rev: int, head_rev: int) -> None:
         raise ApiException(409, "rev_not_synced", f"rev {rev} but the project is at rev {head_rev}", retryable=True)
 
 
+def history_ids(ids: list[str]) -> list[uuid.UUID]:
+    if len(ids) > MAX_HISTORY or len(set(ids)) != len(ids):
+        raise ApiException(422, "invalid_request", f"history holds at most {MAX_HISTORY} different answers")
+    try:
+        return [uuid.UUID(i) for i in ids]
+    except ValueError:
+        raise ApiException(422, "invalid_request", "history holds answer ids") from None
+
+
+async def conversation(conn: AsyncConnection, ids: list[uuid.UUID], project: uuid.UUID, user: uuid.UUID,
+                       rev: int) -> list[Turn]:
+    """The earlier answers a question follows, in the order given: the learner's own, in this
+    project. One that is not is 422 (the editor sends only answers it was given here)."""
+    if not ids:
+        return []
+    found = {r.id: r for r in await conn.execute(
+        select(asks.c.id, asks.c.question, asks.c.answer, asks.c.rev)
+        .where(asks.c.id.in_(ids), asks.c.project_id == project, asks.c.user_id == user)
+    )}
+    if missing := [str(i) for i in ids if i not in found]:
+        raise ApiException(422, "invalid_request", f"history: no answer {', '.join(missing)} in this project")
+    return [Turn.of(found[i].question, found[i].answer, found[i].rev < rev) for i in ids]
+
+
 async def prepared_ask(project_id: str, body: AskRequest, request: Request, user: User) -> Prepared:
     st = request.app.state
     tutor = available(request)
     question = body.question.strip()
     if not question or len(question) > MAX_QUESTION:
         raise ApiException(422, "invalid_request", f"question must be 1 to {MAX_QUESTION} characters")
+    ids = history_ids(body.history or [])
     async with st.engine.connect() as conn:
         row = await projects.get_owned(conn, project_id, user)
         synced(body.rev, row.head_rev)
         session = await projects.load_session(conn, st.regs, row, at=body.rev)
+        turns = await conversation(conn, ids, row.id, user, body.rev)
     req = body.model_copy(update={"question": question})
     context = tutor.context(session, req)
     saved = {"kind": "ask", "rev": req.rev, "from_rev": None, "question": question, "mode": str(req.mode or "explain"),
-             "selection": req.selection.model_dump(mode="json") if req.selection else None, **details(req, context)}
-    return Prepared(tutor, row.id, user, session, tutor.request(req, context), context["hazards"], saved)
+             "selection": req.selection.model_dump(mode="json") if req.selection else None,
+             "history": ids or None, **details(req, context)}
+    return Prepared(tutor, row.id, user, session, tutor.request(req, context, turns), context["hazards"], saved)
 
 
 async def prepared_change(project_id: str, body: ChangeRequest, request: Request, user: User) -> Prepared:

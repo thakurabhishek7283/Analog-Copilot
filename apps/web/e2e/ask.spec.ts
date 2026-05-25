@@ -118,6 +118,24 @@ test("Socratic mode, Stop, and a failed answer that can be asked again", async (
   await expect(panel(page).locator(".ask-entry")).toHaveCount(2);
 });
 
+test("a follow-up is sent with the conversation so far, until a new topic", async ({ page }) => {
+  await newProject(page);
+  await ask(page, "what is this circuit?");
+  await expect(entry(page)).toHaveAttribute("data-phase", "done");
+  const follow = page.waitForRequest((r) => r.url().endsWith("/ask"));
+  await ask(page, "can you say that more simply?");
+  expect((await follow).postDataJSON().history).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/)]);
+  await expect(entry(page)).toHaveAttribute("data-phase", "done"); // the server found the earlier answer
+
+  await panel(page).getByRole("button", { name: "New topic" }).click();
+  await expect(panel(page).locator(".topic-break")).toHaveCount(1);
+  await expect(panel(page).getByRole("button", { name: "New topic" })).toHaveCount(0);
+  const fresh = page.waitForRequest((r) => r.url().endsWith("/ask"));
+  await ask(page, "something else?");
+  expect((await fresh).postDataJSON()).not.toHaveProperty("history");
+  await expect(entry(page)).toHaveAttribute("data-phase", "done");
+});
+
 test("asking needs a saved project", async ({ page }) => {
   await new EditorPage(page).open("demo");
   await expect(panel(page)).toContainText("Asking needs a saved project");

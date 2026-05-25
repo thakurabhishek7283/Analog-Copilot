@@ -1532,6 +1532,23 @@ button.ref-chip:hover:not(:disabled) {
   color: var(--muted);
 }
 
+.ask .new-topic {
+  align-self: flex-end;
+  font-size: 12px;
+}
+
+/* Questions above it are no longer sent with new ones. */
+.ask .topic-break {
+  margin: 8px 0;
+  padding-top: 2px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .ask textarea {
   font: inherit;
   color: var(--text);

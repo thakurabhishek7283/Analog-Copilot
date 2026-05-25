@@ -4,7 +4,7 @@
 // card: its ops, the tutor's prediction, Try it (one undo step), then what the simulation measured.
 // After an edit has been simulated, "What changed?" asks the tutor to explain what it did, from the
 // simulation before and after it. Text is rendered as text, never as HTML (LLD §14).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { Answer, CheckResult, LearnerLevel, ReasoningEffort, Ref, Selection } from "../gen/contract.ts";
 import { changedChecks, describeOp, segments } from "../tutor/answer.ts";
@@ -81,6 +81,7 @@ function WhatChanged({ busy }: { busy: boolean }) {
 export function AskPanel() {
   const { project, tutor } = useEditor();
   const entries = useTutor((s) => s.entries);
+  const topic = useTutor((s) => s.topic);
   const settings = useTutor((s) => s.settings);
   const selection = useCircuit((s) => s.selection);
   const selectionName = useSelectionName(selection);
@@ -111,7 +112,14 @@ export function AskPanel() {
       {entries.length > 0 && (
         <div className="ask-thread">
           {entries.map((e) => (
-            <Entry key={e.key} entry={e} />
+            <Fragment key={e.key}>
+              <Entry entry={e} />
+              {e.key === topic && (
+                <p className="topic-break" role="separator">
+                  New topic
+                </p>
+              )}
+            </Fragment>
           ))}
           <div ref={end} />
         </div>
@@ -121,6 +129,17 @@ export function AskPanel() {
       ) : (
         <form onSubmit={submit}>
           <WhatChanged busy={busy} />
+          {entries.some((e) => e.key > topic) && (
+            <button
+              type="button"
+              className="link new-topic"
+              disabled={busy}
+              title="The tutor reads your last few questions with each new one. Start fresh when you change the subject."
+              onClick={() => tutor.getState().newTopic()}
+            >
+              New topic
+            </button>
+          )}
           {target && selectionName && (
             <span className="about">
               About <strong>{selectionName}</strong>

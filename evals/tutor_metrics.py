@@ -410,6 +410,27 @@ def words(text: str) -> int:
     return len(re.findall(r"\S+", text))
 
 
+# What a beginner's answer should say in plain words (the tutor's system prompt, "The student's level").
+JARGON = [
+    ("ERC", re.compile(r"\bERC\d*\b")),
+    ("operating point", re.compile(r"\boperating[- ]point\b", re.I)),
+    ("DC bias", re.compile(r"\bDC bias\b", re.I)),
+    ("quiescent", re.compile(r"\bquiescent\b", re.I)),
+    ("pin name", re.compile(r"(?<!\w)[A-Z]{1,3}\d+\.(?:\d+\b|[A-Z][A-Z0-9_]*\b)")),
+    ("LaTeX", re.compile(r"\\[(\[]|\\(?:frac|sqrt|times|cdot|approx|pi|Omega|text)\b|\$[^$\n]+\$")),
+]
+PHASES = re.compile(r"[-−]?\d+(?:\.\d+)?\s?°")
+
+
+def jargon(text: str) -> list[str]:
+    """The terms and notations a beginner's answer should not use, each once; two or more phase
+    angles count as a list of phases."""
+    out = [name for name, pattern in JARGON if pattern.search(text)]
+    if len(PHASES.findall(text)) >= 2:
+        out.append("phase angles")
+    return out
+
+
 def read_row(row: dict[str, Any]) -> dict[str, Any]:
     """The automatic checks on one answered case, added to its row as `checks`."""
     a = row["answer"]
@@ -426,7 +447,9 @@ def read_row(row: dict[str, Any]) -> dict[str, Any]:
     cited = {rid(r) for r in refs if r["valid"]}
     t = a.get("try")
     suggested = [v for op in (t or {}).get("ops") or [] for v in _values(op.get("body") or {})]
-    g = ground(a["body"], ctx["text"], row.get("question") or "", suggested)
+    # A follow-up's input holds the conversation so far: its numbers are the model's to use.
+    said = [x for turn in row.get("turns") or () for x in (turn["question"], turn["text"])]
+    g = ground(a["body"], ctx["text"], "\n".join([*said, row.get("question") or ""]), suggested)
     expect = row.get("expect") or {}
     out: dict[str, Any] = {
         "refs": len(refs), "refs_valid": a["refs_valid"] + len(removed), "refs_invalid": a["refs_invalid"] - len(removed),
@@ -435,7 +458,8 @@ def read_row(row: dict[str, Any]) -> dict[str, Any]:
         "cite_expected": expect.get("cite") or [], "cite_missing": [c for c in expect.get("cite") or [] if c not in cited],
         "quantities": g.quantities, "grounded": g.grounded, "derived": g.derived, "checked": g.checked,
         "ungrounded": g.ungrounded, "one_step_only": all(u["why"] == ONE_STEP for u in g.ungrounded),
-        "words": words(a["body"]), "asks_question": "?" in a["body"],
+        "words": words(a["body"]), "asks_question": "?" in a["body"], "follow_up": bool(row.get("turns")),
+        "jargon": jargon(a["body"]) if row.get("level") == "beginner" else [],
         "try": t is not None, "try_valid": None if t is None else not t.get("problems"),
         "try_expected": expect.get("try"), "declines_expected": bool(expect.get("declines")),
     }
@@ -480,7 +504,9 @@ def summarize(rows: list[dict[str, Any]], calls: list[dict[str, Any]] | None = N
     expect_yes = [c for c in cs if c["try_expected"] == "yes"]
     expect_no = [c for c in cs if c["try_expected"] == "no"]
     cited = [c for c in cs if c["cite_expected"]]
-    socratic = [r["checks"] for r in done if r.get("mode") == "socratic"]
+    # A follow-up may confirm a right reply and stop asking: the judge grades those.
+    socratic = [r["checks"] for r in done if r.get("mode") == "socratic" and not r["checks"].get("follow_up")]
+    beginner = [r["checks"] for r in done if r.get("level") == "beginner"]
     graded = [r for r in done if r.get("rubric")]
     m: dict[str, Any] = {
         **_slice(rows),
@@ -504,6 +530,8 @@ def summarize(rows: list[dict[str, Any]], calls: list[dict[str, Any]] | None = N
         "words_p95": percentile([c["words"] for c in cs], 95),
         "over_word_limit": sum(1 for c in cs if c["words"] > WORD_LIMIT),
         "socratic_asks_question": ratio(sum(1 for c in socratic if c["asks_question"]), len(socratic)),
+        "beginner_jargon": ratio(sum(1 for c in beginner if c.get("jargon")), len(beginner)),
+        "jargon_terms": dict(Counter(j for c in beginner for j in c.get("jargon") or ())),
         "tokens_in_mean": mean([r["usage"]["in_tokens"] for r in done]),
         "tokens_out_mean": mean([r["usage"]["out_tokens"] for r in done]),
         "tokens_out_p95": percentile([r["usage"]["out_tokens"] for r in done], 95),
@@ -618,7 +646,9 @@ def markdown(report: dict[str, Any]) -> str:
         f"| Predictions | {m['predictions_with_number']} with a number, {m['predictions_compared']} compared with "
         f"a re-simulated check, {pct(m['prediction_held'])} held |",
         f"| Words | mean {num(m['words_mean'])}, p95 {num(m['words_p95'])}, {m['over_word_limit']} over {WORD_LIMIT} |",
-        f"| Socratic answers that ask a question | {pct(m['socratic_asks_question'])} |",
+        f"| Socratic answers that ask a question | {pct(m['socratic_asks_question'])} (follow-ups left out) |",
+        f"| Beginner answers with jargon | {pct(m.get('beginner_jargon'))}"
+        f"{' (' + ', '.join(f'{k} {v}' for k, v in sorted(m['jargon_terms'].items())) + ')' if m.get('jargon_terms') else ''} |",
         f"| Tokens per answer | in {num(m['tokens_in_mean'])}, out {num(m['tokens_out_mean'])} (p95 "
         f"{num(m['tokens_out_p95'])}){' (estimated)' if m['tokens_estimated'] else ''} |",
     ]

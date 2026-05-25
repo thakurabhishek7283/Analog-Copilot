@@ -2,7 +2,9 @@
 through the real API, on Postgres and Redis in testcontainers (tools/e2e/stack.py). The case's circuit
 is built from its frozen ops (evals/tutor/fixtures.json), then `POST /ask` or `POST /what-changed` is
 sent with the frozen simulation values the editor would send, and the answer is read from the SSE
-stream. Each answer is then checked: references (circuit-core's reading), numeric grounding, and its
+stream. A follow-up case first asks its earlier `turns` (or "What changed?" about the edit of the
+case it comes `after`) on the same project, and sends their answers as the question's `history`, as
+the editor does. Each answer is then checked: references (circuit-core's reading), numeric grounding, and its
 `try` block applied and simulated again on the native ngspice. The metrics, the gate and the report are
 in tutor_metrics.py; the LLM rubric in tutor_judge.py.
 
@@ -52,7 +54,7 @@ from tutor_api.llm.config import provider_from_env  # noqa: E402
 from tutor_api.llm.gateway import Gateway  # noqa: E402
 from tutor_api.main import create_app  # noqa: E402
 from tutor_api.orchestrator import Orchestrator  # noqa: E402
-from tutor_api.tutor import Tutor  # noqa: E402
+from tutor_api.tutor import MAX_HISTORY, Turn, Tutor  # noqa: E402
 from tutor_judge import judge_request, read_verdict  # noqa: E402
 from tutor_metrics import REVIEW_COLUMNS, gate, markdown, read_row, review_rows, summarize  # noqa: E402
 
@@ -77,25 +79,32 @@ def load_cases(path: Path, *, only: list[str] | None = None, tags: list[str] | N
     return cases[:limit] if limit else cases
 
 
-def request(case: dict[str, Any], fixtures: dict[str, Any], effort: str | None) -> tuple[str, dict[str, Any]]:
-    """The path and body the editor would send for `case`."""
+def request(case: dict[str, Any], fixtures: dict[str, Any], effort: str | None, *,
+            question: str | None = None, history: list[str] | None = None) -> tuple[str, dict[str, Any]]:
+    """The path and body the editor would send for `case` (with `question`: one of its earlier turns).
+    A follow-up `after` a "What changed?" case asks about the circuit after that case's edit."""
     circuit = fixtures["circuits"][case["circuit"]]
     common = {"level": case["level"], "mode": case["mode"], **({"effort": effort} if effort else {})}
     if case["kind"] == "what_changed":
         edit = fixtures["edits"][case["id"]]
         return "what-changed", {"from_rev": circuit["rev"], "rev": edit["rev"], "before": circuit["sim"],
                                 "after": edit["sim"], **common}
-    body = {"question": case["question"], "rev": circuit["rev"], "sim": circuit["sim"], **common}
+    now = fixtures["edits"][case["after"]] if case.get("after") else circuit
+    body = {"question": question or case["question"], "rev": now["rev"], "sim": now["sim"], **common}
     if case.get("selection"):
         body["selection"] = case["selection"]
+    if history:
+        body["history"] = history[-MAX_HISTORY:]
     return "ask", body
 
 
 def batches(case: dict[str, Any], fixtures: dict[str, Any]) -> list[dict[str, Any]]:
-    """The op batches of the case's circuit, and of its edit for "What changed?"."""
+    """The op batches of the case's circuit, and of its edit for "What changed?" (or of the edit of
+    the case a follow-up comes after)."""
     out = list(fixtures["circuits"][case["circuit"]]["batches"])
-    if case["kind"] == "what_changed":
-        out.append({"author": "user", "ops": fixtures["edits"][case["id"]]["ops"]})
+    edit = case["id"] if case["kind"] == "what_changed" else case.get("after")
+    if edit:
+        out.append({"author": "user", "ops": fixtures["edits"][edit]["ops"]})
     return out
 
 
@@ -119,6 +128,27 @@ async def sse(r: httpx.Response, t0: float) -> list[tuple[float, str, Any]]:
     return out
 
 
+async def answered(http: httpx.AsyncClient, headers: dict[str, str], url: str, body: dict[str, Any]) -> dict[str, Any]:
+    """One answer read from its stream: `text`, `times`, and `done` (`answer.done`'s data) or `error`."""
+    t0 = time.perf_counter()
+    async with http.stream("POST", url, json=body, headers=headers) as resp:
+        if resp.status_code != 200:
+            err = json.loads(await resp.aread())
+            return {"error": {"code": err.get("code") or f"http_{resp.status_code}", "message": err.get("message")}}
+        events = await sse(resp, t0)
+    deltas = [t for t, e, _ in events if e == "answer.delta"]
+    out: dict[str, Any] = {
+        "times": {"first_token": round(deltas[0], 3) if deltas else None, "total": round(events[-1][0], 3) if events else None},
+        "text": "".join(d["text"] for _, e, d in events if e == "answer.delta"),
+    }
+    end = events[-1] if events else (0, "error", {"code": "no_events", "message": "the stream ended without an event"})
+    if end[1] != "answer.done":
+        out["error"] = {"code": end[2].get("code"), "message": end[2].get("message")}
+    else:
+        out["done"] = end[2]
+    return out
+
+
 async def run_case(http: httpx.AsyncClient, headers: dict[str, str], app: Any, case: dict[str, Any],
                    fixtures: dict[str, Any], effort: str | None) -> dict[str, Any]:
     row: dict[str, Any] = {
@@ -133,22 +163,35 @@ async def run_case(http: httpx.AsyncClient, headers: dict[str, str], app: Any, c
     r = await http.post(f"/v1/projects/{pid}/ops", json={"base_rev": 0, "ops": fx.envelopes(batches(case, fixtures))},
                         headers=headers)
     r.raise_for_status()
-    path, body = request(case, fixtures, effort)
-    t0 = time.perf_counter()
-    async with http.stream("POST", f"/v1/projects/{pid}/{path}", json=body, headers=headers) as resp:
-        if resp.status_code != 200:
-            err = json.loads(await resp.aread())
-            row["error"] = {"code": err.get("code") or f"http_{resp.status_code}", "message": err.get("message")}
-            return row
-        events = await sse(resp, t0)
-    deltas = [t for t, e, _ in events if e == "answer.delta"]
-    row["times"] = {"first_token": round(deltas[0], 3) if deltas else None, "total": round(events[-1][0], 3) if events else None}
-    row["text"] = "".join(d["text"] for _, e, d in events if e == "answer.delta")
-    end = events[-1] if events else (0, "error", {"code": "no_events", "message": "the stream ended without an event"})
-    if end[1] != "answer.done":
-        row["error"] = {"code": end[2].get("code"), "message": end[2].get("message")}
+    # A follow-up first asks its earlier turns on the same project, each with the conversation before it.
+    history: list[str] = []
+    turns: list[dict[str, str]] = []
+
+    async def turn(path: str, body: dict[str, Any]) -> bool:
+        got = await answered(http, headers, f"/v1/projects/{pid}/{path}", body)
+        if "done" not in got:
+            row["error"] = got["error"] | {"turn": len(turns) + 1}
+            return False
+        history.append(got["done"]["ask_id"])
+        turns.append({"question": body.get("question", "What changed?"), "text": got["text"]})
+        return True
+
+    # "What changed?" about the edit of the case it comes after (on the same circuit), then each turn.
+    if case.get("after") and not await turn(*request(case | {"kind": "what_changed", "id": case["after"]}, fixtures, effort)):
         return row
-    done = end[2]
+    for q in case.get("turns") or []:
+        if not await turn(*request(case, fixtures, effort, question=q, history=history)):
+            return row
+    if turns:
+        row["turns"] = turns
+    path, body = request(case, fixtures, effort, history=history)
+    got = await answered(http, headers, f"/v1/projects/{pid}/{path}", body)
+    row["times"] = got.get("times") or row["times"]
+    row["text"] = got.get("text")
+    if "done" not in got:
+        row["error"] = got["error"]
+        return row
+    done = got["done"]
     row.update(answer=done["answer"], usage=done["usage"])
     async with app.state.engine.connect() as conn:
         row["model"] = (await conn.execute(select(asks.c.model).where(asks.c.id == done["ask_id"]))).scalar_one()
@@ -160,11 +203,11 @@ async def run_case(http: httpx.AsyncClient, headers: dict[str, str], app: Any, c
 
 def context(reg: cc.Registry, case: dict[str, Any], fixtures: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
     """The context the server built for this request: the same circuit-core call on the same circuit."""
-    before = fx.session_at(reg, fixtures["circuits"][case["circuit"]]["batches"])
+    now = fx.session_at(reg, batches(case, fixtures))
     if case["kind"] == "what_changed":
-        after = fx.session_at(reg, batches(case, fixtures))
-        return cc.unwrap(after.tutor_changes(before, json.dumps(body)))
-    return cc.unwrap(before.tutor_context(json.dumps(body)))
+        before = fx.session_at(reg, fixtures["circuits"][case["circuit"]]["batches"])
+        return cc.unwrap(now.tutor_changes(before, json.dumps(body)))
+    return cc.unwrap(now.tutor_context(json.dumps(body)))
 
 
 def measure(session: cc.Session) -> dict[str, Any]:

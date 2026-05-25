@@ -6,11 +6,15 @@
 #   category   what the case exercises (the report breaks results down by it)
 #   expect     optional checks on the answer: `cite` (ids it should cite: R1, net:B2_OUT, block:b2),
 #              `try` (yes: it should suggest an experiment; no: it should not), `declines` (off topic)
-#   tags       `rubric`: in the 50-question sample the LLM judge grades
+#   tags       `rubric`: in the 60-question sample the LLM judge grades
+#   turns      a follow-up (ask): the student's earlier questions, asked first on the same project with
+#              the same selection, level and mode; their answers go with `question` as its history
+#   after      a follow-up (ask): a what_changed case on the same circuit, asked first ("What changed?"
+#              about its edit); `question` is then about the circuit after that edit
 #
 # Ask categories: why_value, role, change_spec, predict, read_sim, debug, missing_data,
-# wrong_premise, off_topic. What-changed categories: check_fails, check_recovers, value_tweak, swap,
-# add_remove, rewire, nothing_electrical, analysis, multi_edit.
+# wrong_premise, off_topic, follow_up. What-changed categories: check_fails, check_recovers,
+# value_tweak, swap, add_remove, rewire, nothing_electrical, analysis, multi_edit.
 
 # ================================================================ ask: why a value
 - id: why-sklp-r1
@@ -758,6 +762,118 @@
   level: intermediate
   category: change_spec
   expect: {try: "yes"}
+
+# ================================================================ ask: follow-ups (the conversation so far)
+# The student answers the tutor's guiding question (right, partly right, wrong) or builds on its last
+# answer. The judge grades whether it confirms or corrects first and never asks an answered question.
+
+- id: fu-sklp-confirm-right
+  circuit: sk_lp
+  selection: {kind: net, id: B2_OUT}
+  turns:
+    - Why is the output only about 0.7 V when the input is 1 V?
+    - Because the op-amp loses some of the signal?
+  question: Oh, so 1 kHz is the cutoff, and at the cutoff the output is about 0.707 of the input? That's the -3 dB point.
+  level: beginner
+  mode: socratic
+  category: follow_up
+  tags: [rubric]
+
+- id: fu-div-confirm-right
+  circuit: divider
+  selection: {kind: part, refdes: R2}
+  turns:
+    - Why 9.1k and 2.4k? Couldn't I use 3k and 1k?
+  question: 3k and 1k would give 12 V × 1/4 = 3 V, not 2.5 V. So it's the ratio that matters?
+  level: beginner
+  mode: socratic
+  category: follow_up
+  expect: {cite: [R2]}
+  tags: [rubric]
+
+- id: fu-rclp-partly
+  circuit: rc_lp
+  selection: {kind: part, refdes: R1}
+  turns:
+    - What if I make R1 ten times bigger?
+  question: The cutoff changes by ten times, so it goes up to about 20 kHz?
+  level: beginner
+  mode: socratic
+  category: follow_up
+  tags: [rubric]
+
+- id: fu-detuned-wrong
+  circuit: sk_lp_detuned
+  selection: {kind: part, refdes: C2}
+  turns:
+    - My filter broke. What did I do wrong?
+  question: Is R2 too big?
+  level: beginner
+  mode: socratic
+  category: follow_up
+  tags: [rubric]
+
+- id: fu-sklp-simpler
+  circuit: sk_lp
+  selection: {kind: part, refdes: R1}
+  turns:
+    - Why is R1 18k and not something round like 10k?
+  question: Can you explain that more simply?
+  level: beginner
+  category: follow_up
+  expect: {cite: [R1]}
+  tags: [rubric]
+
+- id: fu-inv-no-formula
+  circuit: inv_amp
+  selection: {kind: part, refdes: R2}
+  turns:
+    - Why is R2 ten times R1?
+  question: I still don't get it. Can you say it without the formula?
+  level: beginner
+  category: follow_up
+  expect: {cite: [R2]}
+  tags: [rubric]
+
+- id: fu-sklp-same-caps
+  circuit: sk_lp
+  selection: {kind: part, refdes: C2}
+  turns:
+    - Why is C2 smaller than C1?
+  question: And what would happen if I made them the same?
+  level: intermediate
+  category: follow_up
+  expect: {cite: [C2, C1]}
+  tags: [rubric]
+
+- id: fu-div-ten-times
+  circuit: divider
+  selection: {kind: part, refdes: R1}
+  turns:
+    - How much current does the divider waste?
+  question: And with 91k and 24k instead?
+  level: beginner
+  category: follow_up
+  expect: {cite: [R1, R2]}
+  tags: [rubric]
+
+- id: fu-wc-sklp-output
+  circuit: sk_lp
+  after: wc-sklp-r1-double
+  question: Why did the output get smaller too?
+  level: beginner
+  category: follow_up
+  expect: {cite: [R1]}
+  tags: [rubric]
+
+- id: fu-wc-inv-gain-back
+  circuit: inv_amp
+  after: wc-inv-r1-half
+  question: How do I get the gain back to 10 without changing R1 back?
+  level: beginner
+  category: follow_up
+  expect: {try: "yes", cite: [R2]}
+  tags: [rubric]
 
 # ================================================================ what changed?
 - id: wc-sklp-r1-double

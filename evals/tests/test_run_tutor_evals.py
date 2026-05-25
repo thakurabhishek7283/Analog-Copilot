@@ -22,6 +22,12 @@ TRY = {"ops": [{"op": "part.set_param", "body": {"refdes": "R1", "key": "resista
        "predict": "fc drops to about 500 Hz"}
 GRADE = {"correct": 4, "grounded": 5, "answers": 4, "level": 4, "mode": 5, "teaching": 4, "verdict": "pass", "notes": "Good."}
 SCRIPT = {"rules": [
+    # A follow-up's prompt holds its earlier questions too: the latest question's rule comes first.
+    {"kind": "ask", "when": ["Oh, so 1 kHz is the cutoff"], "reply": "Yes: at 1 kHz [block:b2] passes 0.707 of the input, the −3 dB point."},
+    {"kind": "ask", "when": ["Because the op-amp loses"], "reply": "Not quite. What is special about 1 kHz for [block:b2]?"},
+    {"kind": "ask", "when": ["Why is the output only about 0.7 V"], "reply": "Look at the cutoff of [block:b2]: what is it?"},
+    {"kind": "ask", "when": ["Why did the output get smaller"],
+     "reply": "The corner moved down to 724 Hz with [R1], so at 1 kHz [net:B2_OUT] fell from 705 mV to 456 mV."},
     {"kind": "ask", "when": ["How do I move the cutoff to 500 Hz?"],
      "reply": f"Doubling [R1] and [R2] halves fc: 996 Hz / 2 ≈ 498 Hz.\n\n```try\n{json.dumps(TRY)}\n```"},
     {"kind": "ask", "when": ["Why is R1 18k"], "reply": "[R1] (18 kΩ) and [C1] set the corner of [block:b2]; [R9] does not exist."},
@@ -30,7 +36,8 @@ SCRIPT = {"rules": [
     {"kind": "what_changed", "when": [], "reply": "Doubling [R1] moved fc from 996 Hz to 724 Hz, so it now FAILs; it guessed 3 mA."},
     {"kind": "tutor_judge", "when": [], "reply": GRADE},
 ]}
-CASES = ["spec-sklp-500", "why-sklp-r1", "off-weather", "wc-sklp-r1-double", "pred-inv-remove-r2"]
+CASES = ["spec-sklp-500", "why-sklp-r1", "off-weather", "wc-sklp-r1-double", "pred-inv-remove-r2", "fu-sklp-confirm-right",
+         "fu-wc-sklp-output"]
 
 
 def run(databases, provider, *, effort=None, record=False):
@@ -62,14 +69,28 @@ def test_cases_are_asked_checked_and_graded(databases):
     assert all(r["rubric"] == GRADE for r in rows.values() if "rubric" in r["tags"])
     assert "rubric" not in rows["pred-inv-remove-r2"], "not in the sample"
 
+    # Follow-ups: the earlier turns asked first, their answers sent as the conversation so far.
+    confirm = rows["fu-sklp-confirm-right"]
+    assert [t["question"] for t in confirm["turns"]] == ["Why is the output only about 0.7 V when the input is 1 V?",
+                                                        "Because the op-amp loses some of the signal?"]
+    assert confirm["text"].startswith("Yes:") and confirm["checks"]["follow_up"]
+    (last,) = [c for c in fake.calls if c.kind == "ask" and "Oh, so 1 kHz is the cutoff" in c.user]
+    assert "Student: Because the op-amp loses some of the signal?\nTutor: Not quite." in last.user
+    after = rows["fu-wc-sklp-output"]
+    assert after["turns"][0]["question"] == "What changed?" and after["turns"][0]["text"].startswith("Doubling [R1]")
+    assert "resistance=36kΩ" in after["context"]["text"], "about the circuit after the edit"
+    assert after["checks"]["ungrounded"] == [], "724 Hz came in the earlier answer; 705 and 456 mV in the context"
+
     tutor_calls = [c for c in fake.calls if c.kind != "tutor_judge"]
-    assert len(tutor_calls) == 5 and all(c.effort == "high" for c in tutor_calls)
+    assert len(tutor_calls) == 10 and all(c.effort == "high" for c in tutor_calls)
     for r in rows.values():
         assert any(r["context"]["text"] in c.user for c in tutor_calls), f"{r['id']}: the harness reads the server's context"
+    judge_users = [c.user for c in fake.calls if c.kind == "tutor_judge"]
+    assert sum("The conversation before this question" in u for u in judge_users) == 2, "the judge sees the earlier turns"
 
     metrics = summarize(list(rows.values()), m.calls + judge.calls)
-    assert metrics["refs_valid"] == approx(8 / 9) and metrics["arithmetic_errors"] == 0
-    assert metrics["rubric"]["graded"] == 4 and metrics["calls"]["tutor_judge"]["calls"] == 4
+    assert metrics["refs_valid"] == approx(11 / 12) and metrics["arithmetic_errors"] == 0
+    assert metrics["rubric"]["graded"] == 6 and metrics["calls"]["tutor_judge"]["calls"] == 6
     assert any("below 99%" in p for p in gate(metrics)), "R9 is an invalid reference"
 
 

@@ -55,6 +55,9 @@ export interface TutorSettings {
 
 export interface TutorState {
   entries: AskEntry[];
+  /** The key of the last entry before the current topic (0: none): the tutor is sent only the
+   * conversation after it. */
+  topic: number;
   settings: TutorSettings;
   setSettings(s: Partial<TutorSettings>): void;
   begin(e: Pick<AskEntry, "kind" | "question" | "selection" | "mode" | "rev" | "change">): number;
@@ -62,6 +65,8 @@ export interface TutorState {
   delta(key: number, text: string): void;
   done(key: number, done: AskDone): void;
   failed(key: number, error: ApiError): void;
+  /** Start a new topic: the next question is sent without the conversation so far. */
+  newTopic(): void;
   clear(): void;
 }
 
@@ -69,6 +74,17 @@ export type TutorStore = StoreApi<TutorState>;
 
 /** At most this many questions are kept on screen. */
 export const MAX_ENTRIES = 20;
+/** At most this many earlier answers go with a question (the server's limit too). */
+export const MAX_HISTORY = 3;
+
+/** The conversation a new question follows: the ids of the last answers of the current topic that
+ * the server saved (complete ones), oldest first, leaving out the entry `except` (the question being asked). */
+export function historyIds(s: Pick<TutorState, "entries" | "topic">, except?: number): string[] {
+  return s.entries
+    .filter((e) => e.key > s.topic && e.key !== except && e.phase === "done" && e.askId)
+    .slice(-MAX_HISTORY)
+    .map((e) => e.askId!);
+}
 
 export function createTutorStore(): TutorStore {
   let next = 0;
@@ -85,6 +101,7 @@ export function createTutorStore(): TutorStore {
       }));
     return {
       entries: [],
+      topic: 0,
       settings: { level: "beginner", mode: "explain", effort: null },
       setSettings: (change) => set((s) => ({ settings: { ...s.settings, ...change } })),
       begin(e) {
@@ -100,7 +117,8 @@ export function createTutorStore(): TutorStore {
         }),
       done: (key, done) => update(key, { phase: "done", answer: done.answer, askId: done.ask_id }),
       failed: (key, error) => update(key, { phase: "failed", error }),
-      clear: () => set({ entries: [] }),
+      newTopic: () => set((s) => ({ topic: s.entries.at(-1)?.key ?? s.topic })),
+      clear: () => set({ entries: [], topic: 0 }),
     };
   });
 }

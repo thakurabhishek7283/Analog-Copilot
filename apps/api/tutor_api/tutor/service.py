@@ -6,7 +6,8 @@ its `try` block). Mains safety is not left to the model: the server appends a fi
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,6 +25,10 @@ ASK_TEMPERATURE = 0.3
 # Latency is not a goal for Ask (decided 2026-02-09): a reasoning model at high effort sends nothing
 # while it thinks (14 s live), so its calls get far more than the 30 s generation calls get.
 ASK_CALL_TIMEOUT_S = 120.0
+# The conversation sent with a question: the learner's last answers, each cut to this many characters.
+MAX_HISTORY = 3
+MAX_TURN_CHARS = 1500
+TRY_BLOCK = re.compile(r"```try\s*\n(.*?)(?:```|$)", re.S)
 
 
 def safety_note(hazards: list[str]) -> str:
@@ -34,6 +39,32 @@ def safety_note(hazards: list[str]) -> str:
         "Explore this circuit here in simulation; build or probe it only with a qualified supervisor "
         "and an isolation transformer."
     )
+
+
+@dataclass(frozen=True)
+class Turn:
+    """An earlier question and answer, as the model gets them back (`ask.jinja`)."""
+
+    question: str
+    answer: str
+    earlier: bool  # asked before later edits: about a circuit that has changed since
+
+    @staticmethod
+    def of(question: str, answer: str, earlier: bool) -> Turn:
+        """The answer's `try` block becomes one line saying what it predicted (its JSON would cost
+        tokens and say nothing new), and a long answer is cut."""
+
+        def tried(m: re.Match[str]) -> str:
+            try:
+                predict = str(json.loads(m.group(1)).get("predict") or "").strip()
+            except (json.JSONDecodeError, AttributeError):
+                predict = ""
+            return f"(Suggested an experiment{f': {predict}' if predict else ''}.)"
+
+        text = TRY_BLOCK.sub(tried, answer).strip()
+        if len(text) > MAX_TURN_CHARS:
+            text = text[: MAX_TURN_CHARS - 1].rstrip() + "…"
+        return Turn(question, text, earlier)
 
 
 def _wire(req: AskRequest | ChangeRequest) -> str:
@@ -74,10 +105,10 @@ class Tutor:
         """circuit-core's `ChangeContext`: what the edits from `before` to `after` did."""
         return _outcome(after.tutor_changes(before, _wire(req)))
 
-    def request(self, req: AskRequest, context: dict[str, Any]) -> LlmRequest:
+    def request(self, req: AskRequest, context: dict[str, Any], history: Sequence[Turn] = ()) -> LlmRequest:
         user = prompts.ask(
             level=str(req.level or "beginner"), mode=str(req.mode or "explain"), context=context["text"],
-            question=req.question,
+            question=req.question, history=[vars(t) for t in history],
         )
         return self._request("ask", user, req.effort)
 

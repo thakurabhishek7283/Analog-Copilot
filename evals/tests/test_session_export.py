@@ -45,6 +45,9 @@ async def a_session(database_url: str, redis_url: str) -> None:
         async with http.stream("POST", f"/v1/projects/{pid}/ask", json=body, headers=h) as resp:
             done = [json.loads(line[6:]) for line in [x async for x in resp.aiter_lines()] if line.startswith("data: ")][-1]
         await http.post(f"/v1/asks/{done['ask_id']}/feedback", json={"feedback": -1}, headers=h)
+        follow = {**body, "question": "And C1?", "history": [done["ask_id"]]}
+        async with http.stream("POST", f"/v1/projects/{pid}/ask", json=follow, headers=h) as resp:
+            await resp.aread()
         # Try it: the suggestion as one user batch
         r = await http.post(f"/v1/projects/{pid}/ops", json={"base_rev": rev, "ops": fx.envelopes([{"author": "user", "ops": TRY["ops"]}], rev)},
                             headers=h)
@@ -67,6 +70,8 @@ def test_the_export_reads_each_answer_with_its_checks(databases, tmp_path):
     assert (changed["kind"], changed["refs_invalid"], changed["try"], changed["effort"]) == ("what_changed", 1, "", "normal")
     assert (ask["invalid_refs"], changed["invalid_refs"]) == ("", "[R7]"), "named from the circuit at the answer's rev"
     assert ask["session"] == changed["session"] and int(ask["ms"]) >= int(ask["first_token_ms"]) >= 0
+    (follow,) = [r for r in out if r["question"] == "And C1?"][-1:]
+    assert (ask["follows"], follow["follows"]) == ("", "“Why is R1 18k?”")
 
     md = export.markdown(mine, "test")
     assert "| **All** | 2 | 1 | 0 | 75.0% (4) | 50.0% | 1/1 | 0.0% (1) |" in md

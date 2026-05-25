@@ -12,7 +12,7 @@ notes but does not teach.
 | `tasks.md` | The student's task card (print one per session) |
 | `observation.md` | The facilitator's sheet (one per session) |
 | `survey.md` | The questions after the session |
-| `export.py` | Reads every answer back from the database with the evals' checks: `answers.csv`, `sessions.md` |
+| `export.py` | Reads every answer back from the database with the evals' checks: `answers.csv` (a follow-up's `follows` column names the earlier questions it was sent with), `sessions.md` |
 
 ## Who
 

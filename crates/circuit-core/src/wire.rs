@@ -259,6 +259,11 @@ pub struct AskRequest {
     /// provider's default. Models that do not reason ignore it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<ReasoningEffort>,
+    /// The conversation so far: ids of the learner's earlier answers in this project (`ask_id`),
+    /// oldest first, at most 3. The server reads their questions and answers from `asks` and gives
+    /// them to the model with the new question; the context builder does not use them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history: Vec<String>,
 }
 
 /// `POST /v1/projects/{id}/what-changed` ("What changed?", LLD §9): explain what the edits from

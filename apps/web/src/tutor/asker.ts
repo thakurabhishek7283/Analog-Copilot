@@ -10,7 +10,7 @@ import type { CircuitStore } from "../store/circuitStore.ts";
 import { askStream } from "./askStream.ts";
 import type { Change } from "./simHistory.ts";
 import { simSettled, simValues } from "./simValues.ts";
-import type { TutorState, TutorStore } from "./tutorStore.ts";
+import { type TutorState, type TutorStore, historyIds } from "./tutorStore.ts";
 
 export interface AskerOptions {
   api: Pick<ApiClient, "askUrl" | "whatChangedUrl" | "authHeaders" | "feedback" | "dropToken">;
@@ -96,6 +96,7 @@ export function createAsker(opts: AskerOptions): Asker {
       const state = store.getState();
       const busy = state.sim.status === "pending" || state.sim.status === "running";
       tutor.getState().update(key, { rev: state.rev });
+      const history = historyIds(tutor.getState(), key);
       return {
         question,
         rev: state.rev,
@@ -105,6 +106,7 @@ export function createAsker(opts: AskerOptions): Asker {
         sim: busy ? {} : simValues(state, opts.registry),
         ...(selection ? { selection } : {}),
         ...(effort ? { effort } : {}),
+        ...(history.length ? { history } : {}),
       } satisfies AskRequest;
     });
   };

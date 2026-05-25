@@ -148,6 +148,7 @@ asks = Table(
     Column("context", Text),  # the core's slice or change summary, as the model got it
     Column("first_token_ms", Integer),  # from the request to the first answer text
     Column("ms", Integer),  # to the complete answer
+    Column("history", ARRAY(Uuid)),  # the earlier answers this question followed, oldest first (AskRequest.history)
 )
 
 templates = Table(

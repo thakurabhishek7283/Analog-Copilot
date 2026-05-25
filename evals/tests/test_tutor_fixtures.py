@@ -13,7 +13,8 @@ import pytest
 import fixtures as fx
 from run_tutor_evals import batches, load_cases, request
 
-ASK = {"why_value", "role", "change_spec", "predict", "read_sim", "debug", "missing_data", "wrong_premise", "off_topic"}
+ASK = {"why_value", "role", "change_spec", "predict", "read_sim", "debug", "missing_data", "wrong_premise", "off_topic",
+       "follow_up"}
 WHAT_CHANGED = {"check_fails", "check_recovers", "value_tweak", "swap", "add_remove", "rewire", "nothing_electrical",
                 "analysis", "multi_edit"}
 
@@ -33,10 +34,11 @@ CASES = load_cases(fx.CASES)
 
 def test_cases_are_well_formed(fixtures):
     ids = [c["id"] for c in CASES]
-    assert len(ids) == len(set(ids)) == 120
+    assert len(ids) == len(set(ids)) == 130
     kinds = Counter(c["kind"] for c in CASES)
-    assert kinds == {"ask": 90, "what_changed": 30}
-    assert Counter(c["kind"] for c in CASES if "rubric" in (c.get("tags") or [])) == {"ask": 35, "what_changed": 15}
+    assert kinds == {"ask": 100, "what_changed": 30}
+    assert Counter(c["kind"] for c in CASES if "rubric" in (c.get("tags") or [])) == {"ask": 45, "what_changed": 15}
+    by_id = {c["id"]: c for c in CASES}
     for c in CASES:
         assert c["circuit"] in fixtures["circuits"], c["id"]
         assert c["level"] in ("beginner", "intermediate", "advanced") and c["mode"] in ("explain", "socratic"), c["id"]
@@ -47,6 +49,13 @@ def test_cases_are_well_formed(fixtures):
             assert c["question"].strip() and "edit" not in c, c["id"]
         else:
             assert c["edit"] and "question" not in c and "selection" not in c, c["id"]
+        # A follow-up has earlier turns, or comes after a "What changed?" on the same circuit; only follow-ups do.
+        assert (c["category"] == "follow_up") == bool(c.get("turns") or c.get("after")), c["id"]
+        assert all(isinstance(q, str) and q.strip() for q in c.get("turns") or []), c["id"]
+        if c.get("after"):
+            first = by_id[c["after"]]
+            assert first["kind"] == "what_changed" and first["circuit"] == c["circuit"], c["id"]
+    assert sum(1 for c in CASES if c["category"] == "follow_up") == 10
     socratic = sum(1 for c in CASES if c["mode"] == "socratic")
     assert socratic >= 20, "about a fifth of the cases in Socratic mode"
 
@@ -80,12 +89,12 @@ def test_every_simulated_circuit_has_its_values(fixtures):
 def test_every_case_has_a_context_inside_the_budget(case, reg, fixtures):
     _, body = request(case, fixtures, None)
     before = fx.session_at(reg, fixtures["circuits"][case["circuit"]]["batches"])
+    now = fx.session_at(reg, batches(case, fixtures))  # after the case's edit, or the edit a follow-up comes after
+    assert now.rev == body["rev"]
     if case["kind"] == "what_changed":
-        after = fx.session_at(reg, batches(case, fixtures))
-        assert after.rev == fixtures["edits"][case["id"]]["rev"]
-        ctx = cc.unwrap(after.tutor_changes(before, json.dumps(body)))
+        ctx = cc.unwrap(now.tutor_changes(before, json.dumps(body)))
     else:
-        ctx = cc.unwrap(before.tutor_context(json.dumps(body)))
+        ctx = cc.unwrap(now.tutor_context(json.dumps(body)))
     assert ctx["tokens"] <= 2000
     for ref in (case.get("expect") or {}).get("cite") or []:
         kind, _, rid = ref.rpartition(":")

@@ -1,5 +1,6 @@
 """The tutor service without a server (LLD §9, §14): the fixed safety note for mains-powered parts,
-the model tier per request kind, and what "What changed?" sends the model."""
+the model tier per request kind, what "What changed?" sends the model, and an earlier answer as it
+goes back to the model."""
 
 from __future__ import annotations
 
@@ -15,7 +16,8 @@ from tutor_api.llm.gateway import Gateway
 from tutor_api.llm import prompts
 from tutor_api.models.contract import AskRequest, ChangeRequest
 from tutor_api.tutor import Tutor
-from tutor_api.tutor.service import safety_note
+from tutor_api.tutor import Turn
+from tutor_api.tutor.service import MAX_TURN_CHARS, safety_note
 
 
 def registry(mains: bool) -> cc.Registry:
@@ -88,3 +90,11 @@ def test_what_changed_sends_the_change_summary_with_the_same_system_prompt():
     assert (llm.kind, llm.tier, llm.system, llm.effort) == ("what_changed", "large", prompts.TUTOR_SYSTEM, "low")
     assert "Mode: Socratic." in llm.user and "R1 [b2]: resistance 16kΩ → 2kΩ" in llm.user
     assert "B2_OUT: op 500mV → 250mV" in llm.user
+
+
+def test_an_earlier_answer_goes_back_to_the_model_compact():
+    t = Turn.of("Why?", 'Because [R1].\n\n```try\n{"ops": [], "predict": "fc halves"}\n```', earlier=True)
+    assert (t.answer, t.earlier) == ("Because [R1].\n\n(Suggested an experiment: fc halves.)", True)
+    assert Turn.of("Why?", "Because.\n\n```try\n{broken", False).answer == "Because.\n\n(Suggested an experiment.)"
+    long = Turn.of("Why?", "word " * 1000, False).answer
+    assert len(long) == MAX_TURN_CHARS and long.endswith("…")

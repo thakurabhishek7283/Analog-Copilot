@@ -3748,6 +3748,13 @@
             }
           ],
           "description": "How hard a reasoning model thinks before it answers, the learner's choice; absent: the\nprovider's default. Models that do not reason ignore it."
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The conversation so far: ids of the learner's earlier answers in this project (`ask_id`),\noldest first, at most 3. The server reads their questions and answers from `asks` and gives\nthem to the model with the new question; the context builder does not use them."
         }
       },
       "required": [

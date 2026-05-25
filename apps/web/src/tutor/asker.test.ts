@@ -50,9 +50,9 @@ function setup(reply: (req: AskRequest & ChangeRequest) => Response | string[]) 
     flush: async () => void log.push("flush"),
   });
   /** What the server would stream: the reply word by word, then the core's reading of it. */
-  const answer = (text: string) => [
+  const answer = (text: string, askId = "a1") => [
     ...text.match(/\S+\s*/g)!.map((t) => sse("answer.delta", { text: t })),
-    sse("answer.done", { ask_id: "a1", answer: JSON.parse(session.readAnswer(text)), usage: { in_tokens: 10, out_tokens: 5 } }),
+    sse("answer.done", { ask_id: askId, answer: JSON.parse(session.readAnswer(text)), usage: { in_tokens: 10, out_tokens: 5 } }),
   ];
   return { store, tutor, asker, log, sent, answer };
 }
@@ -81,6 +81,22 @@ describe.skipIf(missing.length > 0)("asker", () => {
     const t = setup(() => t.answer("Fine."));
     await t.asker.ask("Why?", null);
     expect("effort" in t.sent[0]! || "selection" in t.sent[0]!).toBe(false);
+  });
+
+  it("sends the conversation so far: the topic's last three saved answers, until a new topic", async () => {
+    let n = 0;
+    const t = setup((req) => (req.question === "Q3" ? new Response("{}", { status: 503 }) : t.answer("Fine.", `a${++n}`)));
+    for (const q of ["Q1", "Q2", "Q3", "Q4", "Q5"]) await t.asker.ask(q, null);
+    // Q3 failed: it was never saved, so it is not part of the conversation.
+    expect(t.sent.map((r) => r.history)).toEqual([undefined, ["a1"], ["a1", "a2"], ["a1", "a2"], ["a1", "a2", "a3"]]);
+    await t.asker.ask("Q6", null);
+    expect(t.sent.at(-1)!.history).toEqual(["a2", "a3", "a4"]);
+
+    t.tutor.getState().newTopic();
+    await t.asker.ask("Q7", null);
+    expect("history" in t.sent.at(-1)!).toBe(false);
+    await t.asker.ask("Q8", null);
+    expect(t.sent.at(-1)!.history).toEqual(["a6"]);
   });
 
   it("shows a refusal on the question, and forgets a token the server no longer accepts", async () => {

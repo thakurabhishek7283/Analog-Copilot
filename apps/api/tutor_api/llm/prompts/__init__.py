@@ -9,13 +9,14 @@ it to every call of every job on a registry version, then what changes per call.
 
 The tutor (LLD §9) has its own: `tutor_system.jinja` (the rules, both inputs' sections and the `try`
 block's ops, the same for every registry version and both request kinds), `ask.jinja` (level, mode,
-the core's context slice, the question) and `what_changed.jinja` (level, mode, the core's change
+the conversation so far, the core's context slice, the question) and `what_changed.jinja` (level, mode, the core's change
 summary).
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -122,9 +123,11 @@ class Prompts:
 TUTOR_SYSTEM = ENV.get_template("tutor_system.jinja").render().strip() + "\n"
 
 
-def ask(*, level: str, mode: str, context: str, question: str) -> str:
+def ask(*, level: str, mode: str, context: str, question: str, history: Sequence[Mapping[str, Any]] = ()) -> str:
+    """`history`: the conversation so far, oldest first, each `{question, answer, earlier}` (`earlier`:
+    asked before later edits)."""
     return ENV.get_template("ask.jinja").render(
-        level=level, mode=mode, context=context.strip(), question=question
+        level=level, mode=mode, context=context.strip(), question=question, history=list(history)
     ).strip() + "\n"
 
 
