@@ -1,5 +1,7 @@
 // What the scope plots: the probes (plus the selected net, followed automatically) taken from a
 // simulation view and downsampled to at most 2,000 points (LLD §8).
+import type { Block, Net } from "../../gen/contract.ts";
+import type { Selection } from "../../store/circuitStore.ts";
 import type { SimView } from "../../store/simView.ts";
 import type { Probe } from "../../store/uiStore.ts";
 import { downsample } from "./lttb.ts";
@@ -76,3 +78,36 @@ export function acPlot(view: SimView | undefined, probes: Probe[], follow: strin
   const { x, ys } = downsample(ac.x, shown.map((s) => s.data));
   return { x, traces: shown.map(({ data: _, ...s }, k) => ({ ...s, y: ys[k]! })) };
 }
+
+/** At most this many nets follow a selected part. */
+const PART_NETS = 3;
+
+/** The selected net; a selected block's signal ports (inputs first), its in/out response; or the
+ * signal nets a selected part's pins are on (dry run: selecting a part left the scope empty). */
+export function followed(selection: Selection | null, blocks: Record<string, Block | undefined>,
+  nets: Record<string, Net | undefined> = {}): string[] {
+  if (selection?.kind === "net") return [selection.id];
+  if (selection?.kind === "part") {
+    const prefix = `${selection.refdes}.`;
+    return Object.values(nets)
+      .filter((n): n is Net => !!n && n.kind.kind === "signal" && n.pins.some((p) => p.startsWith(prefix)))
+      .map((n) => ({ id: n.id, at: Math.min(...n.pins.filter((p) => p.startsWith(prefix)).map((p) => pinOrder(p))) }))
+      .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
+      .slice(0, PART_NETS)
+      .map((n) => n.id);
+  }
+  if (selection?.kind !== "block") return [];
+  const ports = blocks[selection.id]?.ports ?? [];
+  const order = { input: 0, bidir: 1, output: 2 } as Record<string, number | undefined>;
+  return ports
+    .filter((p) => order[p.direction] !== undefined)
+    .sort((a, b) => order[a.direction]! - order[b.direction]!)
+    .map((p) => p.net)
+    .filter((n, k, all) => all.indexOf(n) === k);
+}
+
+/** A pin's place on its part: numbered pins in order, named ones after them. */
+const pinOrder = (ref: string) => {
+  const n = Number(ref.slice(ref.indexOf(".") + 1));
+  return Number.isFinite(n) ? n : 1000;
+};

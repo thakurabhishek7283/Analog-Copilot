@@ -4,10 +4,10 @@
 import { useState } from "react";
 import type { CheckResult, ErcIssue, ParamDef, Quantity } from "../gen/contract.ts";
 import type { Selection } from "../store/circuitStore.ts";
-import { formatSi, formatVolts } from "../views/schematic/labels.ts";
+import { formatNet, formatSi, netTitle } from "../views/schematic/labels.ts";
 import { rotatePart } from "./commands.ts";
 import { checkKey } from "../tutor/predict.ts";
-import { useCircuit, useEditor, useRetuned, useUi } from "./editorContext.ts";
+import { useCircuit, useEditor, useRetuned, useSwings, useUi } from "./editorContext.ts";
 import { InsertBlockPanel } from "./InsertBlock.tsx";
 
 export function Inspector() {
@@ -129,6 +129,7 @@ function PartPanel({ refdes }: { refdes: string }) {
   const inst = useCircuit((s) => s.parts[refdes]);
   const nets = useCircuit((s) => s.nets);
   const view = useCircuit((s) => s.sim.view);
+  const swings = useSwings();
   const layout = useCircuit((s) => s.layout);
   const probes = useUi((s) => s.probes);
   const def = inst && registry.parts[inst.part];
@@ -137,7 +138,8 @@ function PartPanel({ refdes }: { refdes: string }) {
   const pinNets = def.pins.map((p) => {
     const ref = `${inst.refdes}.${p.name}`;
     const net = Object.values(nets).find((n) => n?.pins.includes(ref))?.id;
-    return { pin: p.name, ref, net, v: net === undefined ? undefined : view?.op?.v[net], i: view?.op?.i[ref] };
+    const v = net === undefined ? undefined : formatNet(view?.op?.v[net], swings[net]);
+    return { pin: p.name, ref, net, v, title: net === undefined ? undefined : netTitle(view?.op?.v[net], swings[net]), i: view?.op?.i[ref] };
   });
   const drawn = !!layout && Object.values(layout.symbols).some((s) => s.refdes === refdes);
 
@@ -164,7 +166,7 @@ function PartPanel({ refdes }: { refdes: string }) {
       <h3>Pins</h3>
       <table>
         <tbody>
-          {pinNets.map(({ pin, ref, net, v, i }) => (
+          {pinNets.map(({ pin, ref, net, v, title, i }) => (
             <tr key={pin} data-pin={ref}>
               <td>{pin}</td>
               <td>
@@ -176,7 +178,9 @@ function PartPanel({ refdes }: { refdes: string }) {
                   "—"
                 )}
               </td>
-              <td className="num">{v === undefined ? "" : formatVolts(v)}</td>
+              <td className="num" title={title}>
+                {v ?? ""}
+              </td>
               <td className="num">{i === undefined ? "" : formatSi(i, "A")}</td>
               <td className="pin-actions">
                 {net && (
@@ -207,14 +211,20 @@ function PartPanel({ refdes }: { refdes: string }) {
 function NetPanel({ id }: { id: string }) {
   const { edits, ui } = useEditor();
   const net = useCircuit((s) => s.nets[id]);
-  const v = useCircuit((s) => s.sim.voltages[id]);
+  const op = useCircuit((s) => s.sim.voltages[id]);
+  const swing = useSwings()[id];
+  const v = formatNet(op, swing);
   const probed = useUi((s) => s.probes.some((p) => p.kind === "net" && p.id === id));
   if (!net) return null;
   return (
     <>
       <h2>{net.label ?? net.id}</h2>
       <p className="sub">{net.kind.kind === "power" ? `Power rail, ${net.kind.volts} V` : net.kind.kind === "ground" ? "Ground (0 V reference)" : "Signal net"}</p>
-      {v !== undefined && <p className="big">{formatVolts(v)}</p>}
+      {v !== undefined && (
+        <p className="big" title={netTitle(op, swing)}>
+          {v}
+        </p>
+      )}
       <div className="row-actions">
         <button type="button" aria-pressed={probed} onClick={() => ui.getState().addProbe({ kind: "net", id })} title="Keep this voltage on the scope">
           Probe
@@ -233,6 +243,7 @@ function BlockPanel({ id }: { id: string }) {
   const { registry } = useEditor();
   const block = useCircuit((s) => s.blocks[id]);
   const voltages = useCircuit((s) => s.sim.voltages);
+  const swings = useSwings();
   const checks = useCircuit((s) => s.sim.checks);
   const status = useCircuit((s) => s.sim.status);
   const retuned = useRetuned();
@@ -289,7 +300,7 @@ function BlockPanel({ id }: { id: string }) {
             <tr key={p.name}>
               <td>{p.name}</td>
               <td>{p.net}</td>
-              <td className="num">{voltages[p.net] === undefined ? "" : formatVolts(voltages[p.net]!)}</td>
+              <td className="num">{formatNet(voltages[p.net], swings[p.net]) ?? ""}</td>
             </tr>
           ))}
         </tbody>

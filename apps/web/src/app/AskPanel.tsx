@@ -7,7 +7,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { Answer, CheckResult, LearnerLevel, ReasoningEffort, Ref, Selection } from "../gen/contract.ts";
-import { changedChecks, describeOp, segments } from "../tutor/answer.ts";
+import { changedChecks, compactBlocks, describeOp, segments } from "../tutor/answer.ts";
+import { mathText } from "../tutor/latex.ts";
 import { prediction } from "../tutor/predict.ts";
 import { type Change, type SimHistory, changeAt, changeName } from "../tutor/simHistory.ts";
 import type { AskEntry } from "../tutor/tutorStore.ts";
@@ -250,15 +251,30 @@ function Entry({ entry }: { entry: AskEntry }) {
 }
 
 function AnswerText({ body, refs }: { body: string; refs: Ref[] }) {
+  const blocks = useCircuit((s) => s.blocks);
+  const segs = useMemo(() => segments(body, refs), [body, refs]);
+  const compact = useMemo(() => compactBlocks(segs, (id) => blocks[id]?.title), [segs, blocks]);
   return (
     <>
-      {segments(body, refs).map((s, i) => ("ref" in s ? <RefChip key={i} r={s.ref} /> : <span key={i}>{s.text}</span>))}
+      {segs.map((s, i) => ("ref" in s ? <RefChip key={i} r={s.ref} compact={compact.has(i)} /> : <MathSpan key={i} text={s.text} />))}
     </>
   );
 }
 
-/** A reference as a chip that selects what it names (while the circuit still holds it). */
-function RefChip({ r }: { r: Ref }) {
+/** Text with any LaTeX the model slipped into it read as text, subscripts and superscripts. */
+function MathSpan({ text }: { text: string }) {
+  const parts = useMemo(() => mathText(text), [text]);
+  if (parts.length === 1 && "text" in parts[0]!) return <span>{parts[0].text}</span>;
+  return (
+    <span>
+      {parts.map((p, i) => ("text" in p ? p.text : "sub" in p ? <sub key={i}>{p.sub}</sub> : <sup key={i}>{p.sup}</sup>))}
+    </span>
+  );
+}
+
+/** A reference as a chip that selects what it names (while the circuit still holds it). A compact
+ * chip marks a block the sentence already names: it selects it without repeating its title. */
+function RefChip({ r, compact = false }: { r: Ref; compact?: boolean }) {
   const { store } = useEditor();
   const label = useCircuit((s) => {
     if (r.kind === "part") return s.parts[r.id] ? r.id : null;
@@ -272,11 +288,13 @@ function RefChip({ r }: { r: Ref }) {
       className="ref-chip"
       data-ref-kind={r.kind}
       data-ref={r.id}
+      data-compact={compact || undefined}
       disabled={label === null}
       title={label === null ? `${r.id} is no longer in the circuit` : `Select ${label}`}
+      aria-label={compact && label !== null ? `Select ${label}` : undefined}
       onClick={() => store.getState().select(target)}
     >
-      {label ?? r.id}
+      {compact && label !== null ? "⌖" : (label ?? r.id)}
     </button>
   );
 }
@@ -311,7 +329,7 @@ function TryCard({ entry }: { entry: AskEntry }) {
       </ul>
       {suggestion.predict && (
         <p className="predict">
-          <span className="muted">Prediction:</span> {suggestion.predict}
+          <span className="muted">Prediction:</span> <MathSpan text={suggestion.predict} />
         </p>
       )}
       {blocked && (

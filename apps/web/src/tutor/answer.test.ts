@@ -2,7 +2,7 @@
 // plain text, ops in words, and the checks an experiment moved.
 import { describe, expect, it } from "vitest";
 import type { CheckResult, Ref } from "../gen/contract.ts";
-import { changedChecks, describeOp, segments } from "./answer.ts";
+import { changedChecks, compactBlocks, describeOp, segments } from "./answer.ts";
 
 const ref = (body: string, token: string, kind: Ref["kind"], id: string, valid = true): Ref => {
   const start = body.indexOf(token);
@@ -51,5 +51,21 @@ describe("changedChecks", () => {
     const after = [check("fc_hz", "499Hz"), check("q", "0.706"), check("gain", null)];
     expect(changedChecks(before, after)).toEqual([{ block: "b2", name: "fc_hz", label: "fc_hz", before: "996Hz", after: "499Hz", pass: true, target: "1kHz" }]);
     expect(changedChecks([], [check("fc_hz", "1kHz")])).toEqual([{ block: "b2", name: "fc_hz", label: "fc_hz", before: "—", after: "1kHz", pass: true, target: "1kHz" }]);
+  });
+});
+
+describe("compactBlocks", () => {
+  const titles: Record<string, string> = { b2: "Sallen-Key low-pass (2nd order)", b3: "Inverting amplifier" };
+  const compact = (body: string) => {
+    const refs = [...body.matchAll(/\[block:(b\d)\]/g)].map((m) => ({ kind: "block" as const, id: m[1]!, valid: true, start: m.index!, end: m.index! + m[0].length }));
+    const segs = segments(body, refs);
+    return [...compactBlocks(segs, (id) => titles[id])].map((i) => (segs[i] as { ref: Ref }).ref.id);
+  };
+
+  it("shows the title once, and not after the model's own words for the block", () => {
+    expect(compact("The Sallen-Key filter [block:b2] sets fc.")).toEqual(["b2"]);
+    expect(compact("This sets the corner of [block:b2]. Later [block:b2] again.")).toEqual(["b2"]);
+    expect(compact("[block:b2] feeds the amplifier [block:b3].")).toEqual(["b3"]);
+    expect(compact("The low-pass part. Then [block:b3] inverts it.")).toEqual([]);
   });
 });

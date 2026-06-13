@@ -4,6 +4,8 @@ import type { CircuitState } from "../store/circuitStore.ts";
 import type { UiState } from "../store/uiStore.ts";
 import type { GenerationState } from "../store/generationStore.ts";
 import { retunedChecks } from "../tutor/predict.ts";
+import { tranRange } from "../tutor/simValues.ts";
+import type { Swing } from "../views/schematic/labels.ts";
 import type { TutorState } from "../tutor/tutorStore.ts";
 import type { Editor } from "./editor.ts";
 import type { ProjectSession, ProjectState } from "./project.ts";
@@ -42,6 +44,14 @@ export function useRetuned(): Set<string> {
   const entries = useTutor((s) => s.entries);
   const checks = useCircuit((s) => s.sim.checks);
   return useMemo(() => retunedChecks(entries, checks ?? []), [entries, checks]);
+}
+
+const NO_SWINGS: Record<string, Swing | undefined> = {};
+
+/** Each net's swing in the latest transient (after start-up), for labels that show a signal. */
+export function useSwings(): Record<string, Swing | undefined> {
+  const tran = useCircuit((s) => s.sim.view?.tran);
+  return useMemo(() => tranRange(tran ?? null)?.v ?? NO_SWINGS, [tran]);
 }
 
 const NO_PROJECT = { getState: () => null, subscribe: () => () => {} };

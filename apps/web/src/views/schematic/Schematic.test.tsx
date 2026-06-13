@@ -31,9 +31,9 @@ describe.skipIf(missing.length > 0)("schematic", () => {
     expect(html).toContain('href="#sym-opamp"');
     expect(html).toContain('href="#sym-flag_ground"');
     expect(html).toContain('<g class="part selected" data-refdes="R1">');
-    expect(html).toContain(">U1A</text>");
-    expect(html).toContain(">TL072</text>");
-    expect(html).toContain(">1V 1kHz</text>");
+    expect(html).toContain(">U1A</tspan>");
+    expect(html).toContain(">TL072</tspan>");
+    expect(html).toContain(">1V 1kHz</tspan>");
     expect(html).toContain(">500 mV</text>");
     expect(html).toContain(">12 V</text>");
     expect(html).toContain(">Sallen-Key low-pass</text>");

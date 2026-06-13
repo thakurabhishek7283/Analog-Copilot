@@ -120,7 +120,10 @@ test.describe("scope and overlays", () => {
     const ed = new EditorPage(page);
     await ed.open("new");
     await ed.buildRc();
-    await expect(page.locator(".scope .hint")).toBeVisible();
+    // A selected part puts the signal nets on its pins on the scope.
+    await ed.select("R1");
+    await expect(page.locator(".scope .u-legend")).toContainText("V(N1)");
+    await expect(page.locator(".scope .u-legend")).toContainText("V(N2)");
     await ed.clickAt(await ed.net("N1"));
     await page.getByRole("button", { name: "Probe" }).click();
     await ed.clickAt(await ed.net("N2"));

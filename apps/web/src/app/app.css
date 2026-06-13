@@ -522,7 +522,7 @@ input[aria-invalid="true"] {
 }
 
 .part text {
-  font-size: 10px;
+  font-size: calc(10px * var(--label-scale, 1));
   fill: var(--text);
 }
 
@@ -576,7 +576,7 @@ input[aria-invalid="true"] {
 }
 
 .block text {
-  font-size: 11px;
+  font-size: calc(11px * var(--label-scale, 1));
   font-weight: 600;
   fill: var(--muted);
   cursor: pointer;
@@ -587,7 +587,7 @@ input[aria-invalid="true"] {
 }
 
 .block .badge {
-  font: 600 10px var(--mono);
+  font: 600 calc(10px * var(--label-scale, 1)) var(--mono);
 }
 
 .block .badge.pass {
@@ -607,7 +607,7 @@ input[aria-invalid="true"] {
 }
 
 .volt {
-  font: 600 9px var(--mono);
+  font: 600 calc(9px * var(--label-scale, 1)) var(--mono);
   fill: var(--volt-text);
   paint-order: stroke;
   stroke: var(--volt-bg);
@@ -780,6 +780,16 @@ input[aria-invalid="true"] {
 .insert-block .spec {
   margin: 0;
   padding-left: 16px;
+}
+
+/* Insert and Cancel stay in view in a short pane (dry run: Insert was below the fold). */
+.insert-block .row-actions {
+  position: sticky;
+  bottom: -16px;
+  margin: 12px -16px -16px;
+  padding: 10px 16px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
 }
 
 .insert-block .problem {
@@ -1429,6 +1439,19 @@ button.ref-chip:hover:not(:disabled) {
 .ask-error {
   color: var(--bad);
   margin: 4px 0 0;
+}
+
+/* A block the sentence already names: select it without repeating its title. */
+.ref-chip[data-compact] {
+  padding: 0 4px;
+}
+
+.answer-text sub,
+.answer-text sup,
+.try-card sub,
+.try-card sup {
+  font-size: 0.75em;
+  line-height: 0;
 }
 
 .try-card {

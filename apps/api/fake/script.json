@@ -88,7 +88,7 @@
     {
       "kind": "ask",
       "when": ["e2e-ask"],
-      "reply": "[R1] and [C1] set the corner of [block:b2]: fc = 1/(2π·R·C). A larger [R1] charges [C1] more slowly, so the corner moves down. [R9] is not in this circuit.\n\n```try\n{\"ops\": [{\"op\": \"part.set_param\", \"body\": {\"refdes\": \"R1\", \"key\": \"resistance\", \"value\": \"16k\"}}], \"predict\": \"the cutoff drops to about 1 kHz\"}\n```"
+      "reply": "[R1] and [C1] set the corner of [block:b2]: \\(f_c = \\frac{1}{2\\pi RC}\\). A larger [R1] charges [C1] more slowly, so the corner of the RC filter [block:b2] moves down. [R9] is not in this circuit.\n\n```try\n{\"ops\": [{\"op\": \"part.set_param\", \"body\": {\"refdes\": \"R1\", \"key\": \"resistance\", \"value\": \"16k\"}}], \"predict\": \"the cutoff drops to about 1 kHz\"}\n```"
     },
     {
       "kind": "ask",

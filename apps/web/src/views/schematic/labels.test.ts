@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PartDef, PartInstance } from "../../gen/contract.ts";
-import { formatSi, formatVolts, partValue } from "./labels.ts";
+import { formatNet, formatSi, formatVolts, netTitle, partValue } from "./labels.ts";
 
 const q = (si: number, display: string) => ({ si, display, unit: "volt" as const });
 
@@ -39,5 +39,19 @@ describe("formatSi", () => {
     expect(formatSi(12, "V")).toBe("12 V");
     expect(formatSi(0, "V")).toBe("0 V");
     expect(formatSi(Number.NaN, "V")).toBe("—");
+  });
+});
+
+describe("formatNet", () => {
+  it("shows a signal's swing, and a steady net's operating point", () => {
+    expect(formatNet(0, { min: -0.705, max: 0.705 })).toBe("±705 mV"); // a sine centred on zero
+    expect(formatNet(6.63, { min: 5.63, max: 7.63 })).toBe("6.63 V ±1 V"); // a signal on a bias
+    expect(formatNet(12, { min: 12, max: 12 })).toBe("12 V"); // a rail
+    expect(formatNet(2.5, { min: 2.4999, max: 2.5001 })).toBe("2.5 V"); // a ripple under 1 mV
+    expect(formatNet(0.0024, undefined)).toBe("2.4 mV"); // no transient
+    expect(formatNet(undefined, undefined)).toBeUndefined();
+    expect(netTitle(0, { min: -0.705, max: 0.705 })).toBe(
+      "swings -705 mV to 705 mV in the transient (after start-up); 0 V at the operating point (no signal)",
+    );
   });
 });

@@ -72,3 +72,29 @@ export function changedChecks(before: CheckResult[], after: CheckResult[]): Chec
     .filter((c) => shown(was.get(key(c))) !== shown(c))
     .map((c) => ({ block: c.block, name: c.name, label: c.label, before: shown(was.get(key(c))), after: shown(c), pass: c.pass, target: c.target_display }));
 }
+
+const GENERIC = new Set(["block", "with", "from", "order", "stage"]);
+
+/** The block references to show as a compact chip (by segment index): the model already named the
+ * block in the same sentence ("the Sallen-Key filter [block:b2]" repeated the title), or an earlier
+ * chip in the answer showed its title. `title` is the block's title, if the circuit holds it. */
+export function compactBlocks(segs: Segment[], title: (id: string) => string | undefined): Set<number> {
+  const out = new Set<number>();
+  const shown = new Set<string>();
+  let sentence = "";
+  segs.forEach((s, i) => {
+    if ("text" in s) {
+      const end = Math.max(s.text.lastIndexOf(". "), s.text.lastIndexOf("\n"), s.text.lastIndexOf("? "), s.text.lastIndexOf("! "));
+      sentence = end >= 0 ? s.text.slice(end + 1) : sentence + s.text;
+      return;
+    }
+    if (s.ref.kind !== "block" || !s.ref.valid) return;
+    const t = title(s.ref.id);
+    if (!t) return;
+    const words = t.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 4 && !GENERIC.has(w));
+    const said = sentence.toLowerCase();
+    if (shown.has(s.ref.id) || words.some((w) => said.includes(w))) out.add(i);
+    else shown.add(s.ref.id);
+  });
+  return out;
+}

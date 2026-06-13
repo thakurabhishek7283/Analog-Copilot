@@ -45,7 +45,7 @@ function acAt(view: NonNullable<CircuitState["sim"]["view"]>["ac"], hz: number |
 }
 
 /** Each net's lowest and highest voltage over the transient's second half (after start-up). */
-function tranRange(view: NonNullable<CircuitState["sim"]["view"]>["tran"]): TranValues | null {
+export function tranRange(view: NonNullable<CircuitState["sim"]["view"]>["tran"]): TranValues | null {
   if (!view || view.x.length < 2) return null;
   const from = Math.floor(view.x.length / 2);
   const v: TranValues["v"] = {};

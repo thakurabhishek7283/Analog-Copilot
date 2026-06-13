@@ -5,12 +5,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import uPlot, { type AlignedData, type Options } from "uplot";
 import "uplot/dist/uPlot.min.css";
-import type { Analysis, Block, Quantity } from "../../gen/contract.ts";
-import type { Selection } from "../../store/circuitStore.ts";
+import type { Analysis, Quantity } from "../../gen/contract.ts";
 import { useCircuit, useEditor, useUi } from "../../app/editorContext.ts";
 import { formatSi } from "../schematic/labels.ts";
 import type { Playback } from "../playback.ts";
-import { type Plot, type Trace, acPlot, probeLabel, tranPlot } from "./traces.ts";
+import { type Plot, type Trace, acPlot, followed, probeLabel, tranPlot } from "./traces.ts";
 
 /** The longest transient the scope offers to run, in output steps. */
 export const MAX_TRAN_STEPS = 100_000;
@@ -30,7 +29,8 @@ export function Scope() {
   // The settings forms remount when the analyses change (an undo), so their fields follow.
   const analysesKey = JSON.stringify(useCircuit((s) => s.analyses)) + JSON.stringify(useCircuit((s) => s.sim.analyses));
   const blocks = useCircuit((s) => s.blocks);
-  const follow = useMemo(() => followed(selection, blocks), [selection, blocks]);
+  const nets = useCircuit((s) => s.nets);
+  const follow = useMemo(() => followed(selection, blocks, nets), [selection, blocks, nets]);
   const plot = useMemo(
     () => (tab === "tran" ? tranPlot(view, probes, follow) : acPlot(view, probes, follow)),
     [tab, view, probes, follow],
@@ -65,23 +65,10 @@ export function Scope() {
   );
 }
 
-/** The selected net, or a selected block's signal ports (inputs first): its in/out response. */
-function followed(selection: Selection | null, blocks: Record<string, Block | undefined>): string[] {
-  if (selection?.kind === "net") return [selection.id];
-  if (selection?.kind !== "block") return [];
-  const ports = blocks[selection.id]?.ports ?? [];
-  const order = { input: 0, bidir: 1, output: 2 } as Record<string, number | undefined>;
-  return ports
-    .filter((p) => order[p.direction] !== undefined)
-    .sort((a, b) => order[a.direction]! - order[b.direction]!)
-    .map((p) => p.net)
-    .filter((n, k, all) => all.indexOf(n) === k);
-}
-
 function emptyText(tab: "tran" | "ac", hasData: boolean, simulated: boolean): string {
   if (!simulated) return "Waiting for a simulation…";
   if (!hasData) return tab === "ac" ? "No AC sweep yet: set its range above and run it." : "No transient in the last result.";
-  return "Select a net or a block to see it here, or add a probe from the inspector.";
+  return "Select a part, a net or a block to see it here, or add a probe from the inspector.";
 }
 
 function ProbeChips() {

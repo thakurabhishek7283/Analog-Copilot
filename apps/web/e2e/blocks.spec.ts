@@ -43,6 +43,10 @@ test.describe("op-amp filter, the Phase 1 gate", () => {
     await expect(page.locator('.checks tr[data-check="fc_hz"]')).toHaveAttribute("data-pass", "true");
     await expect(page.getByRole("tab", { name: "AC sweep" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".scope .u-legend")).toContainText("|V(B1_OUT)|");
+    // A selected part puts its signal nets on the scope; a wire the sine drives reads its swing, not 0 V.
+    await ed.select("R1");
+    await expect(page.locator(".scope .u-legend")).toContainText("|V(B1_IN)|");
+    await expect(page.locator('text.volt[data-net="B1_OUT"]')).toContainText("±");
 
     // Retuning a part moves the measurement out of tolerance: the badge says so.
     await ed.select("C1");
@@ -76,7 +80,10 @@ test.describe("op-amp filter, the Phase 1 gate", () => {
     await page.locator("#v-V1-offset").press("Enter");
     await ed.simulated();
     await ed.select("U1");
-    await expect(page.locator('tr[data-pin="U1.OUT_A"] td.num').first()).toHaveText(/^(1|0\.99\d*|1\.00\d*) V$/);
+    // The sine rides on that offset: the pin reads its swing, and its operating point says it follows.
+    const out = page.locator('tr[data-pin="U1.OUT_A"] td.num').first();
+    await expect(out).toHaveText(/ ±\d+ mV$/);
+    await expect(out).toHaveAttribute("title", /; (1|0\.99\d*|1\.00\d*) V at the operating point/);
     // The rails are supplies, so nothing lacks a DC path; only unit B, unused, is mentioned.
     await page.locator(".erc-badge").click();
     await expect(page.locator(".erc li")).toHaveCount(1);

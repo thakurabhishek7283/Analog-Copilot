@@ -664,6 +664,16 @@ As built (panel layout, `app/Workspace.tsx`, `app/panels.ts`): the fixed grid (p
 - The layout is per browser (localStorage, read defensively, saved 150 ms after it stops changing), never synced with the project. "Reset layout" appears in the toolbar once it differs from the defaults: palette 200 px, side column 400 px, scope 220 px, inspector 200 px, lesson 140 px. Below 900 px wide the stacked layouts are unchanged and the column handles are hidden. No new dependency.
 - The schematic refits when its panel is resized, until the user pans or zooms (Fit resumes it). Tests: `panels.test.ts` (7), `e2e/layout.spec.ts` (2, project `local`: drag, keyboard, collapse, reload, Insert block into a collapsed inspector, Focus, Reset, double click).
 
+As built (dry-run fixes, 2026-06-13; the student-session dry run, §16):
+
+- Answers: LaTeX the model slips in (`\(1/\sqrt{C2}\)`, at every thinking level) is read as text in the browser (`tutor/latex.ts`): delimiters dropped, `\frac` as a/b, `\sqrt` as √, symbols (×, ·, ≈, π, Ω, µ, °), `\text{}` unwrapped, `_{}` and `^{}` as subscripts and superscripts; a name like `B2_OUT` stays whole. It runs on the text between reference chips, so the core's spans hold, and it renders text, never HTML (§14). The Try-it card's prediction gets the same. No prompt or golden change.
+- Block chips: a block reference shows its title only the first time, and not when its sentence already names the block ("the Sallen-Key filter [block:b2]" read "Sallen-Key filter Sallen-Key low-pass (2nd order)", three times in one answer). Then it is a compact chip, ⌖, which still selects the block and is named for screen readers (`compactBlocks`: a title word of four letters or more in the sentence so far).
+- Insert block: while its form is open the inspector is at least 460 px tall (the learner's size returns when it closes), and Insert and Cancel stay in view at the bottom of the pane.
+- Schematic at 1366×768: part labels, net voltages, block titles and badges keep at least 9 px on screen when the view is zoomed out (`--label-scale`, at most 1.3 times); a part's value is a second line that follows the font. A part's click area reaches 4 units past its drawing (a click between a capacitor's plates had deselected it).
+- Net voltages: a wire, pin or port a signal moves reads its swing over the transient after start-up, "±705 mV" around zero or "6.63 V ±1 V" on a bias, with the operating point in its tooltip; a steady net still reads its operating point. A sine-driven filter had read "0 V" everywhere, the DC operating point of a signal centred on zero.
+- Scope: a selected part puts the signal nets on its pins on the scope, in pin order, at most three, without supply and ground (it had shown "Select a net or a block").
+- Facilitator's answer key for the student sessions: `evals/sessions/answer_key.md` (§16).
+
 ## 11. Persistence: Postgres schema
 
 Projects are event-sourced: an append-only `ops` table plus a periodic snapshot. Every generation attempt is stored, failures included, because that table becomes your eval set and future fine-tuning data.

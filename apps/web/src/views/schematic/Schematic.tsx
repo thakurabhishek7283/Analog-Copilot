@@ -11,14 +11,14 @@ import { type D3ZoomEvent, type ZoomBehavior, type ZoomTransform, zoom, zoomIden
 import { memo, useEffect, useMemo, useRef } from "react";
 import { DomStage } from "../../anim/stage.ts";
 import type { CheckResult, PartDef, PartInstance } from "../../gen/contract.ts";
-import { useCircuit, useEditor, useGen, useRetuned, useUi } from "../../app/editorContext.ts";
+import { useCircuit, useEditor, useGen, useRetuned, useSwings, useUi } from "../../app/editorContext.ts";
 import { checkKey } from "../../tutor/predict.ts";
 import type { GhostView } from "../../store/generationStore.ts";
 import type { Selection } from "../../store/circuitStore.ts";
 import type { Tool } from "../../store/uiStore.ts";
 import { type Point, symbolTransform } from "../../workers/layout.geometry.ts";
 import type { BlockFrame, Layout, PlacedFlag, PlacedSymbol } from "../../workers/layout.types.ts";
-import { formatVolts, partName, partValue } from "./labels.ts";
+import { formatNet, netTitle, partName, partValue, type Swing } from "./labels.ts";
 import { OverlayRenderer } from "./overlay.ts";
 
 /** The sprite sheet's <symbol> elements, inlined once (cross-origin <use href> is not allowed). */
@@ -41,6 +41,14 @@ interface PartGlyphProps {
   onSelect: (s: Selection) => void;
 }
 
+/** User units a part's click area reaches past its drawing. */
+const HIT_PAD = 4;
+/** Part labels and net voltages keep at least this size on screen (px, at 10 user units: 0.9 is 9 px),
+ * growing at most MAX_LABEL_SCALE times (dry run: 6-7 px labels at 1366x768). */
+const LABEL_FLOOR = 0.9;
+const MAX_LABEL_SCALE = 1.3;
+export const labelScale = (k: number) => Math.min(MAX_LABEL_SCALE, Math.max(1, LABEL_FLOOR / k));
+
 const PartGlyph = memo(function PartGlyph({ sym, name, value, selected, onSelect }: PartGlyphProps) {
   const { label } = sym;
   return (
@@ -52,21 +60,23 @@ const PartGlyph = memo(function PartGlyph({ sym, name, value, selected, onSelect
         onSelect({ kind: "part", refdes: sym.refdes });
       }}
     >
-      <rect className="hit" x={sym.x} y={sym.y} width={sym.width} height={sym.height} />
+      {/* A little past the drawing, so a click between a capacitor's plates or beside a resistor lands. */}
+      <rect className="hit" x={sym.x - HIT_PAD} y={sym.y - HIT_PAD} width={sym.width + 2 * HIT_PAD} height={sym.height + 2 * HIT_PAD} />
       <use
         href={`#sym-${sym.symbol}`}
         width={sym.symbolWidth}
         height={sym.symbolHeight}
         transform={symbolTransform(sym.x, sym.y, sym.symbolWidth, sym.symbolHeight, sym.rot, sym.flip)}
       />
-      <text className="refdes" x={label.x} y={label.y} textAnchor={label.anchor}>
-        {name}
+      {/* The value's line follows the font, which grows when the view is zoomed out (LABEL_FLOOR). */}
+      <text className="label" x={label.x} y={label.y} textAnchor={label.anchor}>
+        <tspan className="refdes">{name}</tspan>
+        {value && (
+          <tspan className="value" x={label.x} dy="1.1em">
+            {value}
+          </tspan>
+        )}
       </text>
-      {value && (
-        <text className="value" x={label.x} y={label.y + 11} textAnchor={label.anchor}>
-          {value}
-        </text>
-      )}
     </g>
   );
 });
@@ -182,6 +192,7 @@ const Frame = memo(function Frame({
 const NO_CHECKS: CheckResult[] = [];
 const NO_BENCH: Record<string, CheckResult[]> = {};
 const NO_RETUNED = new Set<string>();
+const NO_SWINGS: Record<string, Swing | undefined> = {};
 
 /** A check as its badge shows it: `bench` when the live simulation has no measurement for it and
  * the server's test-bench result (`sim.summary` of a generated block) stands in; `retuned` when the
@@ -215,6 +226,7 @@ export function SchematicContent({
   parts,
   defs,
   voltages,
+  swings = NO_SWINGS,
   selection,
   checks = NO_CHECKS,
   bench = NO_BENCH,
@@ -226,6 +238,8 @@ export function SchematicContent({
   parts: Record<string, PartInstance>;
   defs: Record<string, PartDef | undefined>;
   voltages: Record<string, number>;
+  /** Each net's swing in the transient: a net a signal moves shows it instead of its operating point. */
+  swings?: Record<string, Swing | undefined>;
   selection: Selection | null;
   /** Spec check results of template blocks (sim.checks). */
   checks?: CheckResult[];
@@ -291,10 +305,11 @@ export function SchematicContent({
       </g>
       <g className="voltages">
         {Object.entries(layout.netLabels).map(([net, at]) => {
-          const v = voltages[net];
-          return v === undefined ? null : (
+          const text = formatNet(voltages[net], swings[net]);
+          return text === undefined ? null : (
             <text key={net} x={at.x} y={at.y} textAnchor={at.anchor} className={net === selectionNet(selection) ? "volt selected" : "volt"} data-net={net}>
-              {formatVolts(v)}
+              <title>{netTitle(voltages[net], swings[net])}</title>
+              {text}
             </text>
           );
         })}
@@ -355,6 +370,7 @@ export function Schematic() {
   const parts = useCircuit((s) => s.parts);
   const nets = useCircuit((s) => s.nets);
   const voltages = useCircuit((s) => s.sim.voltages);
+  const swings = useSwings();
   const selection = useCircuit((s) => s.selection);
   const checks = useCircuit((s) => s.sim.checks);
   const bench = useCircuit((s) => s.bench);
@@ -396,6 +412,7 @@ export function Schematic() {
         if (e.sourceEvent) autoFit.current = false; // a user gesture, not fit()
         transformRef.current = e.transform;
         viewRef.current?.setAttribute("transform", e.transform.toString());
+        svg.style.setProperty("--label-scale", labelScale(e.transform.k).toFixed(3));
         overlay.setTransform(e.transform);
       });
     select(svg).call(z).on("dblclick.zoom", null);
@@ -562,6 +579,7 @@ export function Schematic() {
                 parts={parts}
                 defs={registry.parts}
                 voltages={voltages}
+                swings={swings}
                 selection={selection}
                 checks={checks}
                 bench={bench}

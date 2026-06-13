@@ -30,6 +30,34 @@ export function formatVolts(v: number): string {
   return a < 1 ? `${sig3(r * 1e3)} mV` : `${sig3(r)} V`;
 }
 
+/** A net's lowest and highest voltage over the transient after start-up. */
+export interface Swing {
+  min: number;
+  max: number;
+}
+
+/** A net as its label reads: the swing when a signal moves it ("±705 mV" around zero, "6.63 V
+ * ±1 V" on a bias), else the operating point ("12 V"). Dry run: a sine-driven filter read "0 V" on
+ * every wire, the DC operating point of a signal centred on zero. */
+export function formatNet(op: number | undefined, swing?: Swing): string | undefined {
+  if (swing) {
+    const amp = (swing.max - swing.min) / 2;
+    const mid = (swing.max + swing.min) / 2;
+    if (amp >= 1e-3 && amp > 0.01 * Math.abs(mid)) {
+      return Math.abs(mid) < Math.max(1e-3, 0.05 * amp) ? `±${formatVolts(amp)}` : `${formatVolts(mid)} ±${formatVolts(amp)}`;
+    }
+  }
+  return op === undefined ? undefined : formatVolts(op);
+}
+
+/** What a label means, for its tooltip. */
+export function netTitle(op: number | undefined, swing?: Swing): string {
+  const parts = [];
+  if (swing) parts.push(`swings ${formatVolts(swing.min)} to ${formatVolts(swing.max)} in the transient (after start-up)`);
+  if (op !== undefined) parts.push(`${formatVolts(op)} at the operating point (no signal)`);
+  return parts.join("; ");
+}
+
 const PREFIXES: [number, string][] = [
   [1e9, "G"],
   [1e6, "M"],

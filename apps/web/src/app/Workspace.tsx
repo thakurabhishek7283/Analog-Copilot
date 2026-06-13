@@ -70,6 +70,9 @@ export function Workspace() {
 const TITLES: Record<Exclude<PaneId, "palette">, string> = { inspector: "Inspector", ask: "Ask the tutor", lesson: "Lesson" };
 /** The pane that takes the column's spare height: the tutor while it is open. */
 const FILL_ORDER = ["ask", "lesson", "inspector"] as const;
+/** The inspector's height while it holds an Insert block form (dry run: at 200 px the Insert button
+ * was below the fold). The learner's own size comes back when the form closes. */
+export const INSERT_PANE = 460;
 
 function SidePanes() {
   const sizes = usePanels((s) => s.sizes);
@@ -87,6 +90,7 @@ function SidePanes() {
   const shown = (["inspector", "ask", "lesson"] as const).filter((id) => id !== "lesson" || hasLesson);
   const fill = FILL_ORDER.find((id) => shown.includes(id) && !collapsed[id]) ?? null;
   const height = (id: "inspector" | "lesson") => () => side.current?.querySelector(`[data-pane="${id}"]`)?.getBoundingClientRect().height;
+  const shownSize = (id: "inspector" | "lesson") => (id === "inspector" && inserting ? Math.max(sizes.inspector, INSERT_PANE) : sizes[id]);
 
   const content: Record<(typeof shown)[number], ReactNode> = { inspector: <Inspector />, ask: <AskPanel />, lesson: <LessonPanel /> };
   const out: ReactNode[] = [];
@@ -102,7 +106,7 @@ function SidePanes() {
             axis="y"
             size={size}
             label={`Resize the ${TITLES[size].toLowerCase()}`}
-            value={sizes[size]}
+            value={shownSize(size)}
             dir={dir}
             measure={height(size)}
             onResize={(px) => panels.getState().resize(size, px)}
@@ -117,7 +121,7 @@ function SidePanes() {
         id={id}
         title={TITLES[id]}
         fill={fill === id}
-        height={id === "ask" ? 0 : sizes[id]}
+        height={id === "ask" ? 0 : shownSize(id)}
         actions={
           id === "ask" && (
             <button

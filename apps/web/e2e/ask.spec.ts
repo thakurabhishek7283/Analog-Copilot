@@ -46,7 +46,13 @@ test("an answer about the selected part streams with chips, and its experiment i
   const answer = entry(page).locator(".answer-text");
   await expect(answer).toContainText("set the corner of");
   await expect(answer).toContainText("R9 is not in this circuit."); // not a chip: plain text
-  await expect(answer.locator(".ref-chip")).toHaveCount(5);
+  await expect(answer.locator(".ref-chip")).toHaveCount(6);
+  // LaTeX the model slipped in reads as text; the block named in its own sentence is a compact chip.
+  await expect(answer).toContainText("= 1/(2π RC)");
+  await expect(answer.locator("sub")).toHaveText("c");
+  await expect(answer).not.toContainText("\\frac");
+  await expect(answer.locator('.ref-chip[data-ref="b2"]').first()).toHaveText("RC low-pass filter");
+  await expect(answer.locator('.ref-chip[data-ref="b2"][data-compact]')).toHaveText("⌖");
   await expect(answer.locator('.ref-chip[data-ref="R9"]')).toHaveCount(0);
   await expect(answer).not.toContainText("```try"); // the experiment is a card, not text
   await answer.locator('.ref-chip[data-ref="C1"]').first().click();
