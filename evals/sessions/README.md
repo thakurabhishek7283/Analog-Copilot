@@ -10,6 +10,7 @@ notes but does not teach.
 | --- | --- |
 | `README.md` | This guide: setup, the session script, what is logged, how to read the results |
 | `tasks.md` | The student's task card (print one per session) |
+| `answer_key.md` | The facilitator's key: what a right answer to each task contains, what a wrong one looks like, what the screen should show (never shown to the student) |
 | `observation.md` | The facilitator's sheet (one per session) |
 | `survey.md` | The questions after the session |
 | `export.py` | Reads every answer back from the database with the evals' checks: `answers.csv` (a follow-up's `follows` column names the earlier questions it was sent with), `sessions.md` |
@@ -47,7 +48,7 @@ before the first student arrives.
    Guide me, the thinking choice), Yes/No under an answer. Do not show What changed? or Try it; the
    tasks lead there.
 4. **Tasks (30 min).** Hand over `tasks.md`. Do not answer circuit questions: "what would you ask the
-   tutor?" is the only hint. Fill in `observation.md` as you go. Task 5 needs you at the keyboard for
+   tutor?" is the only hint. Keep `answer_key.md` beside you to tell whether the tutor is on track. Fill in `observation.md` as you go. Task 5 needs you at the keyboard for
    10 seconds: while the student looks away, disconnect C1 from the filter's output (select C1, and in
    the inspector disconnect its pin 2) and wait for the simulation: both checks fail (Q falls to about 0.1).
 5. **Survey (5 min).** `survey.md`, on paper or read aloud.
@@ -70,7 +71,7 @@ and in all). Both stay out of git (students' words).
 
 ## Reading the results
 
-For each session, read every answer in `answers.csv` next to the sheet. Mark each answer **ok**, **weak**
+For each session, read every answer in `answers.csv` next to the sheet and `answer_key.md`. Mark each answer **ok**, **weak**
 (right but unhelpful: too long, wrong level, did not answer what was asked) or **wrong** (a false claim
 about the circuit, a wrong number, an invented part). A wrong answer is the finding that matters most;
 note whether the student noticed it.
