@@ -673,6 +673,7 @@ As built (dry-run fixes, 2026-06-13; the student-session dry run, §16):
 - Net voltages: a wire, pin or port a signal moves reads its swing over the transient after start-up, "±705 mV" around zero or "6.63 V ±1 V" on a bias, with the operating point in its tooltip; a steady net still reads its operating point. A sine-driven filter had read "0 V" everywhere, the DC operating point of a signal centred on zero.
 - Scope: a selected part puts the signal nets on its pins on the scope, in pin order, at most three, without supply and ground (it had shown "Select a net or a block").
 - Facilitator's answer key for the student sessions: `evals/sessions/answer_key.md` (§16).
+- Smaller ones: the header's badge reads "1 note" in a neutral style when every finding is an `info` (an unused op-amp unit read as a problem as "1 check"); the inspector starts at 280 px (pins were cut off at 200); the thinking choice reads Normal, Quick or Deep, so Ask stays on its row at 400 px; a pin's disconnect button is named "Disconnect R1.2 from N_A", not "×"; "Thinking…" counts the seconds from 2 s; an empty Ask panel offers two or three questions about what is selected, which fill the box (the learner sends them).
 
 ## 11. Persistence: Postgres schema
 

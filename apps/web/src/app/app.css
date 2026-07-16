@@ -338,6 +338,12 @@ input[aria-invalid="true"] {
   margin-right: 6px;
 }
 
+.erc-badge[data-notes-only] {
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--line);
+}
+
 /* Palette */
 .palette {
   border-right: 1px solid var(--line);
@@ -1553,6 +1559,21 @@ button.ref-chip:hover:not(:disabled) {
 .ask .about button.link {
   text-decoration: none;
   color: var(--muted);
+}
+
+/* Example questions in an empty panel: they fill the box, the learner sends them. */
+.ask .examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.ask .examples .example {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
 }
 
 .ask .new-topic {

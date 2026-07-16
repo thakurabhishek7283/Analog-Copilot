@@ -40,7 +40,7 @@ before the first student arrives.
 
 1. **Before.** A fresh browser profile (Edge: a new guest window), so the student is a new anonymous user
    with no history; `export.py` tells sessions apart by that user. Note the start time on the sheet.
-   Set the Ask panel to its defaults (Explain, Normal thinking, beginner) and leave the level for the
+   Set the Ask panel to its defaults (Explain, Normal thinking, Beginner) and leave the level for the
    student to change.
 2. **Consent (2 min).** Explain: we are testing the tutor, not them; their questions and the tutor's
    answers are stored with no name; they can stop at any time. Ask them to think aloud.

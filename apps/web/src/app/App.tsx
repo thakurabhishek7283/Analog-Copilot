@@ -228,6 +228,8 @@ function Toolbar({ demo, onRetryServer }: { demo: boolean; onRetryServer: () => 
   const overlays = useUi((s) => s.overlays);
   const tool = useUi((s) => s.tool);
   const issues = useCircuit((s) => s.erc.length);
+  // Only notes (an unused op-amp unit): a neutral badge, not a warning (dry run: "1 check" read as a problem).
+  const notesOnly = useCircuit((s) => s.erc.every((e) => e.severity === "info"));
   const customLayout = usePanels((s) => !isDefaultLayout(s));
 
   const ok = sim.status === "ok" || sim.status === "pending" || sim.status === "running" || sim.status === "idle";
@@ -276,8 +278,14 @@ function Toolbar({ demo, onRetryServer }: { demo: boolean; onRetryServer: () => 
       {lastError ? <span className="notice">{lastError.message}</span> : toolHint && <span className="tool-hint">{toolHint}</span>}
       <span className={ok ? "sim-status" : "sim-status bad"} title={sim.message ?? sim.result?.log.split("\n").slice(-3).join("\n")}>
         {issues > 0 && (
-          <button type="button" className="erc-badge" onClick={() => store.getState().select(null)} title="Show the circuit checks">
-            {issues} check{issues === 1 ? "" : "s"}
+          <button
+            type="button"
+            className="erc-badge"
+            data-notes-only={notesOnly || undefined}
+            onClick={() => store.getState().select(null)}
+            title={notesOnly ? "Show the circuit notes (nothing is wrong)" : "Show the circuit checks"}
+          >
+            {notesOnly ? `${issues} note${issues === 1 ? "" : "s"}` : `${issues} check${issues === 1 ? "" : "s"}`}
           </button>
         )}
         <span className="dot" data-status={sim.status} />

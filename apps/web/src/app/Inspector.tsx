@@ -193,7 +193,7 @@ function PartPanel({ refdes }: { refdes: string }) {
                     >
                       I
                     </button>
-                    <button type="button" title={`Disconnect ${ref} from ${net}`} onClick={() => edits.disconnect(ref)}>
+                    <button type="button" title={`Disconnect ${ref} from ${net}`} aria-label={`Disconnect ${ref} from ${net}`} onClick={() => edits.disconnect(ref)}>
                       ×
                     </button>
                   </>

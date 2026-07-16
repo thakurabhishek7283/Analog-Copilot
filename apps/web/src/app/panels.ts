@@ -37,7 +37,7 @@ export interface PanelState extends PanelLayout {
 export type PanelStore = StoreApi<PanelState>;
 
 export const DEFAULT_LAYOUT: PanelLayout = {
-  sizes: { palette: 200, side: 400, scope: 220, inspector: 200, lesson: 140 },
+  sizes: { palette: 200, side: 400, scope: 220, inspector: 280, lesson: 140 },
   collapsed: { palette: false, inspector: false, ask: false, lesson: false },
 };
 

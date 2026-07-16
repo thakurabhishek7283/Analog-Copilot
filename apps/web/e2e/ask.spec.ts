@@ -33,7 +33,7 @@ test("an answer about the selected part streams with chips, and its experiment i
   // browser's simulation of the circuit as saved.
   await editor.select("R1");
   await expect(panel(page).locator(".about")).toContainText("About R1");
-  await panel(page).getByLabel("Thinking").selectOption({ label: "Deep thinking" });
+  await panel(page).getByLabel("Thinking").selectOption({ label: "Deep" });
   const request = page.waitForRequest((r) => r.url().endsWith("/ask") && r.method() === "POST");
   await ask(page, "e2e-ask why is R1 this value?");
   const body = (await request).postDataJSON();
@@ -126,7 +126,12 @@ test("Socratic mode, Stop, and a failed answer that can be asked again", async (
 
 test("a follow-up is sent with the conversation so far, until a new topic", async ({ page }) => {
   await newProject(page);
+  // An empty panel offers questions to start from; one fills the box, the learner sends it.
+  await panel(page).getByRole("button", { name: "What does this circuit do?" }).click();
+  await expect(panel(page).getByLabel("Your question")).toHaveValue("What does this circuit do?");
+  await expect(panel(page).locator(".examples")).toBeVisible(); // nothing was asked yet
   await ask(page, "what is this circuit?");
+  await expect(panel(page).locator(".examples")).toHaveCount(0);
   await expect(entry(page)).toHaveAttribute("data-phase", "done");
   const follow = page.waitForRequest((r) => r.url().endsWith("/ask"));
   await ask(page, "can you say that more simply?");

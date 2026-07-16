@@ -92,6 +92,7 @@ export function AskPanel() {
   useEffect(() => setAbout(true), [selection]);
   const busy = entries.some((e) => e.phase === "asking" || e.phase === "streaming");
   const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
   const last = entries.at(-1);
 
   useEffect(() => {
@@ -149,7 +150,26 @@ export function AskPanel() {
               </button>
             </span>
           )}
+          {entries.length === 0 && (
+            <div className="examples" role="group" aria-label="Example questions">
+              <span className="muted">Try asking:</span>
+              {examples(target, target ? selectionName : null).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="example"
+                  onClick={() => {
+                    setQuestion(q);
+                    box.current?.focus();
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
+            ref={box}
             aria-label="Your question"
             rows={2}
             maxLength={MAX_QUESTION}
@@ -182,7 +202,7 @@ export function AskPanel() {
             >
               {EFFORTS.map((x) => (
                 <option key={x.label} value={x.value ?? ""}>
-                  {x.label} thinking
+                  {x.label}
                 </option>
               ))}
             </select>
@@ -208,6 +228,24 @@ export function AskPanel() {
   );
 }
 
+/** "Thinking…", then the seconds so far: a reasoning model sends nothing for 4 to 15 s. */
+function Thinking() {
+  const [s, setS] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setS((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <p className="muted thinking">Thinking…{s >= 2 ? ` ${s} s` : ""}</p>;
+}
+
+/** Questions to start from in an empty panel, about what is selected. They fill the box; the learner sends them. */
+function examples(selection: Selection | null, name: string | null): string[] {
+  if (selection?.kind === "part" && name) return [`Why is ${name} this value?`, `What does ${name} do?`, `What happens if I make ${name} bigger?`];
+  if (selection?.kind === "net" && name) return [`Why is the signal at ${name} this size?`, `What is ${name} connected to, and why?`];
+  if (selection?.kind === "block" && name) return ["How does this block work?", "How do I change what it is set to?"];
+  return ["What does this circuit do?", "What should I look at first?"];
+}
+
 function Entry({ entry }: { entry: AskEntry }) {
   const { readAnswer, project } = useEditor();
   // While it streams, the browser's core reads it: chips for references, a `try` block hidden
@@ -222,7 +260,7 @@ function Entry({ entry }: { entry: AskEntry }) {
         {aboutName && <span className="about-tag"> · about {aboutName}</span>}
         {entry.change && <span className="about-tag"> · {changeName(entry.change)}</span>}
       </p>
-      {entry.phase === "asking" && <p className="muted">Thinking…</p>}
+      {entry.phase === "asking" && <Thinking />}
       {answer && (
         <p className="answer-text" aria-live={entry.phase === "streaming" ? "polite" : undefined}>
           <AnswerText body={answer.body} refs={answer.refs} />
