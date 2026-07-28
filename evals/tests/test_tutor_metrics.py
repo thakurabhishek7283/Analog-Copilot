@@ -76,6 +76,10 @@ def test_what_answers_write_besides_plain_quantities():
     assert not ground(r"So \(f_c \approx \frac{1}{2\pi \cdot 18\,k\Omega \cdot 10\,nF} \approx 884\,Hz\).", ctx).ungrounded, "LaTeX"
     assert not ground("Set R1 to 36 kΩ.", ctx, suggested=["36k"]).ungrounded, "the experiment's own value"
     assert not ground("In kΩ: 9 × 4.9/(39 + 4.9) ≈ 1.0", "R1 39kΩ R2 4.9kΩ VCC 9V").ungrounded, "a bare 39 for 39kΩ"
+    assert not ground("R×C = 18kΩ×10nF. Putting that into 1/(2πRC) gives about 884 Hz.", ctx).ungrounded, "arithmetic in words"
+    assert not ground("It covers the cutoff by about 49 times (100 kHz ÷ 2.02 kHz).",
+                      "ac 10Hz..100kHz | fc_hz 2kHz measured 2.02kHz").ungrounded, "a ratio's arithmetic"
+    assert ground("The cutoff gives about 884 Hz.", ctx).ungrounded, "words without arithmetic are no arithmetic"
     g = ground("fc fell by 40 Hz, then by 282 Hz.", "measured 996Hz → 956Hz → 718Hz")
     assert [(u["text"], u["why"]) for u in g.ungrounded] == [
         ("40 Hz", "one step from the context, arithmetic not shown"), ("282 Hz", "not in the context")

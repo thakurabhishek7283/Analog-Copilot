@@ -172,7 +172,9 @@ def constant(q: Quantity) -> bool:
 
 _OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv,
         ast.Pow: operator.pow, ast.USub: operator.neg, ast.UAdd: operator.pos}
-EQUALS = re.compile(r"\s*(=|≈|~|≅|≃)\s*$")
+# The sign before a result, or the words that stand for it ("1/(2πRC) gives about 884 Hz", dry run).
+EQUALS = re.compile(r"\s*(=|≈|~|≅|≃|\b(?:gives|giving|comes to|works out (?:to|at)|equals|yields)"
+                    r"(?:\s+(?:about|roughly|around|approximately|nearly|close to))?)\s*$", re.I)
 OPERATOR = re.compile(r"[·×*/÷+^√²∥]|\|\||(?<=[\d)\s])[-−](?=[\s\d(])|\bx\b")
 
 
@@ -224,8 +226,8 @@ def evaluate(expr: str) -> float | None:
 
 
 def shown_arithmetic(text: str, q: Quantity) -> tuple[str, float | None] | None:
-    """When `q` follows `=` or `≈` after an expression with an operator, that expression and its
-    value: None when it is symbolic (1/(2π·R·C)). Else None."""
+    """When `q` follows `=` or `≈` (or "gives about", "comes to") after an expression with an
+    operator, that expression and its value: None when it is symbolic (1/(2π·R·C)). Else None."""
     before = text[:q.start]
     sign = EQUALS.search(before)
     if not sign:
@@ -242,9 +244,9 @@ def shown_arithmetic(text: str, q: Quantity) -> tuple[str, float | None] | None:
 
 
 def trailing_arithmetic(text: str, q: Quantity) -> tuple[str, float | None] | None:
-    """When `q` is followed by its arithmetic in brackets ("6.83 V (12 V − 5.17 V)"), that expression
-    and its value (None if symbolic)."""
-    m = re.match(r"\s*\(((?:[^()]|\([^()]*\))*)\)", text[q.end:])
+    """When `q` is followed by its arithmetic in brackets ("6.83 V (12 V − 5.17 V)", "49 times
+    (100 kHz ÷ 2.02 kHz)"), that expression and its value (None if symbolic)."""
+    m = re.match(r"\s*(?:times\s+)?\(((?:[^()]|\([^()]*\))*)\)", text[q.end:])
     if not m or not OPERATOR.search(m.group(1)) or not re.search(r"\d", m.group(1)):
         return None
     return m.group(1).strip(), evaluate(m.group(1))
