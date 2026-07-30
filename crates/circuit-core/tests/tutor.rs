@@ -88,10 +88,15 @@ fn a_selected_part_brings_its_block_its_neighbours_and_their_values() {
 }
 
 #[test]
-fn nets_and_blocks_bring_no_neighbours() {
+fn nets_and_blocks_bring_their_blocks_and_no_neighbours() {
     let s = filter(Arc::new(registry()));
     let net = s.tutor_context(&ask("What is here?", Some(Selection::Net { id: "B2_N_A".into() }), sim())).unwrap();
-    assert_eq!(net.parts, ["C1", "R1", "R2"], "every part on the net, nothing beyond");
+    assert_eq!(
+        net.parts,
+        ["C1", "R1", "R2", "C2", "U1"],
+        "every part on the net, then the rest of their block, nothing beyond"
+    );
+    assert_eq!(net.blocks, ["b2"], "the source block stays out");
     assert_eq!(net.nets[0], "B2_N_A");
     assert!(net.text.contains("B2_N_A: C1.1 R1.2 R2.1 | op 1.2mV | ac 980mV -12.3° @100Hz"), "{}", net.text);
 

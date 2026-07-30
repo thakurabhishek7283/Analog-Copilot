@@ -20,7 +20,7 @@ from ..llm.config import TUTOR_TIERS
 from ..llm.gateway import Gateway
 from ..models.contract import AskRequest, ChangeRequest, ReasoningEffort
 
-ASK_MAX_TOKENS = 4000  # about 150 words and a `try` block; the rest is room for a reasoning model's thinking at high effort
+ASK_MAX_TOKENS = 6000  # about 150 words and a `try` block; the rest is room for a reasoning model's thinking at high effort (4000 cut one answer off, 2026-07-29)
 ASK_TEMPERATURE = 0.3
 # Latency is not a goal for Ask (decided 2026-02-09): a reasoning model at high effort sends nothing
 # while it thinks (14 s live), so its calls get far more than the 30 s generation calls get.

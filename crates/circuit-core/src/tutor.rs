@@ -116,7 +116,7 @@ pub struct TutorContext {
 
 /// Render the slice of `c` a question is about (LLD §9, context builder rules):
 /// - a part selected: the part, the rest of its block, and every part one hop away over signal nets;
-/// - a net selected: every part on it and the net's values;
+/// - a net selected: every part on it, the rest of their blocks, and the net's values;
 /// - a block selected: the block's parts, without neighbours;
 /// - parts the question names (`R3`, `r3`) are added; with nothing selected they are the seeds;
 ///   with neither, the whole circuit in refdes order.
@@ -134,6 +134,8 @@ pub fn context(
     let (named_parts, named_nets, named_blocks) = mentions(c, question);
     let mut seeds: Vec<RefDes> = Vec::new();
     let mut walk = true;
+    // A part brings the rest of its block (a selected block already holds all of its own).
+    let mut whole_blocks = true;
     let mut first_nets: Vec<NetId> = Vec::new();
     let mut first_blocks: Vec<BlockId> = Vec::new();
     match selection {
@@ -158,6 +160,7 @@ pub fn context(
             first_blocks.push(id.clone());
             seeds.extend(sorted(c.parts.values().filter(|p| p.block.as_ref() == Some(id)).map(|p| p.refdes.clone())));
             walk = false;
+            whole_blocks = false;
         }
         None => {}
     }
@@ -170,9 +173,11 @@ pub fn context(
     if selection.is_none() && !named_parts.is_empty() {
         seeds = named_parts.clone();
     }
-    if walk {
+    if whole_blocks {
         // A part brings the rest of its block: what the block does (its cutoff, its gain) depends
-        // on every part in it, not only on the parts one hop away.
+        // on every part in it, not only on the parts one hop away. A selected net's parts do too:
+        // with only the parts on a filter's output, its input level was missing, and a student's
+        // right "0.707 of the input" was answered as partly right (tutor evals, 2026-07-29).
         let blocks: IndexSet<&BlockId> = seeds.iter().filter_map(|r| c.parts.get(r)?.block.as_ref()).collect();
         for b in blocks {
             ranked.extend(sorted(c.parts.values().filter(|p| p.block.as_ref() == Some(b)).map(|p| p.refdes.clone())));
