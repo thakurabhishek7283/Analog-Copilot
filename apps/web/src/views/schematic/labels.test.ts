@@ -50,6 +50,7 @@ describe("formatNet", () => {
     expect(formatNet(2.5, { min: 2.4999, max: 2.5001 })).toBe("2.5 V"); // a ripple under 1 mV
     expect(formatNet(0.0024, undefined)).toBe("2.4 mV"); // no transient
     expect(formatNet(undefined, undefined)).toBeUndefined();
+    expect(netTitle(12, { min: 12, max: 12 })).toBe("12 V at the operating point (no signal)"); // no "swings 12 V to 12 V"
     expect(netTitle(0, { min: -0.705, max: 0.705 })).toBe(
       "swings -705 mV to 705 mV in the transient (after start-up); 0 V at the operating point (no signal)",
     );

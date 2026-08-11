@@ -40,20 +40,24 @@ export interface Swing {
  * ±1 V" on a bias), else the operating point ("12 V"). Dry run: a sine-driven filter read "0 V" on
  * every wire, the DC operating point of a signal centred on zero. */
 export function formatNet(op: number | undefined, swing?: Swing): string | undefined {
-  if (swing) {
+  if (swing && moves(swing)) {
     const amp = (swing.max - swing.min) / 2;
     const mid = (swing.max + swing.min) / 2;
-    if (amp >= 1e-3 && amp > 0.01 * Math.abs(mid)) {
-      return Math.abs(mid) < Math.max(1e-3, 0.05 * amp) ? `±${formatVolts(amp)}` : `${formatVolts(mid)} ±${formatVolts(amp)}`;
-    }
+    return Math.abs(mid) < Math.max(1e-3, 0.05 * amp) ? `±${formatVolts(amp)}` : `${formatVolts(mid)} ±${formatVolts(amp)}`;
   }
   return op === undefined ? undefined : formatVolts(op);
 }
 
+/** A signal moves the net: a swing of at least 1 mV and 1% of its level. */
+const moves = (swing: Swing) => {
+  const amp = (swing.max - swing.min) / 2;
+  return amp >= 1e-3 && amp > 0.01 * Math.abs((swing.max + swing.min) / 2);
+};
+
 /** What a label means, for its tooltip. */
 export function netTitle(op: number | undefined, swing?: Swing): string {
   const parts = [];
-  if (swing) parts.push(`swings ${formatVolts(swing.min)} to ${formatVolts(swing.max)} in the transient (after start-up)`);
+  if (swing && moves(swing)) parts.push(`swings ${formatVolts(swing.min)} to ${formatVolts(swing.max)} in the transient (after start-up)`);
   if (op !== undefined) parts.push(`${formatVolts(op)} at the operating point (no signal)`);
   return parts.join("; ");
 }

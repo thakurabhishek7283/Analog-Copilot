@@ -61,6 +61,15 @@ function Overview() {
 
 const SEVERITY_ORDER = { error: 0, warning: 1, info: 2 } as const;
 
+/** A pin in words: "C1 pin 2" (dry run: "not connected: C1.2" read as code). */
+const pinWords = (ref: string) => `${ref.slice(0, ref.indexOf("."))} pin ${ref.slice(ref.indexOf(".") + 1)}`;
+
+/** A finding as the check list says it; the core's message (which the tutor also reads) is unchanged. */
+export function ercText(i: ErcIssue): string {
+  if (i.code === "floating_pin" && i.pins?.length) return `Not connected: ${i.pins.map(pinWords).join(", ")}`;
+  return i.message;
+}
+
 function ErcList({ issues }: { issues: ErcIssue[] }) {
   const { store } = useEditor();
   const sorted = [...issues].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
@@ -76,7 +85,7 @@ function ErcList({ issues }: { issues: ErcIssue[] }) {
           {sorted.map((i, k) => (
             <li key={k} data-severity={i.severity} data-code={i.code}>
               <button type="button" disabled={!target(i)} onClick={() => store.getState().select(target(i))}>
-                <span className="sev">{i.severity}</span> {i.message}
+                <span className="sev">{i.severity}</span> {ercText(i)}
               </button>
             </li>
           ))}
