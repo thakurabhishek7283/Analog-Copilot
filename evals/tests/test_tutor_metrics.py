@@ -80,6 +80,8 @@ def test_what_answers_write_besides_plain_quantities():
     assert not ground("It covers the cutoff by about 49 times (100 kHz ÷ 2.02 kHz).",
                       "ac 10Hz..100kHz | fc_hz 2kHz measured 2.02kHz").ungrounded, "a ratio's arithmetic"
     assert ground("The cutoff gives about 884 Hz.", ctx).ungrounded, "words without arithmetic are no arithmetic"
+    assert not ground("Use 36 kΩ = 18 kΩ × 2; that halves it.", ctx).ungrounded, "the result first, then its arithmetic"
+    assert [u["why"] for u in ground("Use 36 kΩ = 18 kΩ × 3.", ctx).ungrounded] == ["arithmetic: 18 kΩ × 3 = 54k, not 36 kΩ"]
     g = ground("fc fell by 40 Hz, then by 282 Hz.", "measured 996Hz → 956Hz → 718Hz")
     assert [(u["text"], u["why"]) for u in g.ungrounded] == [
         ("40 Hz", "one step from the context, arithmetic not shown"), ("282 Hz", "not in the context")

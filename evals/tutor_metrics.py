@@ -245,8 +245,10 @@ def shown_arithmetic(text: str, q: Quantity) -> tuple[str, float | None] | None:
 
 def trailing_arithmetic(text: str, q: Quantity) -> tuple[str, float | None] | None:
     """When `q` is followed by its arithmetic in brackets ("6.83 V (12 V − 5.17 V)", "49 times
-    (100 kHz ÷ 2.02 kHz)"), that expression and its value (None if symbolic)."""
-    m = re.match(r"\s*(?:times\s+)?\(((?:[^()]|\([^()]*\))*)\)", text[q.end:])
+    (100 kHz ÷ 2.02 kHz)") or after `=` ("36 kΩ = 18 kΩ × 2", the result first), that expression
+    and its value (None if symbolic)."""
+    rest = text[q.end:]
+    m = re.match(r"\s*(?:times\s+)?\(((?:[^()]|\([^()]*\))*)\)", rest) or re.match(r"\s*=\s*(.+?)(?=;|,\s|\n|\.\s|\.$|$)", rest)
     if not m or not OPERATOR.search(m.group(1)) or not re.search(r"\d", m.group(1)):
         return None
     return m.group(1).strip(), evaluate(m.group(1))
