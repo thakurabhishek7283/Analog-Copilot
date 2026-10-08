@@ -6,7 +6,7 @@ row. The metrics, the gate and the report are in metrics.py.
     python evals/run_evals.py --live --record          # the provider in LLM_PROVIDER: real calls, recorded
     python evals/run_evals.py --replay evals/golden/cassette.json --gate --baseline evals/golden/report.json
     python evals/run_evals.py --fake SCRIPT.json       # scripted replies (LLM_PROVIDER=fake's format)
-    python evals/run_evals.py --exchange DIR --label "gemini-2.5-flash, AI Studio chat"   # replies from a chat (exchange.py)
+    python evals/run_evals.py --exchange DIR --label "gemini-3.5-flash, AI Studio chat"   # replies from a chat (exchange.py)
 
 A real provider (`gemini`, `deepseek`, `openai`; keys and models as for the API, see
 apps/api/tutor_api/llm/config.py) is used only with `--live`. Each run writes report.json,

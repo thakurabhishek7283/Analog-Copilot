@@ -116,7 +116,7 @@ async def test_complete_sends_the_schema_and_reads_usage(mock_server, mock):
 
 
 async def test_a_reasoning_model_gets_max_completion_tokens_and_no_temperature(mock_server, mock):
-    """GPT-5 on Azure rejects `max_tokens` and any temperature but the default."""
+    """GPT-6 Luna on Azure rejects `max_tokens` and any temperature but the default."""
     mock.handlers.append(lambda body: completion('{"ok": true}'))
     p = OpenAICompatProvider("openai", mock_server[0], "k", {"large": "m-large", "small": "m-small"}, reasoning=True)
     await p.complete(REQ)
@@ -397,27 +397,27 @@ def test_providers_from_the_environment():
     assert gateway_from_env({}) is None
     env = {
         "LLM_PROVIDER": "gemini", "GEMINI_API_KEY": "k1",
-        "LLM_MODEL_LARGE": "gemini-2.5-flash", "LLM_MODEL_SMALL": "gemini-2.5-flash-lite",
+        "LLM_MODEL_LARGE": "gemini-3.5-flash", "LLM_MODEL_SMALL": "gemini-3.5-flash-lite",
         "LLM_FALLBACK_PROVIDER": "deepseek", "DEEPSEEK_API_KEY": "k2",
-        "DEEPSEEK_BASE_URL": "https://example.services.ai.azure.com/openai/v1/", "DEEPSEEK_MODEL": "DeepSeek-V3.1",
+        "DEEPSEEK_BASE_URL": "https://example.services.ai.azure.com/openai/v1/", "DEEPSEEK_MODEL": "DeepSeek-V4-Pro",
     }
     gw = gateway_from_env(env)
     gemini, deepseek = gw.providers
     assert gemini.url == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    assert gemini.models == {"large": "gemini-2.5-flash", "small": "gemini-2.5-flash-lite"}
+    assert gemini.models == {"large": "gemini-3.5-flash", "small": "gemini-3.5-flash-lite"}
     assert gemini.json_mode == "json_schema" and gemini.headers == {"Authorization": "Bearer k1"}
     assert deepseek.url == "https://example.services.ai.azure.com/openai/v1/chat/completions"
     # The fallback never takes the primary's LLM_MODEL_* (those are Gemini model ids).
-    assert deepseek.models == {"large": "DeepSeek-V3.1", "small": "DeepSeek-V3.1"}
+    assert deepseek.models == {"large": "DeepSeek-V4-Pro", "small": "DeepSeek-V4-Pro"}
     assert deepseek.json_mode == "json_object"
     assert not gemini.reasoning and not deepseek.reasoning
-    # GPT-5 on Azure: the v1 endpoint, a deployment name for both tiers, a reasoning model.
-    (gpt5,) = gateway_from_env({
-        "LLM_PROVIDER": "openai", "OPENAI_API_KEY": "k3", "OPENAI_MODEL": "gpt-5", "OPENAI_REASONING": "1",
+    # GPT-6 Luna on Azure: the v1 endpoint, a deployment name for both tiers, a reasoning model.
+    (luna,) = gateway_from_env({
+        "LLM_PROVIDER": "openai", "OPENAI_API_KEY": "k3", "OPENAI_MODEL": "gpt-6-luna", "OPENAI_REASONING": "1",
         "OPENAI_BASE_URL": "https://example.cognitiveservices.azure.com/openai/v1",
     }).providers
-    assert gpt5.url == "https://example.cognitiveservices.azure.com/openai/v1/chat/completions"
-    assert gpt5.models == {"large": "gpt-5", "small": "gpt-5"} and gpt5.reasoning
+    assert luna.url == "https://example.cognitiveservices.azure.com/openai/v1/chat/completions"
+    assert luna.models == {"large": "gpt-6-luna", "small": "gpt-6-luna"} and luna.reasoning
 
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         gateway_from_env({"LLM_PROVIDER": "gemini", "GEMINI_API_KEY": "REPLACE_ME"})

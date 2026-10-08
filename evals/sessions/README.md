@@ -32,7 +32,7 @@ docker compose up -d postgres redis      # compose's Postgres keeps its data in 
 cd apps/web && npm run build && npx vite preview      # the app at http://localhost:4173, /v1 proxied to :8000
 ```
 
-`.env` selects the production model. Every question is a paid call: a session
+`.env` selects the production model (GPT-6 Luna on Azure). Every question is a paid call: a session
 asks about 15–25, so 20 sessions are about 400 answers. Check that the stack answers a question
 before the first student arrives.
 

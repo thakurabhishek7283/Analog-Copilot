@@ -97,7 +97,7 @@ checks each reply as it would an API's: the schema, circuit-core's trial, the be
 checks.
 
 ```sh
-.venv/Scripts/python evals/run_evals.py --exchange evals/results/my-gemini --label "gemini-2.5-flash, AI Studio" --gate
+.venv/Scripts/python evals/run_evals.py --exchange evals/results/my-gemini --label "gemini-3.5-flash, AI Studio" --gate
 ```
 
 1. The run stops every job at its first unanswered model call and writes that call's prompt to
