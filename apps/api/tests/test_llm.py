@@ -137,7 +137,7 @@ async def test_a_reasoning_effort_goes_to_reasoning_models_only(mock_server, moc
 
 
 def test_unset_later_fields_keep_cassette_keys():
-    """Requests recorded before `effort` and `timeout_s` existed replay under the same key."""
+    """Requests recorded before `effort` and `timeout_s` existed (evals/golden) replay under the same key."""
     legacy = dataclasses.asdict(REQ)
     del legacy["effort"], legacy["timeout_s"]
     canon = json.dumps(legacy, sort_keys=True, ensure_ascii=False, separators=(",", ":"))

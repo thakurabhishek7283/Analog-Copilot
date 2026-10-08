@@ -66,3 +66,28 @@ def test_selection(tmp_path: Path):
     assert len(load_cases(HERE / "prompts.yaml", limit=3)) == 3
     with pytest.raises(SystemExit, match="no prompt nope"):
         load_cases(HERE / "prompts.yaml", only=["nope"])
+
+
+def test_the_authored_replies_cover_every_prompt_and_fit_the_plan_schema(templates):
+    import sys
+
+    from tutor_api.orchestrator.schemas import parse, plan_model
+
+    sys.path.insert(0, str(HERE / "authored"))
+    import replies
+
+    model = plan_model(tuple(templates))
+    for c in CASES:
+        prompt = f"Step: plan.\n{replies.marker(c['prompt'])}\n"
+        plan = parse(model, replies.answer(f"plan-{c['id']}", prompt, CASES))
+        if c["expect"] == "unsupported":
+            assert plan.uncovered and not plan.blocks, c["id"]
+        else:
+            assert not plan.uncovered and len(plan.blocks) <= 8, c["id"]
+            narration = replies.answer("narrate-x", replies.marker(c["prompt"]), CASES)
+            # The narrate turn asks for two to four; inject-spice's has one, kept as it was written (replies are frozen).
+            assert 1 <= narration.count(". ") + 1 <= 4, c["id"]
+    # What the replies leave to a person: a repair, and a re-plan of an in-scope request.
+    rc = next(c for c in CASES if c["id"] == "rc-lp-1k")
+    assert replies.answer("compose-x", replies.marker(rc["prompt"]) + "\nYour previous attempt:\n{}", CASES) is None
+    assert replies.answer("plan-x", replies.marker(rc["prompt"]) + "\nYour previous plan:\n{}", CASES) is None

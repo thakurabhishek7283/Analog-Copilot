@@ -17,6 +17,7 @@ like the API tests.
 | `exchange.py` | The exchange provider: replies from a chat or a person, request by request (below) |
 | `metrics.py` | The metrics, the gate and the Markdown report (pure functions) |
 | `golden/` | The accepted run, once there is one: `report.json` (the baseline) and `cassette.json` (its model replies) |
+| `authored/` | An exchange run Claude answered, acting as the model (below): `replies.py`, its recording and report |
 | `results/` | Each run's `report.json`, `report.md` and, with `--record`, `cassette.json` (not committed) |
 | `tests/` | Both harnesses' own tests, on scripted replies |
 | `run_tutor_evals.py`, `tutor_metrics.py`, `tutor_judge.py`, `tutor/`, `tutor_golden/` | The tutor evals (below) |
@@ -124,6 +125,21 @@ To keep the run a measurement:
 
 Add `--record` to the last round to keep its cassette. That is a recording like a live run's, and it can be
 replayed or accepted into `golden/`.
+
+### The authored run (`authored/`)
+
+An exchange run answered by Claude (Opus 5.5) acting as the model, on 2026-10-08. `replies.py` holds
+the replies: a plan per prompt, a compose decision and a narration, all written blind before any job ran
+and not changed after. `python evals/authored/replies.py DIR` answers what is pending in an exchange
+directory from them, and leaves anything they do not cover (a repair, a re-plan of an in-scope request)
+for a reply written to that request. None was needed. The run took six rounds and 337 replies.
+`cassette.json` and `report.*` are its last round, recorded; a replay reproduces it exactly.
+
+What it shows: every plan valid on its first call and using the expected templates, every out-of-scope
+request refused, 95 of 95 circuits committed, and 173 of 173 spec checks passed in their test benches. Every
+block kept its template (`use_template`). The compose turn asks for that when the template already does what
+the student asked, and each request here is a template at targets inside its ranges. So the 100% rate
+without fallback says nothing about drafting: no draft, repair or fallback path ran.
 
 ### Accepting a live run
 

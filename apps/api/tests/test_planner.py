@@ -111,7 +111,7 @@ def test_uncovered_needs_are_reported_separately(reg, prompts):
 
 
 def test_a_block_without_targets_takes_every_default(reg, prompts):
-    """A model may leave `targets` out on templates that have none."""
+    """GPT-6 Luna leaves `targets` out on templates that have none (12 re-plans in its live run)."""
     model = plan_model(tuple(prompts.templates))
     p = model.model_validate({"blocks": [{"id": "b1", "template": "rc_lowpass", "title": "", "purpose": ""}],
                               "links": [], "uncovered": []})

@@ -352,7 +352,7 @@ async def test_a_request_no_template_covers_is_unsupported(http, alice, app, sce
 
 
 async def test_uncovered_needs_kept_to_the_last_plan_are_unsupported_whatever_else_is_wrong(http, alice, app, scenario):
-    """An FM transmitter: blocks for what the templates can build, the RF stages listed as
+    """DeepSeek-V4-Pro's FM transmitter: blocks for what the templates can build, the RF stages listed as
     uncovered, and a wiring mistake in every round. Out of scope, not an invalid plan."""
     partial = plan(block("b1", "sine_source", "Audio", "The audio to send.", freq_hz="1k"),
                    block("b2", "noninverting_amp", "Mic amp", "Raises the audio."),
