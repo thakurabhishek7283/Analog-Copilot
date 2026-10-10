@@ -172,7 +172,7 @@ main > .palette {
 .center {
   grid-area: center;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   min-width: 0;
   min-height: 0;
 }
@@ -422,6 +422,40 @@ input[aria-invalid="true"] {
   position: relative;
   min-width: 0;
   min-height: 0;
+}
+
+.circuit-view-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 5px 12px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.circuit-view-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.circuit-view-tabs button[aria-selected="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.workspace-view {
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-layer { width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.workspace-layer[hidden] { display: none; }
+.workspace-layer > .schematic-wrap {
+  width: 100%;
+  height: 100%;
 }
 
 /* The overlay canvas sits under the SVG: voltage halos behind wires, dots under symbols. */

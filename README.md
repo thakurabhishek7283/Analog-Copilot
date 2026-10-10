@@ -16,6 +16,19 @@ undoable change. Unresolved failures keep the assembled circuit and show the fai
 Missing stimulus or checks are reported as incomplete verification. Simulator timeouts get three
 attempts independently of model repairs; a timeout does not trigger regeneration.
 
+The optional **3D build guide** is available after a saved circuit receives a passing final
+verification. It makes a separate AI placement request with the original prompt, circuit parts,
+values, pin nets and ngspice check results. The API then applies supported through-hole package
+footprints, assigns exact lead holes, routes jumpers and checks that the physical connections
+match every schematic net. It can span up to eight 63-row boards. Edits to the guide stay in the
+browser and need a fresh **Check guide**; they never change or re-simulate the 2D circuit. The guide
+is saved in this browser under the project and circuit revision.
+
+This check proves the specified pin-to-hole mapping and tie-strip connectivity for the selected
+package assumptions. It cannot identify the exact package of a purchased generic part or prove
+body clearance for every manufacturer; confirm each listed package and pinout before assembly.
+Power rails are deliberately unused because their internal breaks vary by breadboard model.
+
 Design: [docs/LLD.md](docs/LLD.md) (scope, performance budgets, wire protocol, as-built notes).
 
 ## Status
@@ -152,6 +165,9 @@ feeding a 2 kHz low-pass filter and output buffer` in Generate. The fixed demo c
 the source, filter and buffer checks and displays the three request requirements. Other prompts
 with the fake provider are marked incomplete because its canned reply cannot review their intent;
 configure a real provider to check your own requests.
+For the scripted 3D path, use that `e2e-verify` prompt, open **3D breadboard**, then select
+**Generate build guide**. The fake placement uses two boards. Remove a jumper and select
+**Check guide** to see the wiring mismatch while the 2D schematic stays at the same revision.
 
 After changing a prompt (`apps/api/tutor_api/llm/prompts`) or an orchestrator test's script: `UPDATE_CASSETTES=1 pytest tests/test_orchestrator.py`
 in `apps/api`, and review the cassette diff (a changed `key` is a changed prompt).

@@ -1,7 +1,7 @@
 // The editor's panels, laid out by the learner: drag the borders between the palette, the
 // schematic, the scope and the side column; collapse any pane to its header; "Focus" gives the
 // tutor most of the window. The layout is per browser (panels.ts).
-import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
+import { type CSSProperties, type ReactNode, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Schematic } from "../views/schematic/Schematic.tsx";
 import { Scope } from "../views/scope/Scope.tsx";
 import { AskPanel } from "./AskPanel.tsx";
@@ -15,8 +15,11 @@ import { Splitter } from "./Splitter.tsx";
 
 /** The collapsed palette's width. */
 const PALETTE_STRIP = 34;
+const Breadboard = lazy(() => import("../views/breadboard/Breadboard.tsx").then((module) => ({ default: module.Breadboard })));
 
 export function Workspace() {
+  const [view, setView] = useState<"schematic" | "breadboard">("schematic");
+  const [breadboardOpened, setBreadboardOpened] = useState(false);
   const sizes = usePanels((s) => s.sizes);
   const paletteHidden = usePanels((s) => s.collapsed.palette);
   const scopeOpen = useUi((s) => s.scope.open);
@@ -57,7 +60,14 @@ export function Workspace() {
       {!paletteHidden && <div className="col-split left">{splitter("palette", "x", 1, "Resize the parts column", ".palette")}</div>}
       <div className="center">
         <GeneratePanel />
-        <Schematic />
+        <div className="circuit-view-tabs" role="tablist" aria-label="Circuit view">
+          <button type="button" role="tab" aria-selected={view === "schematic"} onClick={() => setView("schematic")}>Schematic</button>
+          <button type="button" role="tab" aria-selected={view === "breadboard"} onClick={() => { setBreadboardOpened(true); setView("breadboard"); }}>3D breadboard</button>
+        </div>
+        <div className="workspace-view" role="tabpanel" aria-label={view === "schematic" ? "Schematic" : "3D breadboard"}>
+          <div className="workspace-layer" hidden={view !== "schematic"}><Schematic /></div>
+          {breadboardOpened && <div className="workspace-layer" hidden={view !== "breadboard"}><Suspense fallback={<div className="splash">Loading 3D breadboard…</div>}><Breadboard /></Suspense></div>}
+        </div>
         {scopeOpen && splitter("scope", "y", -1, "Resize the scope", ".scope-body")}
         <Scope />
       </div>

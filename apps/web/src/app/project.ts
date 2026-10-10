@@ -15,6 +15,7 @@ import { type JobStream, openJobStream } from "../stream/jobStream.ts";
 import { type Asker, createAsker } from "../tutor/asker.ts";
 import { type SimHistory, createSimHistory } from "../tutor/simHistory.ts";
 import type { TutorStore } from "../tutor/tutorStore.ts";
+import type { BreadboardLayout } from "../views/breadboard/model.ts";
 
 export interface ProjectState {
   id: string;
@@ -32,6 +33,8 @@ export interface ProjectSession {
   cancel(): Promise<void>;
   /** Run the last request again (after a retryable error). */
   retry(): Promise<void>;
+  generateBreadboard(rev: number): Promise<{ layout: BreadboardLayout; valid: true; notes: string[] }>;
+  validateBreadboard(layout: BreadboardLayout): Promise<{ valid: boolean; problems: string[] }>;
   dispose(): void;
 }
 
@@ -187,6 +190,11 @@ export async function openProject(opts: OpenProjectOptions): Promise<ProjectSess
     asker,
     sims,
     generate,
+    async generateBreadboard(rev) {
+      await sync.flush();
+      return api.generateBreadboard(id, rev);
+    },
+    validateBreadboard(layout) { return api.validateBreadboard(id, layout); },
     async cancel() {
       const job = gen.getState().job;
       if (!job?.id || gen.getState().phase !== "running") return;

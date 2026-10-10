@@ -18,7 +18,7 @@ const apiPreviewPort = 4174;
 const apiPort = Number(process.env.E2E_API_PORT ?? 8100);
 const withApi = process.env.E2E_API !== "0";
 const repo = join(import.meta.dirname, "../..");
-const API_SPECS = /(generate|ask)\.spec\.ts/;
+const API_SPECS = /(generate|ask|breadboard_api)\.spec\.ts/;
 const python = join(repo, process.platform === "win32" ? ".venv/Scripts/python.exe" : ".venv/bin/python");
 
 const preview = (port: number, apiOrigin: string) => ({
@@ -42,7 +42,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]] : "list",
   use: {
-    channel: process.env.PW_CHANNEL ?? "msedge",
+    channel: process.env.PW_CHANNEL === "bundled" ? undefined : (process.env.PW_CHANNEL ?? "msedge"),
     viewport: { width: 1400, height: 860 },
     // Tracing records the animating overlay throughout; with one browser per core (8 locally)
     // that starved the pages and every test timed out. CI runs 2 workers and keeps traces of

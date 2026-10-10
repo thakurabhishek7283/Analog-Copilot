@@ -21,7 +21,7 @@ from .jobs.runner import JobRunner, Orchestrator
 from .llm.config import gateway_from_env, tutor_tiers_from_env
 from .orchestrator import Orchestrator as GenerationOrchestrator
 from .projects import Registries
-from .routers import ask, auth, jobs, projects
+from .routers import ask, auth, breadboard, jobs, projects
 from .tutor import Tutor
 
 
@@ -31,17 +31,20 @@ def create_app(
     """With no arguments (the server): settings and the LLM provider from the environment, shared
     by the orchestrator and the tutor; without `LLM_PROVIDER`, generation and Ask are unavailable
     (503)."""
+    gateway = None
     if settings is None:
         settings = Settings.from_env()
         if (orchestrator is None or tutor is None) and (gateway := gateway_from_env()) is not None:
             orchestrator = orchestrator or GenerationOrchestrator(gateway)
             tutor = tutor or Tutor(gateway, tutor_tiers_from_env())
+    gateway = gateway or getattr(orchestrator, "gateway", None)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         st = app.state
         st.settings = settings
         st.tutor = tutor
+        st.breadboard_gateway = gateway
         st.regs = Registries(settings.registry_dir)
         st.engine = create_async_engine(settings.database_url, pool_size=10, max_overflow=10, pool_pre_ping=True)
         # One Redis pool for job events and the simulation queue (sim_runner's JSON-serializing arq pool).
@@ -66,7 +69,7 @@ def create_app(
             allow_methods=["GET", "POST"],
             allow_headers=["Authorization", "Content-Type", "Last-Event-ID"],
         )
-    for r in (auth.router, projects.router, jobs.router, ask.router):
+    for r in (auth.router, projects.router, breadboard.router, jobs.router, ask.router):
         app.include_router(r)
 
     @app.get("/healthz", include_in_schema=False)

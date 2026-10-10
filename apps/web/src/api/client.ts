@@ -13,6 +13,7 @@ import type {
   Project,
   ProjectSnapshot,
 } from "../gen/contract.ts";
+import type { BreadboardLayout } from "../views/breadboard/model.ts";
 
 export class ApiFailure extends Error {
   readonly status: number;
@@ -126,6 +127,14 @@ export class ApiClient {
 
   generate(id: string, req: GenerateRequest): Promise<JobAccepted> {
     return this.authed("POST", `/v1/projects/${encodeURIComponent(id)}/generate`, req);
+  }
+
+  generateBreadboard(id: string, rev: number): Promise<{ layout: BreadboardLayout; valid: true; notes: string[] }> {
+    return this.authed("POST", `/v1/projects/${encodeURIComponent(id)}/breadboard/generate`, { rev });
+  }
+
+  validateBreadboard(id: string, layout: BreadboardLayout): Promise<{ valid: boolean; problems: string[] }> {
+    return this.authed("POST", `/v1/projects/${encodeURIComponent(id)}/breadboard/validate`, { layout });
   }
 
   async cancel(jobId: string): Promise<void> {

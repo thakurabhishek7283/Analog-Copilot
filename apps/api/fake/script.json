@@ -91,6 +91,25 @@
       ]}
     },
     {
+      "kind": "breadboard_plan",
+      "when": ["e2e-verify"],
+      "times": 1,
+      "reply": {"boards": 1, "placements": [
+        {"refdes": "R1", "board": 1, "row": 5},
+        {"refdes": "C1", "board": 1, "row": 5},
+        {"refdes": "U1", "board": 1, "row": 5}
+      ]}
+    },
+    {
+      "kind": "breadboard_plan",
+      "when": [],
+      "reply": {"boards": 2, "placements": [
+        {"refdes": "R1", "board": 1, "row": 5},
+        {"refdes": "C1", "board": 1, "row": 8},
+        {"refdes": "U1", "board": 2, "row": 5}
+      ]}
+    },
+    {
       "kind": "ask",
       "when": ["e2e-ask-fail"],
       "error": {"code": "unavailable", "message": "scripted tutor outage", "retryable": false}
