@@ -102,13 +102,20 @@ class Deck:
     analyses: list[str]  # analysis of each card, in deck order
     plots: list[str]  # ngspice plot name per analysis card: op1, ac1, tran1, ...
     meas: list[MeasCard]
+    transfers: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 def split_deck(netlist: str) -> Deck:
-    body, analyses, meas = [], [], []
+    body, analyses, meas, transfers = [], [], [], []
     for line in netlist.splitlines():
         words = line.split()
         card = words[0].lower() if words else ""
+        if line.startswith("* transfer "):
+            match = re.fullmatch(r"\* transfer ([a-z0-9_]+) ([a-z0-9_]+) ([a-z0-9_]+)", line)
+            if match is None:
+                raise ValueError("invalid transfer measurement")
+            transfers.append(match.groups())
+            continue
         if card in (".control", ".endc"):
             raise ValueError("netlists must not contain .control sections")
         if card in (".meas", ".measure"):
@@ -126,13 +133,18 @@ def split_deck(netlist: str) -> Deck:
     for a in analyses:
         counts[a] = counts.get(a, 0) + 1
         plots.append(f"{a}{counts[a]}")
-    return Deck(body, analyses, plots, meas)
+    return Deck(body, analyses, plots, meas, transfers)
 
 
 def control_block(deck: Deck) -> list[str]:
     lines = [".control", "set filetype=binary", "set plainwrite", "run"]
     for plot in deck.plots:
         lines += [f"setplot {plot}", f"write {plot}.raw"]
+    if "ac" in deck.analyses:
+        lines.append(f"setplot {deck.plots[deck.analyses.index('ac')]}")
+        for name, out, inp in deck.transfers:
+            lines += [f"let {name}=v({out})/v({inp})", f"let {name}_db=db({name})",
+                      f"let {name}_phase=ph({name})"]
     for m in deck.meas:
         plot = next((p for p, a in zip(deck.plots, deck.analyses) if a == m.analysis), None)
         if plot is not None:
@@ -236,12 +248,15 @@ def environment(exe: Path) -> dict[str, str]:
 
 
 def command(exe: Path, timeout_s: float, limits: bool) -> list[str]:
-    """`ngspice -b deck.cir`; with `limits` on POSIX, under RLIMIT_AS and RLIMIT_CPU (LLD §8). The
-    limits are set by `sh` before it execs ngspice, because `preexec_fn` is unsafe in a process
-    with threads (the worker runs each simulation in a thread)."""
+    """`ngspice -b deck.cir`; limit CPU on POSIX and address space on Linux (LLD §8).
+
+    The limits are set by `sh` before it execs ngspice because `preexec_fn` is unsafe in a
+    process with threads. macOS's `/bin/sh` cannot set a virtual-memory limit with `ulimit -v`.
+    """
     if not limits or os.name == "nt":
         return [str(exe), "-b", "deck.cir"]
-    script = f'ulimit -v {MEMORY_LIMIT // 1024} && ulimit -t {math.ceil(timeout_s)} && exec "$0" -b deck.cir'
+    memory_limit = f"ulimit -v {MEMORY_LIMIT // 1024} && " if sys.platform != "darwin" else ""
+    script = f'{memory_limit}ulimit -t {math.ceil(timeout_s)} && exec "$0" -b deck.cir'
     return ["/bin/sh", "-c", script, str(exe)]
 
 

@@ -173,6 +173,22 @@ export class AnimationDirector {
       case "sim.summary":
         store.getState().setBench(e.data.block, e.data.checks);
         return;
+      case "circuit.summary":
+        gen.getState().setVerification(e.data);
+        return;
+      case "circuit.patch": {
+        const ops = e.data.ops;
+        if (!ops.length) return;
+        const base = ops[0]!.base_rev;
+        const rev = store.getState().rev;
+        if (base + ops.length <= rev) return; // already present after a reload
+        if (base !== rev) return this.opts.onResync(`repair from rev ${base} reached an editor at ${rev}`);
+        const r = store.getState().applyRemote(ops, `Repair assembled circuit (${e.data.attempt})`);
+        if (r.err) return this.opts.onResync(`repair refused: ${r.err.message}`);
+        this.opts.onApplied?.(r.ok.rev);
+        await this.opts.waitForLayout(r.ok.rev);
+        return;
+      }
       case "op":
         return this.block(e);
       case "error":

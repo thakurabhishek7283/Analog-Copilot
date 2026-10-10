@@ -160,6 +160,7 @@ export async function openProject(opts: OpenProjectOptions): Promise<ProjectSess
 
   gen.getState().setLesson(snapshot.lesson);
   if (snapshot.active_job) attach(snapshot.active_job, null);
+  else if (snapshot.verification) gen.getState().setVerification(snapshot.verification);
 
   const generate = async (req: GenerateRequest) => {
     if (store.getState().mode === "generating") return;
@@ -197,7 +198,7 @@ export async function openProject(opts: OpenProjectOptions): Promise<ProjectSess
     },
     async retry() {
       const job = gen.getState().job;
-      if (job) await generate(job.request);
+      if (job && !gen.getState().verification) await generate(job.request);
     },
     dispose() {
       disposed = true;

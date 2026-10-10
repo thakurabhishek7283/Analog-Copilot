@@ -1656,6 +1656,11 @@
           "type": "boolean",
           "description": "Without `analyses`: the editor's set, [`interactive_analyses`].",
           "default": false
+        },
+        "transfer_checks": {
+          "type": "boolean",
+          "description": "Measure filter stages relative to their own inputs in the assembled circuit.",
+          "default": false
         }
       }
     },
@@ -3231,6 +3236,40 @@
           "properties": {
             "event": {
               "type": "string",
+              "const": "circuit.summary"
+            },
+            "data": {
+              "$ref": "#/$defs/CircuitSummaryData"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "description": "Complete-circuit verification, including an automatic repair's progress."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "circuit.patch"
+            },
+            "data": {
+              "$ref": "#/$defs/CircuitPatchData"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ],
+          "description": "A verified assembly repair, applied as one undoable transaction."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
               "const": "error"
             },
             "data": {
@@ -3302,6 +3341,8 @@
         "repairing",
         "fallback",
         "committing",
+        "verifying_circuit",
+        "repairing_circuit",
         "done",
         "failed",
         "cancelled"
@@ -3409,6 +3450,134 @@
       "required": [
         "block",
         "checks"
+      ]
+    },
+    "CircuitSummaryData": {
+      "type": "object",
+      "properties": {
+        "rev": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/$defs/VerificationStatus"
+        },
+        "attempt": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255,
+          "description": "Zero for the initial verification, then the repair attempt (at most two)."
+        },
+        "max_attempts": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckResult"
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IntentRequirement"
+          },
+          "description": "Claims from the final request review, each tied to circuit evidence.",
+          "default": []
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "rev",
+        "status",
+        "attempt",
+        "max_attempts",
+        "checks",
+        "problems"
+      ]
+    },
+    "VerificationStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed",
+        "incomplete",
+        "simulation_error",
+        "repairing"
+      ]
+    },
+    "IntentRequirement": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/IntentStatus"
+        },
+        "evidence": {
+          "type": "string",
+          "description": "A brief explanation of which circuit evidence supports this judgment."
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Check identifiers as `block.check`, e.g. `b2.fc_hz`."
+        }
+      },
+      "required": [
+        "text",
+        "status",
+        "evidence",
+        "blocks",
+        "checks"
+      ]
+    },
+    "IntentStatus": {
+      "type": "string",
+      "enum": [
+        "met",
+        "missing",
+        "unverifiable"
+      ]
+    },
+    "CircuitPatchData": {
+      "type": "object",
+      "properties": {
+        "ops": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OpEnvelope"
+          }
+        },
+        "attempt": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "required": [
+        "ops",
+        "attempt"
       ]
     },
     "ApiError": {
@@ -3524,6 +3693,17 @@
             "null"
           ],
           "description": "A generation job still running on this project, if any (the editor stays read-only)."
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CircuitSummaryData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Latest assembly verification, only when it describes this snapshot's revision."
         }
       },
       "required": [

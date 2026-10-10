@@ -75,6 +75,22 @@
       "reply": {"use_template": true, "parts": [], "nets": []}
     },
     {
+      "kind": "assembly_audit",
+      "when": ["e2e-verify"],
+      "reply": {"requirements": [
+        {"text": "A 300 Hz sine source", "status": "met", "evidence": "The source block supplies the filter input at 300 Hz.", "blocks": ["b1"], "checks": []},
+        {"text": "A 2 kHz low-pass filter", "status": "met", "evidence": "The assembled filter passed its cutoff check.", "blocks": ["b2"], "checks": ["b2.fc_hz"]},
+        {"text": "An output buffer", "status": "met", "evidence": "The follower is connected after the filter.", "blocks": ["b3"], "checks": []}
+      ]}
+    },
+    {
+      "kind": "assembly_audit",
+      "when": [],
+      "reply": {"requirements": [
+        {"text": "The requested circuit", "status": "unverifiable", "evidence": "This scripted demo always builds the same circuit; use a configured model to review a custom request.", "blocks": [], "checks": []}
+      ]}
+    },
+    {
       "kind": "ask",
       "when": ["e2e-ask-fail"],
       "error": {"code": "unavailable", "message": "scripted tutor outage", "retryable": false}

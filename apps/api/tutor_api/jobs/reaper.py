@@ -37,12 +37,12 @@ async def reap_once(engine: AsyncEngine, redis: Redis, events: EventLog) -> list
                     update(jobs)
                     .where(jobs.c.id == job_id, jobs.c.state.not_in(FINAL_STATES))
                     .values(state="failed", error_code=LOST["code"], finished_at=datetime.now(UTC))
-                    .returning(jobs.c.id)
+                    .returning(jobs.c.id, jobs.c.plan)
                 )
             ).one_or_none()
         if won:
             await events.emit(job_id, "job.state", {"state": "failed"})
-            await events.emit(job_id, "error", LOST)
+            await events.emit(job_id, "error", LOST | {"retryable": not bool((won.plan or {}).get("verification"))})
             reaped.append(job_id)
             log.warning("reaped job %s", job_id)
     return reaped

@@ -3,7 +3,7 @@
 // The AnimationDirector writes it in the order the events play; components read it.
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { immer } from "zustand/middleware/immer";
-import type { ApiError, GenerateRequest, GhostData, JobState, LessonEntry, RepairData } from "../gen/contract.ts";
+import type { ApiError, CircuitSummaryData, GenerateRequest, GhostData, JobState, LessonEntry, RepairData } from "../gen/contract.ts";
 import type { StreamStatus } from "../stream/jobStream.ts";
 
 export interface GhostView extends GhostData {
@@ -46,6 +46,8 @@ export interface GenerationState {
   skipping: boolean;
   /** The block whose narration is playing (highlighted on the schematic). */
   speaking: string | null;
+  verification: CircuitSummaryData | null;
+  setVerification(summary: CircuitSummaryData): void;
 
   start(request: GenerateRequest): void;
   started(jobId: string, request: GenerateRequest | null): void;
@@ -89,12 +91,15 @@ export function createGenerationStore(): GenerationStore {
       paused: false,
       skipping: false,
       speaking: null,
+      verification: null,
+      setVerification: (verification) => set((s) => { s.verification = verification; }),
 
       start: (request) =>
         set((s) => {
           s.job = { id: "", request };
           s.phase = "starting";
           s.state = null;
+          s.verification = null;
           s.block = null;
           s.ghosts = {};
           s.plan = [];
@@ -109,6 +114,7 @@ export function createGenerationStore(): GenerationStore {
           if (!s.job || s.phase !== "starting") {
             // Joining a job that was already running (a reload): nothing of it is shown yet.
             s.ghosts = {};
+            s.verification = null;
             s.plan = [];
             s.narration = [];
             s.error = null;
@@ -200,6 +206,7 @@ export function createGenerationStore(): GenerationStore {
         set((s) => {
           if (s.phase === "running" || s.phase === "starting") return;
           s.phase = "idle";
+          s.verification = null;
           s.error = null;
           s.plan = [];
           s.narration = [];

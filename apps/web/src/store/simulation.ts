@@ -33,7 +33,7 @@ export function attachSimulation(
   opts: SimulationOptions = {},
 ): () => void {
   const debounceMs = opts.debounceMs ?? SIM_DEBOUNCE_MS;
-  const compileOpts = JSON.stringify({ shunt_floating: true, interactive: true, analyses: opts.analyses });
+  const compileOpts = JSON.stringify({ shunt_floating: true, interactive: true, transfer_checks: true, analyses: opts.analyses });
   const setSim = store.getState().setSim;
   let timer: ReturnType<typeof setTimeout> | undefined;
   // An edit came after the run in flight: its result is shown, but it is not the circuit's (yet).

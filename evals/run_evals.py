@@ -282,6 +282,8 @@ async def run_case(http: httpx.AsyncClient, headers: dict[str, str], app: Any, c
     plan_blocks = (job.plan or {}).get("blocks") or []
     row.update(
         job_id=jid, state=job.state, model=job.model, tokens={"in": job.in_tokens, "out": job.out_tokens},
+        verification=(job.plan or {}).get("verification"),
+        assembly_attempts=(job.plan or {}).get("assembly_attempts", []),
         error=next(({"code": d["code"], "message": d["message"]} for _, e, d in events if e == "error"), None),
         plan={"rounds": job.plan.get("rounds"), "templates": [b["template"] for b in plan_blocks]} if job.plan else None,
         blocks=[

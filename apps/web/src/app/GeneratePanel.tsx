@@ -4,7 +4,7 @@
 import { useState } from "react";
 import type { GenerateMode, JobState, LearnerLevel } from "../gen/contract.ts";
 import { type PlanItem, SPEEDS } from "../store/generationStore.ts";
-import { useEditor, useGen } from "./editorContext.ts";
+import { useCircuit, useEditor, useGen } from "./editorContext.ts";
 
 const STATE_TEXT: Partial<Record<JobState, string>> = {
   queued: "Starting…",
@@ -14,6 +14,8 @@ const STATE_TEXT: Partial<Record<JobState, string>> = {
   repairing: "Fixing a wiring issue in",
   fallback: "Using the standard design for",
   committing: "Adding",
+  verifying_circuit: "Checking the assembled circuit…",
+  repairing_circuit: "Repairing the assembled circuit…",
 };
 
 const ERROR_TEXT: Record<string, string> = {
@@ -27,6 +29,8 @@ const ERROR_TEXT: Record<string, string> = {
   job_lost: "The server running this generation stopped.",
   server_shutdown: "The server restarted during generation.",
   sim_unavailable: "The simulator is not available.",
+  assembly_verification_failed: "Circuit built; verification failed.",
+  assembly_simulation_failed: "Circuit built; simulation could not finish.",
 };
 
 const STATUS_MARK: Record<PlanItem["status"], string> = { waiting: "○", building: "◐", committed: "●", discarded: "✕" };
@@ -34,6 +38,8 @@ const STATUS_MARK: Record<PlanItem["status"], string> = { waiting: "○", buildi
 export function GeneratePanel() {
   const { project, gen } = useEditor();
   const phase = useGen((s) => s.phase);
+  const verification = useGen((s) => s.verification);
+  const rev = useCircuit((s) => s.rev);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<GenerateMode>("compose");
   const [level, setLevel] = useState<LearnerLevel>("beginner");
@@ -71,7 +77,7 @@ export function GeneratePanel() {
           Generate
         </button>
       </form>
-      {phase !== "idle" && <Progress onDismiss={() => gen.getState().dismiss()} />}
+      {(phase !== "idle" || verification?.rev === rev) && <Progress onDismiss={() => gen.getState().dismiss()} />}
     </section>
   );
 }
@@ -87,13 +93,26 @@ function Progress({ onDismiss }: { onDismiss: () => void }) {
   const speed = useGen((s) => s.speed);
   const paused = useGen((s) => s.paused);
   const skipping = useGen((s) => s.skipping);
+  const verification = useGen((s) => s.verification);
+  const rev = useCircuit((s) => s.rev);
+  const summary = verification?.rev === rev ? verification : null;
   const running = phase === "running" || phase === "starting";
   const retryable = useGen((s) => !!s.job?.request.prompt);
   const title = plan.find((p) => p.id === block)?.title;
 
   let status: string;
   if (phase === "starting") status = "Starting…";
-  else if (phase === "running") status = state && STATE_TEXT[state] ? `${STATE_TEXT[state]}${title && state !== "planning" && state !== "queued" ? ` ${title}…` : ""}` : "Working…";
+  else if (phase === "running") {
+    status = state && STATE_TEXT[state] ? `${STATE_TEXT[state]}${title && state !== "planning" && state !== "queued" ? ` ${title}…` : ""}` : "Working…";
+    if (summary?.status === "repairing") status = `${state === "verifying_circuit" ? "Checking repair" : "Repairing assembled circuit"} · attempt ${summary.attempt} of ${summary.max_attempts}`;
+  }
+  else if ((phase === "done" || phase === "idle") && summary) status = {
+    passed: "Circuit checked against your request and its electrical specifications.",
+    failed: "Circuit built; verification failed.",
+    incomplete: "Circuit built; verification incomplete.",
+    simulation_error: "Circuit built; simulation failed.",
+    repairing: "Circuit built; verification incomplete.",
+  }[summary.status];
   else if (phase === "done") status = `Done: ${plan.filter((p) => p.status === "committed").length} block(s) added.`;
   else if (phase === "cancelled") status = "Cancelled. The blocks already added stay.";
   else status = error ? (ERROR_TEXT[error.code] ?? "Generation failed.") : "Generation failed.";
@@ -136,7 +155,7 @@ function Progress({ onDismiss }: { onDismiss: () => void }) {
           </>
         )}
         {/* A job joined after a reload has no prompt here to send again. */}
-        {phase === "failed" && error?.retryable && retryable && (
+        {phase === "failed" && error?.retryable && retryable && !verification && (
           <button type="button" className="primary" onClick={() => void project?.retry()}>
             Retry
           </button>
@@ -147,6 +166,20 @@ function Progress({ onDismiss }: { onDismiss: () => void }) {
           </button>
         )}
       </div>
+      {summary && summary.status !== "repairing" && (
+        <details className="verification" open={summary.status !== "passed"}>
+          <summary>Request and circuit checks{summary.attempt ? ` · ${summary.attempt} repair attempt(s)` : ""}</summary>
+          <ul>
+            {(summary.requirements ?? []).map((r, i) => <li key={`req:${i}`}>
+              {r.status === "met" ? "✓" : r.status === "missing" ? "✕" : "?"} {r.text} — {r.evidence}
+            </li>)}
+            {summary.checks.map((c) => <li key={`${c.block}:${c.name}`}>
+              {c.pass ? "✓" : "✕"} {c.block}: {c.label} — {c.measured_display ?? c.note ?? "not measured"}; target {c.target_display} ±{c.tol_pct}%
+            </li>)}
+            {summary.problems.map((p, i) => <li key={i}>{p}</li>)}
+          </ul>
+        </details>
+      )}
       {plan.length > 0 && (
         <ol className="plan">
           {plan.map((p) => (

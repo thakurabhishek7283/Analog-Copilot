@@ -111,6 +111,7 @@ def summarize(rows: list[dict[str, Any]], calls: list[dict[str, Any]] | None = N
     # blocks count too; its blocks that never got an outcome do not.
     blocks = [b | {"level": r["level"]} for r in scoped for b in r["blocks"] if b.get("how") and b["how"] != "template_mode"]
     checks = [c for r in scoped for b in r["blocks"] for c in b.get("checks") or []]
+    assemblies = [r["verification"] for r in scoped if r.get("verification")]
     errors = [
         (r["id"], (r["error"] or {}).get("code") or r["state"]) for r in scoped if r["state"] != "done"
     ]
@@ -133,6 +134,9 @@ def summarize(rows: list[dict[str, Any]], calls: list[dict[str, Any]] | None = N
         "attempt_errors": dict(Counter(code for b in blocks for codes in b.get("errors") or [] for code in codes)),
         "checks": len(checks),
         "checks_passed": ratio(sum(1 for c in checks if c.get("pass")), len(checks)),
+        "assembly_outcomes": dict(Counter(a["status"] for a in assemblies)),
+        "assembly_pass_rate": ratio(sum(a["status"] == "passed" for a in assemblies), len(assemblies)),
+        "assembly_repairs": sum(a["attempt"] for a in assemblies),
         "spec_error": mean(rel),
         "tokens_in_mean": mean([r["tokens"]["in"] for r in done]),
         "tokens_out_mean": mean([r["tokens"]["out"] for r in done]),
@@ -197,6 +201,9 @@ def gate(m: dict[str, Any], baseline: dict[str, Any] | None = None, *, min_commi
         problems.append(f"{miss['calls'] or len(miss['prompts'])} model calls are not in the cassette{which}: the "
                         "prompts or the pipeline changed since it was recorded; run the live evals again")
     c = m["commit_without_fallback"]
+    failed_assemblies = sum(m.get("assembly_outcomes", {}).get(s, 0) for s in ("failed", "simulation_error"))
+    if failed_assemblies:
+        problems.append(f"{failed_assemblies} assembled circuits failed verification")
     if c is None:
         problems.append("no block got an outcome")
     elif c < min_commit:
@@ -292,6 +299,8 @@ def markdown(report: dict[str, Any]) -> str:
         f"model calls per plan: {fmt(m['plan_rounds_mean'])}",
         f"- Blocks: {m['blocks']}; the model's own draft: {fmt(m['draft_share'], 'draft_share')}; "
         f"spec checks passed: {fmt(m['checks_passed'], 'checks_passed')} of {m['checks']}",
+        f"- Assembled circuits: {', '.join(f'{k} {v}' for k, v in m.get('assembly_outcomes', {}).items()) or 'not measured'}; "
+        f"repair attempts: {m.get('assembly_repairs', 0)}",
         f"- Fallbacks by cause: {', '.join(f'{k} {v}' for k, v in sorted(m['fallback_why'].items())) or 'none'}",
         f"- Failed attempts by error: "
         f"{', '.join(f'{k} {v}' for k, v in Counter(m['attempt_errors']).most_common()) or 'none'}",

@@ -424,6 +424,12 @@ class CompileOpts(BaseModel):
             description="Without `analyses`: the editor's set, [`interactive_analyses`]."
         ),
     ] = False
+    transfer_checks: Annotated[
+        bool | None,
+        Field(
+            description="Measure filter stages relative to their own inputs in the assembled circuit."
+        ),
+    ] = False
 
 
 class MeasDef(BaseModel):
@@ -734,7 +740,7 @@ class IssueCode(RootModel[ErrorCode | ErcCode]):
     root: ErrorCode | ErcCode
 
 
-class JobEvent9(BaseModel):
+class JobEvent11(BaseModel):
     """
     Every 15 s while the job runs; resets the client's stall timer.
     """
@@ -754,6 +760,8 @@ class JobState(StrEnum):
     repairing = "repairing"
     fallback = "fallback"
     committing = "committing"
+    verifying_circuit = "verifying_circuit"
+    repairing_circuit = "repairing_circuit"
     done = "done"
     failed = "failed"
     cancelled = "cancelled"
@@ -785,6 +793,20 @@ class RepairData(BaseModel):
 class SimSummaryData(BaseModel):
     block: str
     checks: list[CheckResult]
+
+
+class VerificationStatus(StrEnum):
+    passed = "passed"
+    failed = "failed"
+    incomplete = "incomplete"
+    simulation_error = "simulation_error"
+    repairing = "repairing"
+
+
+class IntentStatus(StrEnum):
+    met = "met"
+    missing = "missing"
+    unverifiable = "unverifiable"
 
 
 class ApiError(BaseModel):
@@ -1627,7 +1649,7 @@ class JobEvent6(BaseModel):
     data: SimSummaryData
 
 
-class JobEvent7(BaseModel):
+class JobEvent9(BaseModel):
     """
     One event on `GET /v1/jobs/{id}/events`. On the wire, `event` is the SSE event name, `data`
     its JSON, and the event's sequence number its SSE `id`, which a reconnect resumes from.
@@ -1647,6 +1669,22 @@ class GhostData(BaseModel):
     title: str
     role: BlockRole
     ports: list[GhostPort]
+
+
+class IntentRequirement(BaseModel):
+    text: str
+    status: IntentStatus
+    evidence: Annotated[
+        str,
+        Field(
+            description="A brief explanation of which circuit evidence supports this judgment."
+        ),
+    ]
+    blocks: list[str]
+    checks: Annotated[
+        list[str],
+        Field(description="Check identifiers as `block.check`, e.g. `b2.fc_hz`."),
+    ]
 
 
 class DoneData(BaseModel):
@@ -2200,7 +2238,7 @@ class JobEvent4(BaseModel):
     data: OpEnvelope
 
 
-class JobEvent8(BaseModel):
+class JobEvent10(BaseModel):
     """
     The job finished: the editor unlocks.
     """
@@ -2209,33 +2247,32 @@ class JobEvent8(BaseModel):
     data: DoneData
 
 
-class JobEvent(
-    RootModel[
-        JobEvent1
-        | JobEvent2
-        | JobEvent3
-        | JobEvent4
-        | JobEvent5
-        | JobEvent6
-        | JobEvent7
-        | JobEvent8
-        | JobEvent9
-    ]
-):
-    root: Annotated[
-        JobEvent1
-        | JobEvent2
-        | JobEvent3
-        | JobEvent4
-        | JobEvent5
-        | JobEvent6
-        | JobEvent7
-        | JobEvent8
-        | JobEvent9,
+class CircuitSummaryData(BaseModel):
+    rev: Annotated[int, Field(ge=0)]
+    status: VerificationStatus
+    attempt: Annotated[
+        int,
         Field(
-            description="One event on `GET /v1/jobs/{id}/events`. On the wire, `event` is the SSE event name, `data`\nits JSON, and the event's sequence number its SSE `id`, which a reconnect resumes from."
+            description="Zero for the initial verification, then the repair attempt (at most two).",
+            ge=0,
+            le=255,
         ),
     ]
+    max_attempts: Annotated[int, Field(ge=0, le=255)]
+    checks: list[CheckResult]
+    requirements: Annotated[
+        list[IntentRequirement] | None,
+        Field(
+            description="Claims from the final request review, each tied to circuit evidence.",
+            validate_default=True,
+        ),
+    ] = []
+    problems: list[str]
+
+
+class CircuitPatchData(BaseModel):
+    ops: list[OpEnvelope]
+    attempt: Annotated[int, Field(ge=0, le=255)]
 
 
 class AppendOps(BaseModel):
@@ -2384,6 +2421,57 @@ class Registry(BaseModel):
     ] = {}
 
 
+class JobEvent7(BaseModel):
+    """
+    Complete-circuit verification, including an automatic repair's progress.
+    """
+
+    event: Literal["circuit.summary"]
+    data: CircuitSummaryData
+
+
+class JobEvent8(BaseModel):
+    """
+    A verified assembly repair, applied as one undoable transaction.
+    """
+
+    event: Literal["circuit.patch"]
+    data: CircuitPatchData
+
+
+class JobEvent(
+    RootModel[
+        JobEvent1
+        | JobEvent2
+        | JobEvent3
+        | JobEvent4
+        | JobEvent5
+        | JobEvent6
+        | JobEvent7
+        | JobEvent8
+        | JobEvent9
+        | JobEvent10
+        | JobEvent11
+    ]
+):
+    root: Annotated[
+        JobEvent1
+        | JobEvent2
+        | JobEvent3
+        | JobEvent4
+        | JobEvent5
+        | JobEvent6
+        | JobEvent7
+        | JobEvent8
+        | JobEvent9
+        | JobEvent10
+        | JobEvent11,
+        Field(
+            description="One event on `GET /v1/jobs/{id}/events`. On the wire, `event` is the SSE event name, `data`\nits JSON, and the event's sequence number its SSE `id`, which a reconnect resumes from."
+        ),
+    ]
+
+
 class ProjectSnapshot(BaseModel):
     """
     `GET /v1/projects/{id}`: everything an editor opens.
@@ -2396,6 +2484,12 @@ class ProjectSnapshot(BaseModel):
         str | None,
         Field(
             description="A generation job still running on this project, if any (the editor stays read-only)."
+        ),
+    ] = None
+    verification: Annotated[
+        CircuitSummaryData | None,
+        Field(
+            description="Latest assembly verification, only when it describes this snapshot's revision."
         ),
     ] = None
 

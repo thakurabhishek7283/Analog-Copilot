@@ -10,6 +10,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -138,7 +139,7 @@ async def test_a_timeout_is_reported_and_not_cached(pool, runs, reg, version):
     assert await pool.get(cache_key(version, req.hash)) is None
 
 
-@pytest.mark.skipif(os.name == "nt", reason="rlimits are POSIX")
+@pytest.mark.skipif(os.name == "nt" or sys.platform == "darwin", reason="virtual-memory ulimit unavailable")
 async def test_a_run_over_the_memory_limit_fails_at_once(pool, reg, version):
     """9M transient points need about 72 MB per vector: under RLIMIT_AS ngspice's malloc fails
     within milliseconds, an `error` that names the cause, instead of running into the timeout."""
@@ -167,10 +168,12 @@ def test_meas_only_mode_matches_the_full_driver(ngspice, reg, template):
 @pytest.mark.skipif(os.name == "nt", reason="rlimits are POSIX")
 def test_the_sandbox_limits_reach_ngspice(tmp_path):
     fake = tmp_path / "ngspice"
-    fake.write_text('#!/bin/sh\nulimit -v\nulimit -t\necho "$@"\n', encoding="utf-8")
+    memory_limit = "" if sys.platform == "darwin" else "ulimit -v\n"
+    fake.write_text(f'#!/bin/sh\n{memory_limit}ulimit -t\necho "$@"\n', encoding="utf-8")
     fake.chmod(0o755)
     out = subprocess.run(nb.command(fake, 1.5, True), cwd=tmp_path, capture_output=True, text=True, check=True)
-    assert out.stdout.split("\n")[:3] == [str(nb.MEMORY_LIMIT // 1024), "2", "-b deck.cir"]
+    expected = ["2", "-b deck.cir"] if sys.platform == "darwin" else [str(nb.MEMORY_LIMIT // 1024), "2", "-b deck.cir"]
+    assert out.stdout.splitlines() == expected
     assert nb.command(fake, 1.5, False) == [str(fake), "-b", "deck.cir"]
 
 

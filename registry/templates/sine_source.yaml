@@ -15,5 +15,6 @@ nets:
 solver: sine_source
 checks:
   - {name: amplitude_v, label: Amplitude, symbol: "Vpk", kind: tran_amplitude, out: out, tol_pct: 2}
+  - {name: freq_hz, label: Frequency, symbol: "f", kind: tran_freq, out: out, tol_pct: 2}
 verify:
   load: {out: 10k}

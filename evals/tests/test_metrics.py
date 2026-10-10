@@ -80,6 +80,18 @@ def test_summary():
     assert "calls" not in m
 
 
+def test_a_successful_block_does_not_hide_an_assembly_failure():
+    rows = [row("loaded", [block("use_template", 1)]) | {
+        "verification": {"status": "failed", "attempt": 2},
+    }, row("undriven", [block("use_template", 1)]) | {
+        "verification": {"status": "incomplete", "attempt": 0},
+    }]
+    metrics = summarize(rows)
+    assert metrics["assembly_outcomes"] == {"failed": 1, "incomplete": 1}
+    assert metrics["assembly_pass_rate"] == 0 and metrics["assembly_repairs"] == 2
+    assert "1 assembled circuits failed verification" in gate(metrics)
+
+
 def test_call_stats():
     calls = [
         {"kind": "plan", "model": "big", "ms": 900, "in_tokens": 6000, "out_tokens": 700, "cached_tokens": 5000},

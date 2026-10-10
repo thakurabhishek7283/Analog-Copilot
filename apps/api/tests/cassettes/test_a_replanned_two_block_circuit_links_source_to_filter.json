@@ -2,7 +2,7 @@
  "version": 1,
  "interactions": [
   {
-   "key": "8ad4a22cb177f84049ca9141726a85581f47bc6c92b08ec2e9816660ad74c62e",
+   "key": "ebc0303594f39b3a82dc49c37864ea34e8a5f82857c6762c488ddbbea3e72ccc",
    "kind": "plan",
    "tier": "large",
    "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
@@ -10,7 +10,7 @@
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Signal\", \"purpose\": \"A test signal.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"300\"}]}, {\"id\": \"b2\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.gnd\"}], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3602,
+     "in_tokens": 3611,
      "out_tokens": 88,
      "cached_tokens": 0,
      "estimated": true
@@ -19,7 +19,7 @@
    }
   },
   {
-   "key": "9d08e2de4eed80cb7091bf1ce8ddfb3ce251e41af7c6200147551e7808db66da",
+   "key": "a38303dcd260cb159e880e7fa36c2525bcdc20fb202b5941fe21c89481dbf4b7",
    "kind": "plan",
    "tier": "large",
    "user_tail": "itle\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.gnd\"}], \"uncovered\": []}\n\nIt has these problems. Fix every one:\n- link b1.out -> b2.gnd: b2.gnd is ground, not an input; power and ground join through the rails\n",
@@ -27,7 +27,7 @@
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Signal\", \"purpose\": \"V1 makes a 300 Hz sine wave to test the filter with.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"300\"}]}, {\"id\": \"b2\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"R1 and C1 let low frequencies through and send high ones to ground.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"2k\"}]}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3730,
+     "in_tokens": 3739,
      "out_tokens": 111,
      "cached_tokens": 0,
      "estimated": true
@@ -36,7 +36,7 @@
    }
   },
   {
-   "key": "1ab1f90743e6425e567af78f5220a093943a89a3b66d5cab5070221ee6edad67",
+   "key": "bc0b67a7f77132feecad30fa8bdfa9dd71ea5e1cc613d5bac57218e74220df09",
    "kind": "compose",
    "tier": "large",
    "user_tail": "umber: R1, C2, U1), the part id, and a value for each of its params (name and value).\n- nets: a net named after a port of the template (out, gnd) is that port; any other name is a net inside the block. Pins are REF.PIN, such as R1.2 or U1.OUT_A. Every port needs a net, and a pin is on one net only.\n",
@@ -44,7 +44,7 @@
     "text": "{\"use_template\": true, \"parts\": [], \"nets\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3734,
+     "in_tokens": 3748,
      "out_tokens": 11,
      "cached_tokens": 0,
      "estimated": true
@@ -92,7 +92,7 @@
    }
   },
   {
-   "key": "1bca66d4f3ed6b1e9ff257f9c33389cba49e9b878cbcbef2edcb94de7d3c860c",
+   "key": "8955b8ccf3b359d7f60fcfacb4586dc29e0fd3fcc7da8b72a6450a5a50525637",
    "kind": "compose",
    "tier": "large",
    "user_tail": "r: R1, C2, U1), the part id, and a value for each of its params (name and value).\n- nets: a net named after a port of the template (in, out, gnd) is that port; any other name is a net inside the block. Pins are REF.PIN, such as R1.2 or U1.OUT_A. Every port needs a net, and a pin is on one net only.\n",
@@ -100,8 +100,25 @@
     "text": "{\"use_template\": false, \"parts\": [{\"ref\": \"R1\", \"part\": \"resistor_th\", \"params\": [{\"name\": \"resistance\", \"value\": \"8.2k\"}]}, {\"ref\": \"C1\", \"part\": \"cap_film\", \"params\": [{\"name\": \"capacitance\", \"value\": \"10n\"}]}], \"nets\": [{\"name\": \"in\", \"pins\": [\"R1.1\"]}, {\"name\": \"out\", \"pins\": [\"R1.2\", \"C1.1\"]}, {\"name\": \"gnd\", \"pins\": [\"C1.2\"]}]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3760,
+     "in_tokens": 3769,
      "out_tokens": 83,
+     "cached_tokens": 0,
+     "estimated": true
+    },
+    "finish_reason": "stop"
+   }
+  },
+  {
+   "key": "3b4bf43be0494cbac3942a97f52a34e2ff070d0092689eeffc8d32c77faf5fd9",
+   "kind": "assembly_audit",
+   "tier": "small",
+   "user_tail": "rget\": 300.0, \"target_display\": \"300Hz\", \"tol_pct\": 2.0, \"unit\": \"hertz\"}, {\"block\": \"b2\", \"label\": \"Cutoff (\\u22123 dB)\", \"measured\": 1956.82, \"measured_display\": \"1.96kHz\", \"name\": \"fc_hz\", \"pass\": true, \"symbol\": \"fc\", \"target\": 2000.0, \"target_display\": \"2kHz\", \"tol_pct\": 10.0, \"unit\": \"hertz\"}]",
+   "response": {
+    "text": "{\"requirements\": [{\"text\": \"A sine source drives the RC low-pass filter\", \"status\": \"met\", \"evidence\": \"The source output and filter input share net B1_OUT.\", \"blocks\": [\"b1\", \"b2\"], \"checks\": []}, {\"text\": \"The source frequency is 300 Hz\", \"status\": \"met\", \"evidence\": \"The source frequency measurement passes its 300 Hz target check.\", \"blocks\": [\"b1\"], \"checks\": [\"b1.freq_hz\"]}, {\"text\": \"The filter cutoff is 2 kHz\", \"status\": \"met\", \"evidence\": \"The measured cutoff passes the 2 kHz target check.\", \"blocks\": [\"b2\"], \"checks\": [\"b2.fc_hz\"]}]}",
+    "model": "fake-small",
+    "usage": {
+     "in_tokens": 4488,
+     "out_tokens": 137,
      "cached_tokens": 0,
      "estimated": true
     },

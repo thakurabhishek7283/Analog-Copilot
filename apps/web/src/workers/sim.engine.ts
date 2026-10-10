@@ -64,11 +64,18 @@ export interface Deck {
   /** Analysis of each analysis card, in deck order. */
   analyses: AnalysisType[];
   meas: MeasCard[];
+  transfers: { name: string; out: string; input: string }[];
 }
 
 export function splitDeck(netlist: string): Deck {
-  const deck: Deck = { body: [], analyses: [], meas: [] };
+  const deck: Deck = { body: [], analyses: [], meas: [], transfers: [] };
   for (const line of netlist.split(/\r?\n/)) {
+    if (line.startsWith("* transfer ")) {
+      const match = /^\* transfer ([a-z0-9_]+) ([a-z0-9_]+) ([a-z0-9_]+)$/.exec(line);
+      if (!match) throw new Error("invalid transfer measurement");
+      deck.transfers.push({ name: match[1]!, out: match[2]!, input: match[3]! });
+      continue;
+    }
     const words = line.trim().split(/\s+/);
     const card = (words[0] ?? "").toLowerCase();
     if (card === ".control" || card === ".endc") throw new Error("netlists must not contain .control sections");
@@ -334,6 +341,15 @@ export function simulate(ng: Ngspice, req: SimRequest, now: () => number = () =>
   }
 
   const meas: Record<string, number> = {};
+  const ac = planned.find((p) => p.analysis === "ac")?.plot;
+  if (ac && !ng.broken) {
+    ng.command(`setplot ${ac}`);
+    for (const { name, out, input } of deck.transfers) {
+      ng.command(`let ${name}=v(${out})/v(${input})`);
+      ng.command(`let ${name}_db=db(${name})`);
+      ng.command(`let ${name}_phase=ph(${name})`);
+    }
+  }
   const counter = { n: 1 };
   for (const card of deck.meas) {
     const plot = planned.find((p) => p.analysis === card.analysis)?.plot;

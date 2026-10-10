@@ -67,6 +67,17 @@ def rc(r: str = "8.2k", c: str = "10n", nets: dict[str, list[str]] = RC_NETS) ->
 
 BAD_PIN = rc(nets={"in": ["R1.1"], "out": ["R1.2", "C1.X"], "gnd": ["C1.2"]})
 NARRATION = "This circuit is a low-pass filter. The signal enters a resistor, and a capacitor shunts the fast parts to ground."
+SOURCE_FILTER_AUDIT = {"requirements": [
+    {"text": "A sine source drives the RC low-pass filter", "status": "met",
+     "evidence": "The source output and filter input share net B1_OUT.",
+     "blocks": ["b1", "b2"], "checks": []},
+    {"text": "The source frequency is 300 Hz", "status": "met",
+     "evidence": "The source frequency measurement passes its 300 Hz target check.",
+     "blocks": ["b1"], "checks": ["b1.freq_hz"]},
+    {"text": "The filter cutoff is 2 kHz", "status": "met",
+     "evidence": "The measured cutoff passes the 2 kHz target check.",
+     "blocks": ["b2"], "checks": ["b2.fc_hz"]},
+]}
 
 
 # ---------------------------------------------------------------- harness
@@ -180,7 +191,7 @@ async def test_a_draft_that_passes_first_time_commits(http, alice, app, scenario
     spy = scenario({"plan": [RC_2K], "narrate": [NARRATION], "compose": [rc()]})
     pid, jid, events = await run_job(http, alice, "an RC low-pass filter at 2 kHz")
 
-    assert states(events) == ["queued", "planning", "composing:b1", "verifying:b1", "committing:b1", "done"]
+    assert states(events) == ["queued", "planning", "composing:b1", "verifying:b1", "committing:b1", "verifying_circuit", "done"]
     names = [e["event"] for e in events]
     assert names[-1] == "done" and "error" not in names
     # The introduction streams before the first op; the block's purpose follows its commit.
@@ -208,6 +219,7 @@ async def test_a_draft_that_passes_first_time_commits(http, alice, app, scenario
     snap = await snapshot(http, alice, pid)
     assert snap.project.head_rev == done["rev"] == len(ops) and snap.active_job is None
     assert list(snap.circuit.blocks) == ["b1"]
+    assert snap.verification.status == "incomplete"  # no source in this request
     assert [(e.kind.value, e.block, e.text) for e in snap.lesson] == [
         ("narration", None, NARRATION), ("narration", "b1", RC_PURPOSE)]
     assert snap.lesson[1].refs == ["C1", "R1"]
@@ -237,7 +249,7 @@ async def test_a_wrong_pin_is_repaired(http, alice, app, scenario):
     pid, jid, events = await run_job(http, alice, "an RC low-pass filter at 2 kHz")
 
     assert states(events) == ["queued", "planning", "composing:b1", "verifying:b1", "repairing:b1", "composing:b1",
-                              "verifying:b1", "committing:b1", "done"]
+                              "verifying:b1", "committing:b1", "verifying_circuit", "done"]
     assert named(events, "block.repair") == [{"id": "b1", "attempt": 1, "errors": ["pin_not_found"]}]
     retry = spy.of("compose")[1].user
     assert "Your previous attempt:\n" + json.dumps(BAD_PIN) in retry
@@ -293,7 +305,7 @@ async def test_three_failed_drafts_fall_back_to_the_template(http, alice, app, s
     scenario({"plan": [RC_2K], "narrate": [NARRATION], "compose": [BAD_PIN, BAD_PIN, rc(r="82k")]})
     pid, jid, events = await run_job(http, alice, "an RC low-pass filter at 2 kHz")
 
-    assert states(events)[-4:] == ["repairing:b1", "fallback:b1", "committing:b1", "done"]
+    assert states(events)[-5:] == ["repairing:b1", "fallback:b1", "committing:b1", "verifying_circuit", "done"]
     assert [d["attempt"] for d in named(events, "block.repair")] == [1, 2, 3]
     assert len(await attempts(app, jid)) == 3
     ops = ops_of(events, "b1")
@@ -314,7 +326,8 @@ async def test_a_replanned_two_block_circuit_links_source_to_filter(http, alice,
     good = plan(block("b1", "sine_source", "Signal", "V1 makes a 300 Hz sine wave to test the filter with.", freq_hz="300"),
                 block("b2", "rc_lowpass", "Filter", RC_PURPOSE, fc_hz="2k"),
                 links=[("b1.out", "b2.in")])
-    spy = scenario({"plan": [bad, good], "narrate": [NARRATION], "compose": [USE_TEMPLATE, rc()]})
+    spy = scenario({"plan": [bad, good], "narrate": [NARRATION], "compose": [USE_TEMPLATE, rc()],
+                    "assembly_audit": [SOURCE_FILTER_AUDIT]})
     pid, jid, events = await run_job(http, alice, "a sine source driving an RC low-pass at 2 kHz")
 
     replan = spy.of("plan")[1].user
@@ -329,6 +342,8 @@ async def test_a_replanned_two_block_circuit_links_source_to_filter(http, alice,
     assert "in → b1.out (net B1_OUT)" in spy.of("compose")[1].user
     row = await job_row(app, jid)
     assert row.plan["rounds"] == 2 and [b["outcome"]["how"] for b in row.plan["blocks"]] == ["use_template", "draft"]
+    assert (await snapshot(http, alice, pid)).verification.status == "passed"
+    assert {c.name for c in snap.verification.checks} == {"amplitude_v", "freq_hz", "fc_hz"}
 
 
 async def test_a_plan_that_stays_invalid_fails_the_job(http, alice, app, scenario):
@@ -374,7 +389,7 @@ async def test_a_composer_that_does_not_answer_falls_back(http, alice, app, scen
     pid, jid, events = await run_job(http, alice, "an RC low-pass filter at 2 kHz")
 
     assert len(spy.of("compose")) == 3 and not named(events, "block.repair")
-    assert states(events)[-4:] == ["composing:b1", "fallback:b1", "committing:b1", "done"]
+    assert states(events)[-5:] == ["composing:b1", "fallback:b1", "committing:b1", "verifying_circuit", "done"]
     assert await attempts(app, jid) == []
     assert (await job_row(app, jid)).plan["blocks"][0]["outcome"] == {
         "how": "fallback", "attempts": 0, "errors": [], "why": "llm_unavailable"}
@@ -426,7 +441,7 @@ async def test_template_mode_plans_small_and_never_composes(http, alice, app, sc
     pid, jid, events = await run_job(http, alice, "an RC low-pass filter at 2 kHz", mode="templates")
 
     assert spy.of("plan")[0].tier == "small" and not spy.of("compose")
-    assert states(events) == ["queued", "planning", "verifying:b1", "committing:b1", "done"]
+    assert states(events) == ["queued", "planning", "verifying:b1", "committing:b1", "verifying_circuit", "done"]
     assert {o["author"] for o in ops_of(events, "b1")} == {"template"}
     assert named(events, "sim.summary")[0]["checks"][0]["pass"]
     snap = await snapshot(http, alice, pid)

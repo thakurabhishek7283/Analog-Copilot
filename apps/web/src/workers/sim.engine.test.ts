@@ -12,6 +12,13 @@ describe("splitDeck", () => {
   it("refuses .control sections", () => {
     expect(() => splitDeck("* t\n.control\nshell ls\n.endc\n.end\n")).toThrow(/control/);
   });
+
+  it("reads only compiler-shaped transfer definitions, never arbitrary commands", () => {
+    const deck = splitDeck("* t\n* transfer b2_fc_transfer b2_out b1_out\n.ac dec 50 10 100k\n.end");
+    expect(deck.transfers).toEqual([{ name: "b2_fc_transfer", out: "b2_out", input: "b1_out" }]);
+    expect(deck.body.some((line) => line.startsWith("* transfer"))).toBe(false);
+    expect(() => splitDeck("* transfer x out in; shell bad")).toThrow("invalid transfer");
+  });
 });
 
 describe("measCommands (ngspice inp_meas_control)", () => {

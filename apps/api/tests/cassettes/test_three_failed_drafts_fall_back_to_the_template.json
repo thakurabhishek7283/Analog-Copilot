@@ -2,7 +2,7 @@
  "version": 1,
  "interactions": [
   {
-   "key": "814890f6c3f4402761d46e010a3111786985384be287948af1173c93ed932287",
+   "key": "c5c27f72e5d88fd2862233b728c773f932c52f5a7b804594a17a9791f17b585c",
    "kind": "plan",
    "tier": "large",
    "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
@@ -10,7 +10,7 @@
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"rc_lowpass\", \"title\": \"Low-pass filter\", \"purpose\": \"R1 and C1 let low frequencies through and send high ones to ground.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"2k\"}]}], \"links\": [], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3598,
+     "in_tokens": 3607,
      "out_tokens": 59,
      "cached_tokens": 0,
      "estimated": true
@@ -19,7 +19,7 @@
    }
   },
   {
-   "key": "427441f136f985fce3bfcc53d51e1ee868d1b997d43cfaf8074b2def7975fccd",
+   "key": "76137ea18b8e7c5870eba0584e8d1c927f92b23b13ef2505de1b8e4ddc89a0e1",
    "kind": "compose",
    "tier": "large",
    "user_tail": "r: R1, C2, U1), the part id, and a value for each of its params (name and value).\n- nets: a net named after a port of the template (in, out, gnd) is that port; any other name is a net inside the block. Pins are REF.PIN, such as R1.2 or U1.OUT_A. Every port needs a net, and a pin is on one net only.\n",
@@ -27,7 +27,7 @@
     "text": "{\"use_template\": false, \"parts\": [{\"ref\": \"R1\", \"part\": \"resistor_th\", \"params\": [{\"name\": \"resistance\", \"value\": \"8.2k\"}]}, {\"ref\": \"C1\", \"part\": \"cap_film\", \"params\": [{\"name\": \"capacitance\", \"value\": \"10n\"}]}], \"nets\": [{\"name\": \"in\", \"pins\": [\"R1.1\"]}, {\"name\": \"out\", \"pins\": [\"R1.2\", \"C1.X\"]}, {\"name\": \"gnd\", \"pins\": [\"C1.2\"]}]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3727,
+     "in_tokens": 3736,
      "out_tokens": 83,
      "cached_tokens": 0,
      "estimated": true
@@ -75,7 +75,7 @@
    }
   },
   {
-   "key": "a5537d45a92fbd00115f7f64715ca0d17b84201faf9745081585123b13eb9952",
+   "key": "084bf184f1fb074c0846a3faf9786a1174501286af21e3e1b4cd25bdabc728fd",
    "kind": "compose",
    "tier": "large",
    "user_tail": "ams\": [{\"name\": \"capacitance\", \"value\": \"10n\"}]}], \"nets\": [{\"name\": \"in\", \"pins\": [\"R1.1\"]}, {\"name\": \"out\", \"pins\": [\"R1.2\", \"C1.X\"]}, {\"name\": \"gnd\", \"pins\": [\"C1.2\"]}]}\n\nIt failed:\n- pin_not_found (net out): C1 (cap_film) has no pin X; its pins are 1 2\nFix every problem and keep what was right.\n",
@@ -83,7 +83,7 @@
     "text": "{\"use_template\": false, \"parts\": [{\"ref\": \"R1\", \"part\": \"resistor_th\", \"params\": [{\"name\": \"resistance\", \"value\": \"8.2k\"}]}, {\"ref\": \"C1\", \"part\": \"cap_film\", \"params\": [{\"name\": \"capacitance\", \"value\": \"10n\"}]}], \"nets\": [{\"name\": \"in\", \"pins\": [\"R1.1\"]}, {\"name\": \"out\", \"pins\": [\"R1.2\", \"C1.X\"]}, {\"name\": \"gnd\", \"pins\": [\"C1.2\"]}]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3848,
+     "in_tokens": 3857,
      "out_tokens": 83,
      "cached_tokens": 0,
      "estimated": true
@@ -92,7 +92,7 @@
    }
   },
   {
-   "key": "a5537d45a92fbd00115f7f64715ca0d17b84201faf9745081585123b13eb9952",
+   "key": "084bf184f1fb074c0846a3faf9786a1174501286af21e3e1b4cd25bdabc728fd",
    "kind": "compose",
    "tier": "large",
    "user_tail": "ams\": [{\"name\": \"capacitance\", \"value\": \"10n\"}]}], \"nets\": [{\"name\": \"in\", \"pins\": [\"R1.1\"]}, {\"name\": \"out\", \"pins\": [\"R1.2\", \"C1.X\"]}, {\"name\": \"gnd\", \"pins\": [\"C1.2\"]}]}\n\nIt failed:\n- pin_not_found (net out): C1 (cap_film) has no pin X; its pins are 1 2\nFix every problem and keep what was right.\n",
@@ -100,7 +100,7 @@
     "text": "{\"use_template\": false, \"parts\": [{\"ref\": \"R1\", \"part\": \"resistor_th\", \"params\": [{\"name\": \"resistance\", \"value\": \"82k\"}]}, {\"ref\": \"C1\", \"part\": \"cap_film\", \"params\": [{\"name\": \"capacitance\", \"value\": \"10n\"}]}], \"nets\": [{\"name\": \"in\", \"pins\": [\"R1.1\"]}, {\"name\": \"out\", \"pins\": [\"R1.2\", \"C1.1\"]}, {\"name\": \"gnd\", \"pins\": [\"C1.2\"]}]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3848,
+     "in_tokens": 3857,
      "out_tokens": 83,
      "cached_tokens": 0,
      "estimated": true

@@ -43,11 +43,13 @@ async def get_project(project_id: str, request: Request, user: User) -> JSONResp
         session = await projects.load_session(conn, st.regs, row)
         lesson = await projects.lesson(conn, row.id)
         active = await projects.active_job(conn, row.id)
+        verification = await projects.verification(conn, row.id, session.rev)
     snapshot = {
         "project": projects.project_model(row).model_dump(mode="json"),
         "circuit": json.loads(session.snapshot()),
         "lesson": lesson,
         **({"active_job": str(active)} if active else {}),
+        **({"verification": verification} if verification else {}),
     }
     return JSONResponse(snapshot)
 

@@ -22,7 +22,7 @@ from ..llm.base import LlmRequest, LlmResponse
 from ..llm.gateway import Gateway, LlmUnavailable
 from ..llm.prompts import Prompts
 from ..retrieval.parts import candidates
-from . import composer, planner, repair
+from . import assembly, composer, planner, repair
 from .planner import Plan, PlannedBlock
 from .verifier import verify
 
@@ -103,6 +103,7 @@ class Job:
                 (outcome,) = await asyncio.gather(narration, return_exceptions=True)
                 if isinstance(outcome, Exception):
                     log.error("job %s: narration crashed: %r", ctx.job_id, outcome)
+        await assembly.run(self, plan)
 
     # ------------------------------------------------------------------ narration
 

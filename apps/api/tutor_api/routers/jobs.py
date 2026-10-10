@@ -62,6 +62,10 @@ async def job_events(
     after = int(last_event_id) if last_event_id and last_event_id.isdigit() else 0
     while True:
         if not await events.exists(job.id) and (last := await final_event(request, job.id)):
+            async with request.app.state.engine.connect() as conn:
+                plan = (await conn.execute(select(jobs.c.plan).where(jobs.c.id == job.id))).scalar_one_or_none()
+            if summary := (plan or {}).get("verification"):
+                yield ServerSentEvent(event="circuit.summary", data=summary)
             yield last  # the stream expired (1 h) after the job ended
             return
         batch = await events.read(job.id, after, block_ms=HEARTBEAT_MS)

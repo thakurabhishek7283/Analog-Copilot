@@ -68,6 +68,7 @@ class JobContext:
     model: str | None = None
     rev: int = 0
     cancel_requested: bool = False
+    assembly_started: bool = False
     work: asyncio.Task | None = field(default=None, repr=False)  # the orchestrator's task
 
     async def emit(self, event: str, data: Any = None) -> int:
@@ -86,12 +87,15 @@ class JobContext:
             row = await projects.get_owned(conn, str(self.project_id), self.user_id)
             return await projects.load_session(conn, self.regs, row)
 
-    async def commit(self, ops: list[dict[str, Any]], *, author: str, block: str | None = None) -> int:
+    async def commit(self, ops: list[dict[str, Any]], *, author: str, block: str | None = None,
+                     repair_attempt: int | None = None, base_rev: int | None = None) -> int:
         """Apply bare ops to the project as this job's envelopes, store them, then stream each as an
         `op` event. Atomic: a rejected op stores nothing. Returns the new rev."""
         async with self.engine.begin() as conn:
             row = await projects.get_owned(conn, str(self.project_id), self.user_id, lock=True)
             base = row.head_rev
+            if base_rev is not None and base != base_rev:
+                raise Failure("stale_rev", "the circuit changed while its repair was being verified")
             envelopes = []
             for i, op in enumerate(ops):
                 env = {"v": 1, "seq": base + i + 1, **op, "author": author, "job": str(self.job_id), "base_rev": base + i}
@@ -102,8 +106,11 @@ class JobContext:
                 conn, self.regs, row, envelopes, base_rev=base, snapshot_every=self.settings.snapshot_every,
                 job_id=self.job_id,
             )
-        for env in done.envelopes:
-            await self.emit("op", env)
+        if repair_attempt is not None:
+            await self.emit("circuit.patch", {"ops": done.envelopes, "attempt": repair_attempt})
+        else:
+            for env in done.envelopes:
+                await self.emit("op", env)
         self.rev = done.rev
         return done.rev
 
@@ -232,6 +239,9 @@ class JobRunner:
 
     async def _finish(self, ctx: JobContext, state: str, failure: Failure | None) -> None:
         """Write the final state once (the reaper may have got there first) and the last events."""
+        if failure and ctx.assembly_started:
+            # Generate appends blocks; repeating it is never an assembly repair.
+            failure.retryable = False
         async with self.engine.begin() as conn:
             won = (
                 await conn.execute(

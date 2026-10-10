@@ -1,8 +1,8 @@
 //! Spec checks (LLD §7): the compiler turns each check of a template block into primitive ngspice
 //! `.meas` cards on the block's port nets; [`evaluate_checks`] combines their results into
 //! `{name, target, measured, tol_pct, pass}`. ngspice measures only single vectors (it rejects
-//! `vdb(out)-vdb(in)`), so every ratio, product or difference is taken here, identically in the
-//! browser and on the server.
+//! `vdb(out)-vdb(in)`). Scalar combinations are evaluated here; with `transfer_checks`, the
+//! drivers create complex output/input vectors before measuring filter crossings and phase.
 
 use std::collections::BTreeMap;
 use std::f64::consts::FRAC_PI_2;
@@ -75,6 +75,21 @@ pub struct CheckResult {
 /// `.meas` cards and check definitions for every template block of `c`, against the analyses
 /// the deck runs (a check whose analysis is absent is listed with `missing`, not emitted).
 pub fn emit(c: &Circuit, reg: &Registry, analyses: &[Analysis]) -> (Vec<MeasDef>, Vec<SpecCheckDef>) {
+    emit_inner(c, reg, analyses, false)
+}
+
+/// Driver-recognized transfer comments create AC vectors before the measurement cards run.
+/// They keep a downstream filter's response separate from the upstream stages' response.
+pub fn emit_transfers(c: &Circuit, reg: &Registry, analyses: &[Analysis]) -> (Vec<MeasDef>, Vec<SpecCheckDef>) {
+    emit_inner(c, reg, analyses, true)
+}
+
+fn emit_inner(
+    c: &Circuit,
+    reg: &Registry,
+    analyses: &[Analysis],
+    transfers: bool,
+) -> (Vec<MeasDef>, Vec<SpecCheckDef>) {
     let ac = analyses.iter().find_map(|a| match a {
         Analysis::Ac { f_start, f_stop, .. } => Some((*f_start, *f_stop)),
         _ => None,
@@ -131,7 +146,37 @@ pub fn emit(c: &Circuit, reg: &Registry, analyses: &[Analysis]) -> (Vec<MeasDef>
                 }
                 Ok((out, inp)) => {
                     let sweep = ac.unwrap_or((0.0, f64::MAX));
-                    Ok(cards_for(ch, spec.target, &out, inp.as_deref(), sweep, tran.map_or(0.0, |t| t.0)))
+                    let relative = transfers
+                        && matches!(
+                            ch.kind,
+                            CheckKind::AcCorner | CheckKind::AcQ | CheckKind::AcCenter | CheckKind::AcBandQ
+                        );
+                    if relative {
+                        match node(ch.input.as_deref().unwrap_or("in")) {
+                            Err(why) => Err(why),
+                            Ok(input) => {
+                                let name = format!("{}_{}_transfer", block.id, ch.name).to_ascii_lowercase();
+                                cards.push(MeasDef {
+                                    name: name.clone(),
+                                    line: format!("* transfer {name} {out} {input}"),
+                                });
+                                let lines =
+                                    cards_for(ch, spec.target, &out, inp.as_deref(), sweep, tran.map_or(0.0, |t| t.0));
+                                Ok(lines
+                                    .into_iter()
+                                    .map(|(s, line)| {
+                                        (
+                                            s,
+                                            line.replace(&format!("vdb({out})"), &format!("{name}_db"))
+                                                .replace(&format!("vp({out})"), &format!("{name}_phase")),
+                                        )
+                                    })
+                                    .collect())
+                            }
+                        }
+                    } else {
+                        Ok(cards_for(ch, spec.target, &out, inp.as_deref(), sweep, tran.map_or(0.0, |t| t.0)))
+                    }
                 }
             };
             match lines {

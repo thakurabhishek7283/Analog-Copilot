@@ -216,4 +216,38 @@ describe.skipIf(missing.length > 0)("AnimationDirector", () => {
     const job = jobScript(core, FILTER);
     expect(revealItems(job.blocks[1]!.envelopes).map(name)).toEqual(["R1", "C1", "net:B1_OUT", "net:B2_OUT", "net:GND"]);
   });
+
+  it("applies an assembled repair once, as one undo step, and restores its summary on replay", async () => {
+    const { core, session, store, gen, director, resyncs } = setup();
+    const job = jobScript(core, FILTER);
+    for (const e of job.events.slice(0, -2)) director.push(e);
+    await director.idle();
+    const before = JSON.parse(session.snapshot()) as Circuit;
+    const repairOps = envelopes([
+      { op: "part.set_param", body: { refdes: "R1", key: "resistance", value: "16k" } },
+      { op: "part.set_param", body: { refdes: "C1", key: "capacitance", value: "5n" } },
+    ], store.getState().rev, "b2");
+    const patch: JobEvent = { event: "circuit.patch", data: { ops: repairOps, attempt: 1 } };
+    const rev = store.getState().rev + repairOps.length;
+    const summary: JobEvent = { event: "circuit.summary", data: {
+      rev, status: "passed", attempt: 1, max_attempts: 2, checks: [], problems: [],
+    } };
+    director.push(patch);
+    director.push(summary);
+    await director.idle();
+    expect(resyncs).toEqual([]);
+    expect(store.getState().rev).toBe(rev);
+    expect(store.getState().history.undo.at(-1)?.label).toBe("Repair assembled circuit (1)");
+    expect(gen.getState().verification?.status).toBe("passed");
+    const replay = setup(session.snapshot());
+    replay.director.push(patch);
+    replay.director.push(summary);
+    await replay.director.idle();
+    expect(replay.store.getState().rev).toBe(rev);
+    expect(replay.store.getState().history.undo).toEqual([]);
+    expect(replay.gen.getState().verification?.rev).toBe(rev);
+    expect(store.getState().undo()).toBe(true);
+    expect(store.getState().parts.R1?.params).toEqual(before.parts.R1?.params);
+    expect(store.getState().parts.C1?.params).toEqual(before.parts.C1?.params);
+  });
 });

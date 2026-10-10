@@ -20,6 +20,11 @@
       "type": "boolean",
       "description": "Without `analyses`: the editor's set, [`interactive_analyses`].",
       "default": false
+    },
+    "transfer_checks": {
+      "type": "boolean",
+      "description": "Measure filter stages relative to their own inputs in the assembled circuit.",
+      "default": false
     }
   },
   "title": "CompileOpts",

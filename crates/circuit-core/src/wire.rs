@@ -21,6 +21,8 @@ pub enum JobState {
     Repairing,
     Fallback,
     Committing,
+    VerifyingCircuit,
+    RepairingCircuit,
     Done,
     Failed,
     Cancelled,
@@ -52,6 +54,12 @@ pub enum JobEvent {
     /// Spec checks of a committed block, measured in its verification bench.
     #[serde(rename = "sim.summary")]
     SimSummary(SimSummaryData),
+    /// Complete-circuit verification, including an automatic repair's progress.
+    #[serde(rename = "circuit.summary")]
+    CircuitSummary(CircuitSummaryData),
+    /// A verified assembly repair, applied as one undoable transaction.
+    #[serde(rename = "circuit.patch")]
+    CircuitPatch(CircuitPatchData),
     #[serde(rename = "error")]
     Error(ApiError),
     /// The job finished: the editor unlocks.
@@ -103,6 +111,55 @@ pub struct RepairData {
 pub struct SimSummaryData {
     pub block: BlockId,
     pub checks: Vec<CheckResult>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationStatus {
+    Passed,
+    Failed,
+    Incomplete,
+    SimulationError,
+    Repairing,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+pub struct CircuitSummaryData {
+    pub rev: u64,
+    pub status: VerificationStatus,
+    /// Zero for the initial verification, then the repair attempt (at most two).
+    pub attempt: u8,
+    pub max_attempts: u8,
+    pub checks: Vec<CheckResult>,
+    /// Claims from the final request review, each tied to circuit evidence.
+    #[serde(default)]
+    pub requirements: Vec<IntentRequirement>,
+    pub problems: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+pub struct IntentRequirement {
+    pub text: String,
+    pub status: IntentStatus,
+    /// A brief explanation of which circuit evidence supports this judgment.
+    pub evidence: String,
+    pub blocks: Vec<BlockId>,
+    /// Check identifiers as `block.check`, e.g. `b2.fc_hz`.
+    pub checks: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntentStatus {
+    Met,
+    Missing,
+    Unverifiable,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+pub struct CircuitPatchData {
+    pub ops: Vec<OpEnvelope>,
+    pub attempt: u8,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
@@ -167,6 +224,9 @@ pub struct ProjectSnapshot {
     /// A generation job still running on this project, if any (the editor stays read-only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_job: Option<String>,
+    /// Latest assembly verification, only when it describes this snapshot's revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<CircuitSummaryData>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]

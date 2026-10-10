@@ -9,6 +9,13 @@ block is composed, simulated in its own test bench and repaired until it meets i
 streams into a schematic editor where it is laid out, animated and simulated live in the browser with
 ngspice compiled to WebAssembly.
 
+After assembly, the server checks the connected circuit against its block specifications, then
+reviews the original request against the actual circuit and measurements. If either check fails,
+it tries up to two repairs on temporary copies and commits only a passing repair, as one
+undoable change. Unresolved failures keep the assembled circuit and show the failed measurements.
+Missing stimulus or checks are reported as incomplete verification. Simulator timeouts get three
+attempts independently of model repairs; a timeout does not trigger regeneration.
+
 Design: [docs/LLD.md](docs/LLD.md) (scope, performance budgets, wire protocol, as-built notes).
 
 ## Status
@@ -139,6 +146,12 @@ Generation needs an LLM provider: `LLM_PROVIDER` is `gemini`, `deepseek` or `ope
 `apps/api/tutor_api/llm/config.py`), `fake` with `LLM_FAKE_SCRIPT` (scripted replies, no network) or `replay` with `LLM_CASSETTE`;
 `LLM_FALLBACK_PROVIDER` is optional. Without `LLM_PROVIDER`, `/generate` answers 503. `docker compose` passes these from `.env`
 and mounts `apps/api/fake`, so `LLM_PROVIDER=fake` generates from `apps/api/fake/script.json` with no network call.
+
+To exercise final verification with the fake provider, enter `e2e-verify: a 300 Hz sine source
+feeding a 2 kHz low-pass filter and output buffer` in Generate. The fixed demo circuit passes
+the source, filter and buffer checks and displays the three request requirements. Other prompts
+with the fake provider are marked incomplete because its canned reply cannot review their intent;
+configure a real provider to check your own requests.
 
 After changing a prompt (`apps/api/tutor_api/llm/prompts`) or an orchestrator test's script: `UPDATE_CASSETTES=1 pytest tests/test_orchestrator.py`
 in `apps/api`, and review the cassette diff (a changed `key` is a changed prompt).

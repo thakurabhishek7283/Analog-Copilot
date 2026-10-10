@@ -427,6 +427,14 @@ export type JobEvent =
       data: SimSummaryData;
     }
   | {
+      event: "circuit.summary";
+      data: CircuitSummaryData;
+    }
+  | {
+      event: "circuit.patch";
+      data: CircuitPatchData;
+    }
+  | {
       event: "error";
       data: ApiError;
     }
@@ -451,9 +459,21 @@ export type JobState =
   | "repairing"
   | "fallback"
   | "committing"
+  | "verifying_circuit"
+  | "repairing_circuit"
   | "done"
   | "failed"
   | "cancelled";
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "VerificationStatus".
+ */
+export type VerificationStatus = "passed" | "failed" | "incomplete" | "simulation_error" | "repairing";
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "IntentStatus".
+ */
+export type IntentStatus = "met" | "missing" | "unverifiable";
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "LessonKind".
@@ -902,6 +922,10 @@ export interface CompileOpts {
    * Without `analyses`: the editor's set, [`interactive_analyses`].
    */
   interactive?: boolean;
+  /**
+   * Measure filter stages relative to their own inputs in the assembled circuit.
+   */
+  transfer_checks?: boolean;
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -1605,6 +1629,50 @@ export interface SimSummaryData {
   checks: CheckResult[];
 }
 /**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "CircuitSummaryData".
+ */
+export interface CircuitSummaryData {
+  rev: number;
+  status: VerificationStatus;
+  /**
+   * Zero for the initial verification, then the repair attempt (at most two).
+   */
+  attempt: number;
+  max_attempts: number;
+  checks: CheckResult[];
+  /**
+   * Claims from the final request review, each tied to circuit evidence.
+   */
+  requirements?: IntentRequirement[];
+  problems: string[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "IntentRequirement".
+ */
+export interface IntentRequirement {
+  text: string;
+  status: IntentStatus;
+  /**
+   * A brief explanation of which circuit evidence supports this judgment.
+   */
+  evidence: string;
+  blocks: string[];
+  /**
+   * Check identifiers as `block.check`, e.g. `b2.fc_hz`.
+   */
+  checks: string[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "CircuitPatchData".
+ */
+export interface CircuitPatchData {
+  ops: OpEnvelope[];
+  attempt: number;
+}
+/**
  * Every error body and the stream's `error` event: `code` is stable (`stale_rev`,
  * `not_found`, `rate_limited`, ...), `message` is for people.
  *
@@ -1668,6 +1736,10 @@ export interface ProjectSnapshot {
    * A generation job still running on this project, if any (the editor stays read-only).
    */
   active_job?: string | null;
+  /**
+   * Latest assembly verification, only when it describes this snapshot's revision.
+   */
+  verification?: CircuitSummaryData | null;
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema

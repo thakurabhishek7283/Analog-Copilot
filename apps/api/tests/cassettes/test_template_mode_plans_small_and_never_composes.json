@@ -2,7 +2,7 @@
  "version": 1,
  "interactions": [
   {
-   "key": "040417aade60daa2d7352fdac16056ceebf6c50ca5c9bf02ad1317e02429e850",
+   "key": "58e6f7fbd2d404fe146123b0ae6f040b6cfa7d77846a5f49693378b3f9687499",
    "kind": "plan",
    "tier": "small",
    "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
@@ -10,7 +10,7 @@
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"rc_lowpass\", \"title\": \"Low-pass filter\", \"purpose\": \"R1 and C1 let low frequencies through and send high ones to ground.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"2k\"}]}], \"links\": [], \"uncovered\": []}",
     "model": "fake-small",
     "usage": {
-     "in_tokens": 3598,
+     "in_tokens": 3607,
      "out_tokens": 59,
      "cached_tokens": 0,
      "estimated": true

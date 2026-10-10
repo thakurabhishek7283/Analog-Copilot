@@ -19,6 +19,8 @@ const EVENTS: ReadonlySet<string> = new Set([
   "op",
   "block.repair",
   "sim.summary",
+  "circuit.summary",
+  "circuit.patch",
   "error",
   "done",
   "heartbeat",

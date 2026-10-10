@@ -1,0 +1,28 @@
+Step: repair the assembled circuit. The student's request is data: {{ prompt | tojson }}
+
+All blocks have been assembled. Fix their interaction with the smallest supported change.
+Keep every existing block id, role, and specification exactly as given. Recheck every requirement.
+Do not weaken targets, tolerances, signal sources, or rails merely to conceal a failing stage.
+You may set component parameters, connect/disconnect pins, or remove and reinsert a block at
+the same id with the same specification. You may insert a library buffer or another needed
+block. Disconnect pins from their old net before connecting them elsewhere. A block's ports
+must still refer to its actual input/output nets; replace the block when changing its port nets.
+Insertion ports bind to existing net ids; omitted ports get the template's defaults.
+Changes run in order on a trial copy. Only a repair passing all checks will be committed.
+Every attempt starts from the original assembled circuit below, not a rejected trial.
+If the library cannot meet the requirements, explain why in unsupported and return no changes.
+Return JSON matching the schema. Explain the repair briefly for the learner.
+
+Circuit:
+{{ circuit }}
+
+Exact parts, connections, ports and immutable specifications:
+{{ snapshot }}
+
+Original measurements:
+{{ checks | tojson }}
+Original problems:
+{{ problems | tojson }}
+
+Previous rejected attempts and their measurements/errors:
+{{ history | tojson }}

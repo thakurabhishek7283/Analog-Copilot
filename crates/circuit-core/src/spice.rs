@@ -65,6 +65,9 @@ pub struct CompileOpts {
     /// Without `analyses`: the editor's set, [`interactive_analyses`].
     #[serde(default)]
     pub interactive: bool,
+    /// Measure filter stages relative to their own inputs in the assembled circuit.
+    #[serde(default)]
+    pub transfer_checks: bool,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq, thiserror::Error)]
@@ -195,7 +198,11 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
         text.push_str(a);
         text.push('\n');
     }
-    let (meas, checks) = emit_checks(c, reg, &analyses);
+    let (meas, checks) = if opts.transfer_checks {
+        crate::template::checks::emit_transfers(c, reg, &analyses)
+    } else {
+        emit_checks(c, reg, &analyses)
+    };
     for m in &meas {
         text.push_str(&m.line);
         text.push('\n');

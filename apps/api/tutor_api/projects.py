@@ -105,6 +105,13 @@ async def active_job(conn: AsyncConnection, project_id: uuid.UUID) -> uuid.UUID 
     ).scalar_one_or_none()
 
 
+async def verification(conn: AsyncConnection, project_id: uuid.UUID, rev: int) -> dict[str, Any] | None:
+    plan = (await conn.execute(select(jobs.c.plan).where(jobs.c.project_id == project_id)
+                               .order_by(jobs.c.started_at.desc()).limit(1))).scalar_one_or_none()
+    summary = (plan or {}).get("verification")
+    return summary if summary and summary.get("rev") == rev else None
+
+
 @dataclass
 class Appended:
     rev: int

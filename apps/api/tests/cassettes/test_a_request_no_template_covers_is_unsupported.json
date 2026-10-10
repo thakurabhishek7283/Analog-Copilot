@@ -2,7 +2,7 @@
  "version": 1,
  "interactions": [
   {
-   "key": "06afa03385e5020d025158c09cb1978d64d7951dd54f23717f051e98fd40cf97",
+   "key": "d0d1fc97f7aa3fa9a42f71f8da952c0dedec0ac23dff6f277a0c888d2f05ca8e",
    "kind": "plan",
    "tier": "large",
    "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
@@ -10,7 +10,7 @@
     "text": "{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3596,
+     "in_tokens": 3605,
      "out_tokens": 22,
      "cached_tokens": 0,
      "estimated": true
@@ -19,7 +19,7 @@
    }
   },
   {
-   "key": "dc17eba1a491e8fc28178961a907118d2ed82ab8aaa574943d33fd4000ea6ea5",
+   "key": "362684bfb2f9542334c293bccfc36f84a8fb3fe9e9851fdfd2ae2c3c1fe83ff6",
    "kind": "plan",
    "tier": "large",
    "user_tail": "es cover everything.\n\nYour previous plan:\n{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}\n\nIt has these problems. Fix every one:\n- no template builds 'a microcontroller that reads the temperature': leave it out of the request, or plan it from the templates\n",
@@ -27,7 +27,7 @@
     "text": "{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3666,
+     "in_tokens": 3675,
      "out_tokens": 22,
      "cached_tokens": 0,
      "estimated": true
@@ -36,7 +36,7 @@
    }
   },
   {
-   "key": "dc17eba1a491e8fc28178961a907118d2ed82ab8aaa574943d33fd4000ea6ea5",
+   "key": "362684bfb2f9542334c293bccfc36f84a8fb3fe9e9851fdfd2ae2c3c1fe83ff6",
    "kind": "plan",
    "tier": "large",
    "user_tail": "es cover everything.\n\nYour previous plan:\n{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}\n\nIt has these problems. Fix every one:\n- no template builds 'a microcontroller that reads the temperature': leave it out of the request, or plan it from the templates\n",
@@ -44,7 +44,7 @@
     "text": "{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3666,
+     "in_tokens": 3675,
      "out_tokens": 22,
      "cached_tokens": 0,
      "estimated": true
