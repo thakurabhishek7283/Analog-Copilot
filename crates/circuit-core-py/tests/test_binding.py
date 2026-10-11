@@ -104,7 +104,8 @@ def test_edit_helpers(reg):
 
 
 def test_block_templates(reg):
-    assert len(reg.template_ids()) == 20 and "sallen_key_lp" in reg.template_ids()
+    assert set(reg.template_ids()) == {p.stem for p in (REGISTRY_DIR / "templates").glob("*.yaml")}
+    assert {"sallen_key_lp", "bias_2v5", "lm358_ac_buffer", "mfb_bandpass_5v"} <= set(reg.template_ids())
     assert len(cc.unwrap(reg.verify_points("rc_lowpass"))) == 5
     s = cc.Session(reg)
     req = json.dumps({"template": "rc_lowpass", "targets": {"fc_hz": "159"}})
