@@ -21,6 +21,8 @@ from tutor_api.llm.prompts import Prompts
 from tutor_api.models.contract import JobEvent
 from tutor_api.orchestrator import assembly
 from tutor_api.orchestrator import intent
+from tutor_api.orchestrator import followups
+from tutor_api.orchestrator.planner import Plan, TransientTests
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -241,16 +243,42 @@ async def test_audit_finds_a_request_omitted_by_the_plan(registry, native):
     assert ctx.commits == []
 
 
-async def test_audit_refuses_claims_without_real_circuit_evidence(registry, native):
+@pytest.mark.parametrize("refs", [{"blocks": ["b2"], "checks": ["b2.rejection"]}, {}])
+async def test_audit_refuses_claims_without_real_circuit_evidence(registry, native, refs):
     session = circuit(registry)
     job, plan, _, _ = setup(session, registry, [])
     unsupported = {"requirements": [{"text": "A filter with 40 dB stopband rejection",
-                                     "status": "met", "evidence": "Claimed by the plan.",
-                                     "blocks": ["b2"], "checks": ["b2.rejection"]}]}
+                                     "status": "met", "evidence": "Claimed by the plan.", **refs}]}
     job.gw = Gateway(FakeProvider({"assembly_audit": [unsupported]}), retries=0)
     verdict = await assembly.assess(job, plan, session)
     assert verdict.status == "incomplete"
     assert verdict.requirements[0]["status"] == "unverifiable"
+
+
+async def test_requested_transients_and_two_board_fit_leave_the_circuit_unchanged(registry, native):
+    session = cc.Session(registry)
+    insert(session, "sine_source", targets={"amplitude_v": "0.5", "freq_hz": "100"})
+    insert(session, "reg_7805")
+    insert(session, "bias_2v5")
+    insert(session, "lm358_ac_buffer", ports={"in": {"net": "B1_OUT"}, "vref": {"net": "B3_OUT"}})
+    insert(session, "rc_lowpass", targets={"fc_hz": "200"}, ports={"in": {"net": "B4_OUT"}})
+    insert(session, "mfb_bandpass_5v", ports={"in": {"net": "B4_OUT"}, "vref": {"net": "B3_OUT"}})
+    insert(session, "rc_highpass", targets={"fc_hz": "3k"}, ports={"in": {"net": "B4_OUT"}})
+    before = session.snapshot()
+    job, _, _, _ = setup(session, registry, [])
+    plan = Plan([], 1, TransientTests(("b1", "out"), [100, 1000, 5000],
+                                    [("b5", "out"), ("b6", "out"), ("b7", "out")]), 2)
+    evidence, problems = await followups.run(job, plan, session)
+    assert problems == []
+    assert session.snapshot() == before
+    assert len(native) == 3
+    assert [r["frequency_hz"] for r in evidence["transient_tests"]] == [100, 1000, 5000]
+    assert evidence["breadboard_fit"]["valid"] and evidence["breadboard_fit"]["boards"] <= 2
+    runs = evidence["transient_tests"]
+    assert runs[0]["outputs"][0]["amplitude_v"] > 0.4  # low-pass passes 100 Hz
+    assert runs[1]["outputs"][1]["amplitude_v"] > 0.45  # band-pass passes 1 kHz
+    assert runs[2]["outputs"][2]["amplitude_v"] > 0.4  # high-pass passes 5 kHz
+    assert "5000 Hz" in followups.explanation(evidence)
 
 
 async def test_missing_prompt_stage_is_added_and_rechecked_before_commit(registry, native):

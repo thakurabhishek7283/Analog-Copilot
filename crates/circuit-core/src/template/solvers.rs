@@ -47,7 +47,7 @@ impl Output {
 
 pub type Solver = fn(&Input) -> Result<Output, String>;
 
-pub const NAMES: [&str; 19] = [
+pub const NAMES: [&str; 22] = [
     "rc_first_order",
     "sallen_key_lp",
     "sallen_key_hp",
@@ -67,6 +67,9 @@ pub const NAMES: [&str; 19] = [
     "schmitt_trigger",
     "divider_bias",
     "sine_source",
+    "bias_2v5",
+    "lm358_ac_buffer",
+    "mfb_bandpass_5v",
 ];
 
 pub fn solver(name: &str) -> Option<Solver> {
@@ -90,6 +93,9 @@ pub fn solver(name: &str) -> Option<Solver> {
         "schmitt_trigger" => schmitt_trigger,
         "divider_bias" => divider_bias,
         "sine_source" => sine_source,
+        "bias_2v5" => bias_2v5,
+        "lm358_ac_buffer" => lm358_ac_buffer,
+        "mfb_bandpass_5v" => mfb_bandpass_5v,
         _ => return None,
     })
 }
@@ -227,6 +233,20 @@ fn mfb_bandpass(i: &Input) -> Result<Output, String> {
 }
 
 // ---------------------------------------------------------------- amplifiers and buffers
+
+/// The existing MFB design translated to a 2.5 V reference, with supply decoupling.
+fn mfb_bandpass_5v(i: &Input) -> Result<Output, String> {
+    Ok(mfb_bandpass(i)?.c("C3", 100e-9).spec("bias_v", 2.5))
+}
+
+/// Input coupling corner 1.6 Hz: negligible attenuation at the analyzer's 100 Hz test.
+fn lm358_ac_buffer(_i: &Input) -> Result<Output, String> {
+    Ok(Output::default().r("R1", 100e3).c("C1", 1e-6).c("C2", 100e-9).spec("gain", 1.0).spec("bias_v", 2.5))
+}
+
+fn bias_2v5(_i: &Input) -> Result<Output, String> {
+    Ok(Output::default().r("R1", 10e3).r("R2", 10e3).c("C1", 100e-9).spec("vout_v", 2.5))
+}
 
 /// A resistor pair with `ratio` = b/a, a in `[1k, 100k]`, preferring a near 10k.
 fn ratio_pair(ratio: f64, b_range: (f64, f64)) -> Result<(f64, f64), String> {

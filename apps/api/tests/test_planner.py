@@ -24,12 +24,13 @@ def prompts(reg) -> Prompts:
     return Prompts(reg)
 
 
-def raw(prompts, blocks, links=(), uncovered=()):
+def raw(prompts, blocks, links=(), uncovered=(), **extras):
     model = plan_model(tuple(prompts.templates))
     return model.model_validate({
         "blocks": [{"title": "", "purpose": "", "targets": []} | b for b in blocks],
         "links": [{"source": s, "target": t} for s, t in links],
         "uncovered": list(uncovered),
+        **extras,
     })
 
 
@@ -63,6 +64,61 @@ def test_block_ids_continue_after_the_circuits_own(reg, prompts):
     cc.unwrap(session.apply_ops(json.dumps(ops), "template"))
     v = validate(raw(prompts, [{"id": "b1", "template": "inverting_amp"}]), session, prompts, 1)
     assert v.plan.blocks[0].id == "b2" and v.plan.blocks[0].plan_id == "b1"
+
+
+@pytest.mark.parametrize("source, new_id", [("b1.out", "b3"), ("existing.b1.out", "b1")])
+def test_existing_outputs_bind_without_rebuilding_or_changing_them(reg, prompts, source, new_id):
+    session = cc.Session(reg)
+    ins = cc.unwrap(session.insert_block(json.dumps({"template": "sine_source"})))
+    cc.unwrap(session.apply_ops(json.dumps(ins["ops"]), "template"))
+    before = session.snapshot()
+    v = validate(raw(prompts, [{"id": new_id, "template": "rc_lowpass"}],
+                     links=[(source, f"{new_id}.in")]), session, prompts, 1)
+    assert v.problems == []
+    block = v.plan.blocks[0]
+    assert block.id == "b2" and block.inputs == {"in": ("b1", "out")}
+    # The job binds the actual committed id; it must have the pre-existing nets available too.
+    from tutor_api.orchestrator.job import Job
+    job = object.__new__(Job)
+    job.nets = {"b1": {p["name"]: p["net"] for p in json.loads(before)["blocks"]["b1"]["ports"]}}
+    assert job.bindings(block) == {"in": {"net": "B1_OUT"}}
+    assert session.snapshot() == before
+
+
+def test_existing_inputs_and_power_ports_cannot_be_used_as_outputs(reg, prompts):
+    session = cc.Session(reg)
+    ins = cc.unwrap(session.insert_block(json.dumps({"template": "rc_lowpass"})))
+    cc.unwrap(session.apply_ops(json.dumps(ins["ops"]), "template"))
+    blocks = [{"id": "b2", "template": "rc_highpass"}]
+    for port in ("in", "gnd"):
+        v = validate(raw(prompts, blocks, links=[(f"existing.b1.{port}", "b2.in")]), session, prompts, 1)
+        assert v.plan is None and any("not an output" in p for p in v.problems)
+    v = validate(raw(prompts, blocks, links=[("b2.out", "existing.b1.in")]), session, prompts, 1)
+    assert v.plan is None and any("only new blocks can receive links" in p for p in v.problems)
+
+
+def test_requested_measurements_resolve_plan_ids_in_commit_order(reg, prompts):
+    p = raw(prompts, [{"id": "b1", "template": "rc_lowpass"}, {"id": "b2", "template": "sine_source"}],
+            links=[("b2.out", "b1.in")],
+            transient_tests={"source": "b2.out", "frequencies": ["100", "1k", "5k"], "outputs": ["b1.out"]},
+            max_breadboards=2)
+    v = validate(p, cc.Session(reg), prompts, 1)
+    assert v.problems == []
+    assert v.plan.transient_tests.source == ("b1", "out")
+    assert v.plan.transient_tests.outputs == [("b2", "out")]
+    assert v.plan.transient_tests.frequencies == [100, 1000, 5000]
+    assert v.plan.max_breadboards == 2
+
+
+@pytest.mark.parametrize("source, frequency, output", [("b9.out", "100", "b2.out"),
+                                                     ("b2.out", "100", "b2.out"),
+                                                     ("b1.out", "0", "b2.out"),
+                                                     ("b1.out", "100", "b2.gnd")])
+def test_invalid_measurement_requests_replan(reg, prompts, source, frequency, output):
+    p = raw(prompts, [{"id": "b1", "template": "sine_source"}, {"id": "b2", "template": "rc_lowpass"}],
+            transient_tests={"source": source, "frequencies": [frequency], "outputs": [output]})
+    v = validate(p, cc.Session(reg), prompts, 1)
+    assert v.plan is None and any("transient test:" in problem for problem in v.problems)
 
 
 @pytest.mark.parametrize(

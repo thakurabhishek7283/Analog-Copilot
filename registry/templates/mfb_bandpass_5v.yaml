@@ -1,0 +1,38 @@
+id: mfb_bandpass_5v
+version: 1
+role: filter
+title: Active band-pass (LM358, 5 V supply, 2.5 V bias)
+teach: "Multiple-feedback band-pass referenced to a buffered 2.5 V bias. Drive in from lm358_ac_buffer and vref from bias_2v5. Unity gain at f0, inverted around 2.5 V; keep input at 0.5 V peak or below."
+targets:
+  f0_hz: {label: Centre frequency, unit: hertz, min: 20, max: 2k, default: 1k, scale: log}
+  q: {label: Q, unit: unitless, min: 1, max: 4, default: "2", scale: log}
+ports: {in: input, vref: input, out: output, vcc: power_pos, gnd: ground}
+rails:
+  vcc: {net: V5, volts: 5}
+parts:
+  R1: {part: resistor_th}
+  R2: {part: resistor_th}
+  R3: {part: resistor_th}
+  C1: {part: cap_film}
+  C2: {part: cap_film}
+  C3: {part: cap_film}
+  U1: {part: opamp_lm358}
+nets:
+  in: [R1.1]
+  n_a: [R1.2, R2.1, C1.1, C2.1]
+  n_m: [C1.2, R3.1, U1.INM_A]
+  out: [C2.2, R3.2, U1.OUT_A]
+  vref: [R2.2, U1.INP_A, U1.INP_B]
+  unused: [U1.OUT_B, U1.INM_B]
+  vcc: [C3.1, U1.VCC]
+  gnd: [C3.2, U1.VEE]
+solver: mfb_bandpass_5v
+checks:
+  - {name: f0_hz, label: Centre frequency, symbol: "f0", kind: ac_center, out: out, tol_pct: 10}
+  - {name: q, label: Q, symbol: "Q", kind: ac_band_q, out: out, tol_pct: 15}
+  - {name: bias_v, label: Output bias, symbol: "Vbias", kind: dc_level, out: out, tol_pct: 3}
+verify:
+  drive:
+    in: {amplitude: 0.5, frequency: 1k, offset: 2.5}
+    vref: {amplitude: 0, frequency: 1k, offset: 2.5}
+  load: {out: 10k}

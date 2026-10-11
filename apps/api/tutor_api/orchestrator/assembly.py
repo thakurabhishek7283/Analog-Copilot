@@ -20,7 +20,7 @@ from ..jobs.runner import Failure
 from ..llm.base import LlmRequest
 from ..llm.gateway import LlmUnavailable
 from ..llm.prompts import ENV
-from . import intent
+from . import followups, intent
 from .schemas import Named, SchemaError, Strict, parse, provider_schema
 from .verifier import failed_checks
 
@@ -74,6 +74,13 @@ class Verdict:
 async def assess(job, plan, session: cc.Session) -> Verdict:
     verdict = await verify(session, job.ctx.redis, job.ctx.registry_version)
     if verdict.status == "passed":
+        evidence, problems = await followups.run(job, plan, session)
+        if evidence:
+            plan.evidence = evidence
+        if problems:
+            verdict.problems += problems
+            verdict.status = "failed"
+            return verdict
         requirements, problems, status = await intent.review(job, plan, session, verdict.checks)
         verdict.requirements = requirements
         verdict.problems += problems
@@ -183,6 +190,10 @@ async def run(job, plan) -> None:
         summary = verdict.summary(session.rev, attempt)
         await ctx.set_plan(plan.to_json() | {"verification": summary, "assembly_attempts": history})
         await ctx.emit("circuit.summary", summary)
+        if verdict.status in ("passed", "incomplete") and getattr(plan, "evidence", None):
+            text = followups.explanation(plan.evidence)
+            if text:
+                await job.lesson("note", text)
 
     await report(original, 0)
     if original.status in ("passed", "incomplete"):

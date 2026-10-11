@@ -32,6 +32,12 @@ class Link(Strict):
     target: str = Field(description='an input port, as "b2.in"')
 
 
+class TransientTests(Strict):
+    source: str = Field(description='sine source output port, e.g. "b3.out" or "existing.b1.out"')
+    frequencies: list[str] = Field(min_length=1, max_length=6, description='frequencies to run, e.g. ["100", "1k", "5k"]')
+    outputs: list[str] = Field(min_length=1, max_length=8, description='output ports to measure, e.g. ["b5.out", "b6.out"]')
+
+
 class Net(Strict):
     name: str = Field(description="a port of the template, or a name for a net inside the block")
     pins: list[str] = Field(min_length=1, description="REF.PIN, such as R1.2 or U1.OUT_A")
@@ -65,6 +71,8 @@ def plan_model(templates: tuple[str, ...]) -> type[BaseModel]:
         blocks=(list[block], Field(max_length=8)),
         links=(list[Link], ...),
         uncovered=(list[str], Field(description="what the request needs that no template builds")),
+        transient_tests=(TransientTests | None, Field(default=None, description="requested sine-frequency tests, or null")),
+        max_breadboards=(int | None, Field(default=None, ge=1, le=8, description="requested maximum breadboard count, or null")),
     )
 
 

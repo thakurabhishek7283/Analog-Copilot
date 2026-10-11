@@ -41,7 +41,14 @@ Design: [docs/LLD.md](docs/LLD.md) (scope, performance budgets, wire protocol, a
 | 3 | Grounded tutor: answers that cite live simulation values | Next |
 | 4 | Hardening: quotas, spend breaker, tracing, load tests | Planned |
 
-The registry has 15 parts and 20 block templates so far.
+The registry has 15 parts and 23 block templates so far. The 5 V analyzer path uses
+`reg_7805`, `bias_2v5`, `lm358_ac_buffer`, `mfb_bandpass_5v`, `rc_lowpass` and
+`rc_highpass`. Connect the buffered reference to each `vref` input, and fan out
+the input buffer to the three filters. Use at most 0.5 V peak input for LM358
+headroom. Requested sine-frequency tests run on scratch copies after generation
+and report channel amplitudes and DC levels in the lesson. A requested board count
+is checked with the same footprint and electrical-net validator as the build guide.
+Scope also offers manual transient and AC runs; physical build guides remain a separate step.
 
 ## How it fits together
 
@@ -159,6 +166,14 @@ Generation needs an LLM provider: `LLM_PROVIDER` is `gemini`, `deepseek` or `ope
 `apps/api/tutor_api/llm/config.py`), `fake` with `LLM_FAKE_SCRIPT` (scripted replies, no network) or `replay` with `LLM_CASSETTE`;
 `LLM_FALLBACK_PROVIDER` is optional. Without `LLM_PROVIDER`, `/generate` answers 503. `docker compose` passes these from `.env`
 and mounts `apps/api/fake`, so `LLM_PROVIDER=fake` generates from `apps/api/fake/script.json` with no network call.
+
+For Sol + Luna on Azure, set `LLM_PROVIDER=openai`, `OPENAI_SOL_API_KEY`, `OPENAI_SOL_BASE_URL`
+(the resource's `/openai/v1` URL), and `OPENAI_LUNA_API_KEY`. Sol defaults to `gpt-6.1-sol` and
+uses `/responses` for the large tier (planning, composition, normal assembly repairs, breadboard
+planning). Luna defaults to `gpt-6-luna` and uses `/chat/completions` for the small tier (narration,
+tutor answers, request audits, template-only planning/repairs). Luna's endpoint defaults to
+`OPENAI_BASE_URL`; override it with `OPENAI_LUNA_BASE_URL`. Deployment names can be overridden
+with `OPENAI_SOL_MODEL` and `OPENAI_LUNA_MODEL`. Legacy `OPENAI_API_KEY` remains supported.
 
 To exercise final verification with the fake provider, enter `e2e-verify: a 300 Hz sine source
 feeding a 2 kHz low-pass filter and output buffer` in Generate. The fixed demo circuit passes

@@ -2,15 +2,15 @@
  "version": 1,
  "interactions": [
   {
-   "key": "d0d1fc97f7aa3fa9a42f71f8da952c0dedec0ac23dff6f277a0c888d2f05ca8e",
+   "key": "3dbd6d728ed7d5a164513fc082a766910853b483c332f0c8b3e8e2d002d76925",
    "kind": "plan",
    "tier": "large",
-   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
    "response": {
     "text": "{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3605,
+     "in_tokens": 4484,
      "out_tokens": 22,
      "cached_tokens": 0,
      "estimated": true
@@ -19,15 +19,15 @@
    }
   },
   {
-   "key": "362684bfb2f9542334c293bccfc36f84a8fb3fe9e9851fdfd2ae2c3c1fe83ff6",
+   "key": "1c03abfb59f304ae711c20c2156c2ce809b2669aefb3828e8cdcb39046743d6c",
    "kind": "plan",
    "tier": "large",
-   "user_tail": "es cover everything.\n\nYour previous plan:\n{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}\n\nIt has these problems. Fix every one:\n- no template builds 'a microcontroller that reads the temperature': leave it out of the request, or plan it from the templates\n",
+   "user_tail": "\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"], \"transient_tests\": null, \"max_breadboards\": null}\n\nIt has these problems. Fix every one:\n- no template builds 'a microcontroller that reads the temperature': leave it out of the request, or plan it from the templates\n",
    "response": {
     "text": "{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3675,
+     "in_tokens": 4566,
      "out_tokens": 22,
      "cached_tokens": 0,
      "estimated": true
@@ -36,15 +36,15 @@
    }
   },
   {
-   "key": "362684bfb2f9542334c293bccfc36f84a8fb3fe9e9851fdfd2ae2c3c1fe83ff6",
+   "key": "1c03abfb59f304ae711c20c2156c2ce809b2669aefb3828e8cdcb39046743d6c",
    "kind": "plan",
    "tier": "large",
-   "user_tail": "es cover everything.\n\nYour previous plan:\n{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}\n\nIt has these problems. Fix every one:\n- no template builds 'a microcontroller that reads the temperature': leave it out of the request, or plan it from the templates\n",
+   "user_tail": "\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"], \"transient_tests\": null, \"max_breadboards\": null}\n\nIt has these problems. Fix every one:\n- no template builds 'a microcontroller that reads the temperature': leave it out of the request, or plan it from the templates\n",
    "response": {
     "text": "{\"blocks\": [], \"links\": [], \"uncovered\": [\"a microcontroller that reads the temperature\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3675,
+     "in_tokens": 4566,
      "out_tokens": 22,
      "cached_tokens": 0,
      "estimated": true

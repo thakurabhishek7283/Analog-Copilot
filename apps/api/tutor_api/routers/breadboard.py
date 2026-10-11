@@ -40,8 +40,10 @@ async def verified(request: Request, user: User, project_id: str, rev: int) -> t
         if not verdict or verdict.get("status") != "passed":
             raise ApiException(409, "not_verified", "Complete circuit and request verification before creating a build guide.")
         session = await projects.load_session(conn, st.regs, row)
-        prompt = (await conn.execute(select(jobs.c.prompt).where(jobs.c.project_id == row.id)
-                                     .order_by(jobs.c.started_at.desc()).limit(1))).scalar_one()
+        latest = (await conn.execute(select(jobs.c.prompt, jobs.c.plan).where(jobs.c.project_id == row.id)
+                                     .order_by(jobs.c.started_at.desc()).limit(1))).one()
+        prompt = latest.prompt
+        verdict = verdict | {"max_breadboards": (latest.plan or {}).get("max_breadboards")}
     return json.loads(session.snapshot()), json.loads(st.regs.get(row.registry_version).to_json()), verdict, prompt
 
 
@@ -61,6 +63,7 @@ async def generate(project_id: str, body: Revision, request: Request, user: User
              for ref, part in circuit["parts"].items() if not part["part"].startswith("vsource_")]
     context = {"request": prompt, "verification": {"status": verdict["status"], "checks": verdict.get("checks", []),
                "requirements": verdict.get("requirements", [])}, "rev": body.rev, "parts": parts,
+               "max_breadboards": verdict.get("max_breadboards"),
                "nets": {name: net["pins"] for name, net in circuit["nets"].items()},
                "external_sources": [ref for ref, part in circuit["parts"].items() if part["part"].startswith("vsource_")]}
     feedback = ""
@@ -73,6 +76,9 @@ async def generate(project_id: str, body: Revision, request: Request, user: User
                 schema=provider_schema(bb.Candidate), schema_name="breadboard_plan", max_tokens=8000,
             ))
             candidate = parse(bb.Candidate, response.text, response.finish_reason)
+            limit = verdict.get("max_breadboards")
+            if limit and candidate.boards > limit:
+                raise ValueError(f"The request allows at most {limit} breadboards")
             layout = bb.assemble(candidate, circuit, registry)
             # A model call may outlive a concurrent circuit edit; never approve stale geometry.
             await verified(request, user, project_id, body.rev)

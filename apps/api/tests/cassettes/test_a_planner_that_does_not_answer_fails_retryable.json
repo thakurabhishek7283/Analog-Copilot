@@ -2,10 +2,10 @@
  "version": 1,
  "interactions": [
   {
-   "key": "c5c27f72e5d88fd2862233b728c773f932c52f5a7b804594a17a9791f17b585c",
+   "key": "f3e0a6daaefe0ae58baeb30476432321ec0a3ba612c515b2aa98094732f946a9",
    "kind": "plan",
    "tier": "large",
-   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
    "error": {
     "code": "rate_limited",
     "message": "quota",
@@ -13,10 +13,10 @@
    }
   },
   {
-   "key": "c5c27f72e5d88fd2862233b728c773f932c52f5a7b804594a17a9791f17b585c",
+   "key": "f3e0a6daaefe0ae58baeb30476432321ec0a3ba612c515b2aa98094732f946a9",
    "kind": "plan",
    "tier": "large",
-   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
    "error": {
     "code": "rate_limited",
     "message": "quota",
@@ -24,10 +24,10 @@
    }
   },
   {
-   "key": "c5c27f72e5d88fd2862233b728c773f932c52f5a7b804594a17a9791f17b585c",
+   "key": "f3e0a6daaefe0ae58baeb30476432321ec0a3ba612c515b2aa98094732f946a9",
    "kind": "plan",
    "tier": "large",
-   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
    "error": {
     "code": "rate_limited",
     "message": "quota",

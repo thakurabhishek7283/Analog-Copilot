@@ -1,0 +1,30 @@
+id: lm358_ac_buffer
+version: 1
+role: buffer
+title: AC-coupled input buffer (LM358, 5 V supply)
+teach: "C1 removes source DC; R1 biases the input at the external 2.5 V reference. The follower drives parallel filter channels. Keep the signal at 0.5 V peak or below around 2.5 V for LM358 headroom."
+ports: {in: input, vref: input, out: output, vcc: power_pos, gnd: ground}
+rails:
+  vcc: {net: V5, volts: 5}
+parts:
+  R1: {part: resistor_th}
+  C1: {part: cap_film}
+  C2: {part: cap_film}
+  U1: {part: opamp_lm358}
+nets:
+  in: [C1.1]
+  biased_in: [C1.2, R1.1, U1.INP_A]
+  vref: [R1.2, U1.INP_B]
+  out: [U1.OUT_A, U1.INM_A]
+  unused: [U1.OUT_B, U1.INM_B]
+  vcc: [C2.1, U1.VCC]
+  gnd: [C2.2, U1.VEE]
+solver: lm358_ac_buffer
+checks:
+  - {name: gain, label: Gain at 1 kHz, symbol: "gain", kind: ac_gain, in: in, out: out, tol_pct: 2}
+  - {name: bias_v, label: Output bias, symbol: "Vbias", kind: dc_level, out: out, tol_pct: 3}
+verify:
+  drive:
+    in: {amplitude: 0.5, frequency: 1k}
+    vref: {amplitude: 0, frequency: 1k, offset: 2.5}
+  load: {out: 10k}

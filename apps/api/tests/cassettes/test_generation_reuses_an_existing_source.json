@@ -1,0 +1,95 @@
+{
+ "version": 1,
+ "interactions": [
+  {
+   "key": "6780a0387ef055cb6c48a82f5aec719dbe613c50db9efd529cb85160b9de958f",
+   "kind": "plan",
+   "tier": "large",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "response": {
+    "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"rc_lowpass\", \"title\": \"Low-pass\", \"purpose\": \"R1 and C1 let low frequencies through and send high ones to ground.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"2k\"}]}], \"links\": [{\"source\": \"existing.b1.out\", \"target\": \"b1.in\"}], \"uncovered\": []}",
+    "model": "fake-large",
+    "usage": {
+     "in_tokens": 4539,
+     "out_tokens": 70,
+     "cached_tokens": 0,
+     "estimated": true
+    },
+    "finish_reason": "stop"
+   }
+  },
+  {
+   "key": "33bf1fb24c2525f4e708b4e87f1cf2b7e9cb7436e83a8dfc3021886568439132",
+   "kind": "compose",
+   "tier": "large",
+   "user_tail": "r: R1, C2, U1), the part id, and a value for each of its params (name and value).\n- nets: a net named after a port of the template (in, out, gnd) is that port; any other name is a net inside the block. Pins are REF.PIN, such as R1.2 or U1.OUT_A. Every port needs a net, and a pin is on one net only.\n",
+   "response": {
+    "text": "{\"use_template\": true, \"parts\": [], \"nets\": []}",
+    "model": "fake-large",
+    "usage": {
+     "in_tokens": 4286,
+     "out_tokens": 11,
+     "cached_tokens": 0,
+     "estimated": true
+    },
+    "finish_reason": "stop"
+   }
+  },
+  {
+   "key": "27b9de515d3cf47d16c84adfdef5269e0e0b377902aa3fc4df834e58a702ef3c",
+   "kind": "narrate",
+   "tier": "small",
+   "user_tail": "let low frequencies through and send high ones to ground. It teaches: C shorts high frequencies to ground through R: above fc = 1/(2πRC) the output falls 20 dB per decade.\n\nWrite two to four short sentences for a beginner student that introduce this circuit and follow the signal through its blocks.\n",
+   "chunks": [
+    "This ",
+    "circuit ",
+    "is ",
+    "a ",
+    "low-pass ",
+    "filter. ",
+    "The ",
+    "signal ",
+    "enters ",
+    "a ",
+    "resistor, ",
+    "and ",
+    "a ",
+    "capacitor ",
+    "shunts ",
+    "the ",
+    "fast ",
+    "parts ",
+    "to ",
+    "ground."
+   ],
+   "response": {
+    "text": "This circuit is a low-pass filter. The signal enters a resistor, and a capacitor shunts the fast parts to ground.",
+    "model": "fake-small",
+    "usage": {
+     "in_tokens": 267,
+     "out_tokens": 28,
+     "cached_tokens": 0,
+     "estimated": true
+    },
+    "finish_reason": "stop"
+   }
+  },
+  {
+   "key": "1bbc44a3cdde8c898f73777a6379580e3a652880c1b2cd6504821e9d41916fa3",
+   "kind": "assembly_audit",
+   "tier": "small",
+   "user_tail": "rget\": 300.0, \"target_display\": \"300Hz\", \"tol_pct\": 2.0, \"unit\": \"hertz\"}, {\"block\": \"b2\", \"label\": \"Cutoff (\\u22123 dB)\", \"measured\": 2024.58, \"measured_display\": \"2.02kHz\", \"name\": \"fc_hz\", \"pass\": true, \"symbol\": \"fc\", \"target\": 2000.0, \"target_display\": \"2kHz\", \"tol_pct\": 10.0, \"unit\": \"hertz\"}]",
+   "response": {
+    "text": "{\"requirements\": [{\"text\": \"A sine source drives the RC low-pass filter\", \"status\": \"met\", \"evidence\": \"The source output and filter input share net B1_OUT.\", \"blocks\": [\"b1\", \"b2\"], \"checks\": []}, {\"text\": \"The source frequency is 300 Hz\", \"status\": \"met\", \"evidence\": \"The source frequency measurement passes its 300 Hz target check.\", \"blocks\": [\"b1\"], \"checks\": [\"b1.freq_hz\"]}, {\"text\": \"The filter cutoff is 2 kHz\", \"status\": \"met\", \"evidence\": \"The measured cutoff passes the 2 kHz target check.\", \"blocks\": [\"b2\"], \"checks\": [\"b2.fc_hz\"]}]}",
+    "model": "fake-small",
+    "usage": {
+     "in_tokens": 5093,
+     "out_tokens": 137,
+     "cached_tokens": 0,
+     "estimated": true
+    },
+    "finish_reason": "stop"
+   }
+  }
+ ]
+}

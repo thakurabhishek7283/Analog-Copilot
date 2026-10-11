@@ -38,9 +38,9 @@ fn bench(s: &mut Session, block: &str) {
 }
 
 #[test]
-fn twenty_templates_cover_every_role() {
+fn templates_cover_every_role() {
     let reg = reg();
-    assert_eq!(reg.templates.len(), 20);
+    assert_eq!(reg.templates.len(), 23);
     let roles: BTreeSet<String> = reg.templates.values().map(|t| format!("{:?}", t.role)).collect();
     for role in [
         BlockRole::Amplifier,

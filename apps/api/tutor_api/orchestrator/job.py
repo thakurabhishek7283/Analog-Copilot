@@ -72,6 +72,8 @@ class Job:
         ctx = self.ctx
         await ctx.set_state("planning")
         session = await ctx.session()
+        self.nets = {bid: {p["name"]: p["net"] for p in block["ports"]}
+                     for bid, block in json.loads(session.snapshot())["blocks"].items()}
         try:
             plan = await planner.plan(
                 self.gw, self.prompts, session, prompt=self.prompt, level=self.level,

@@ -18,8 +18,8 @@ class Requirement(Strict):
     text: str = Field(min_length=3, max_length=300)
     status: Literal["met", "missing", "unverifiable"]
     evidence: str = Field(max_length=500)
-    blocks: list[str] = Field(max_length=8)
-    checks: list[str] = Field(max_length=30)
+    blocks: list[str] = Field(default_factory=list, max_length=8)
+    checks: list[str] = Field(default_factory=list, max_length=30)
 
 
 class Audit(Strict):
@@ -43,7 +43,7 @@ async def review(job, plan, session: cc.Session, checks: list[dict]) -> tuple[li
     try:
         response = await job.gw.complete(LlmRequest(
             "assembly_audit", "small", job.prompts.system, prompt,
-            schema=provider_schema(Audit), schema_name="assembly_audit", max_tokens=2500,
+            schema=provider_schema(Audit), schema_name="assembly_audit", max_tokens=5000,
         ))
         job.usage(response)
         audit = parse(Audit, response.text, response.finish_reason)

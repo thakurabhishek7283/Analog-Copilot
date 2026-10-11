@@ -26,7 +26,7 @@ from .schemas import SchemaError, parse, plan_model, provider_schema
 
 MAX_REPLANS = 2
 PLAN_MAX_TOKENS = 3000
-PORT = re.compile(r"^(b\d+)\.(\w+)$")
+PORT = re.compile(r"^((?:existing\.)?b\d+)\.(\w+)$")
 SIGNAL_OUT = {"output", "bidir"}
 SIGNAL_IN = {"input", "bidir"}
 
@@ -56,12 +56,29 @@ class PlannedBlock:
 
 
 @dataclass
+class TransientTests:
+    source: tuple[str, str]
+    frequencies: list[float]
+    outputs: list[tuple[str, str]]
+
+
+@dataclass
 class Plan:
     blocks: list[PlannedBlock]  # in the order they commit: sources before what they drive
     rounds: int  # model calls it took
+    transient_tests: TransientTests | None = None
+    max_breadboards: int | None = None
+    evidence: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
-        return {"rounds": self.rounds, "blocks": [asdict(b) for b in self.blocks]}
+        out = {"rounds": self.rounds, "blocks": [asdict(b) for b in self.blocks]}
+        if self.transient_tests:
+            out["transient_tests"] = asdict(self.transient_tests)
+        if self.max_breadboards:
+            out["max_breadboards"] = self.max_breadboards
+        if self.evidence:
+            out["evidence"] = self.evidence
+        return out
 
 
 class PlanFailed(Exception):
@@ -96,6 +113,11 @@ def validate(raw: Any, session: cc.Session, prompts: Prompts, rounds: int) -> Va
         for name in sorted({n for n in names if names.count(n) > 1}):
             problems.append(f"{b.id}: target {name} is given twice")
 
+    existing = json.loads(session.snapshot())["blocks"]
+    # An explicit prefix disambiguates existing circuit ids from the model's local plan ids.
+    sources = {f"existing.{bid}": block for bid, block in existing.items()}
+    sources.update({bid: block for bid, block in existing.items() if bid not in by_id})
+
     inputs: dict[str, dict[str, tuple[str, str]]] = {i: {} for i in by_id}
     for link in raw.links:
         ends = [PORT.match(link.source), PORT.match(link.target)]
@@ -105,13 +127,18 @@ def validate(raw: Any, session: cc.Session, prompts: Prompts, rounds: int) -> Va
         (sb, sp), (tb, tp) = (m.groups() for m in ends)
         bad = False
         for blk, port, want, what in ((sb, sp, SIGNAL_OUT, "an output"), (tb, tp, SIGNAL_IN, "an input")):
-            if blk not in by_id:
+            if blk not in by_id and blk not in sources:
                 problems.append(f"link {link.source} -> {link.target}: there is no block {blk}")
                 bad = True
                 continue
-            ports = templates[by_id[blk].template]["ports"]
+            if blk in by_id:
+                template = by_id[blk].template
+                ports = templates[template]["ports"]
+            else:
+                template = sources[blk].get("template") or "existing block"
+                ports = {p["name"]: p["direction"] for p in sources[blk]["ports"]}
             if port not in ports:
-                problems.append(f"link {link.source} -> {link.target}: {blk} ({by_id[blk].template}) has no port "
+                problems.append(f"link {link.source} -> {link.target}: {blk} ({template}) has no port "
                                 f"{port}; its ports are {' '.join(ports)}")
                 bad = True
             elif ports[port] not in want:
@@ -120,7 +147,9 @@ def validate(raw: Any, session: cc.Session, prompts: Prompts, rounds: int) -> Va
                 bad = True
         if bad:
             continue
-        if sb == tb:
+        if tb not in by_id:
+            problems.append(f"link {link.source} -> {link.target}: only new blocks can receive links; existing blocks are unchanged")
+        elif sb == tb:
             problems.append(f"link {link.source} -> {link.target} joins a block to itself")
         elif tp in inputs[tb]:
             problems.append(f"{tb}.{tp} is linked twice")
@@ -131,7 +160,7 @@ def validate(raw: Any, session: cc.Session, prompts: Prompts, rounds: int) -> Va
     order: list[str] = []
     waiting = list(by_id)
     while waiting:
-        ready = next((i for i in waiting if all(src in order for src, _ in inputs[i].values())), None)
+        ready = next((i for i in waiting if all(src in order or src in sources for src, _ in inputs[i].values())), None)
         if ready is None:
             problems.append(f"the links make a loop through {', '.join(waiting)}")
             break
@@ -142,8 +171,8 @@ def validate(raw: Any, session: cc.Session, prompts: Prompts, rounds: int) -> Va
 
     # Build the plan from its templates in a fork, as the fallbacks would.
     fork = session.fork()
-    nets: dict[str, dict[str, str]] = {}
-    ids: dict[str, str] = {}
+    nets = {key: {p["name"]: p["net"] for p in block["ports"]} for key, block in sources.items()}
+    ids = {key: block["id"] for key, block in sources.items()}
     for pid in order:
         b = by_id[pid]
         ports = {p: {"net": nets[src][sp]} for p, (src, sp) in inputs[pid].items() if src in nets}
@@ -159,6 +188,34 @@ def validate(raw: Any, session: cc.Session, prompts: Prompts, rounds: int) -> Va
     if problems:
         return Validated(None, problems, uncovered)
 
+    tests = None
+    if raw.transient_tests:
+        test = raw.transient_tests
+        resolved = []
+        for endpoint in [test.source, *test.outputs]:
+            match = PORT.fullmatch(endpoint)
+            if not match or match[1] not in nets or match[2] not in nets[match[1]]:
+                problems.append(f"transient test: unknown port {endpoint}")
+                continue
+            bid, port = match.groups()
+            tpl = by_id[bid].template if bid in by_id else sources[bid].get("template")
+            ports = templates[tpl]["ports"] if tpl in templates else {}
+            if ports.get(port) not in SIGNAL_OUT:
+                problems.append(f"transient test: {endpoint} must be an output")
+            if endpoint == test.source and tpl != "sine_source":
+                problems.append("transient test: source must be a sine_source block")
+            resolved.append((ids[bid], port))
+        frequencies = []
+        for value in test.frequencies:
+            quantity = json.loads(cc.parse_quantity(value, "hertz"))
+            hz = quantity.get("ok", {}).get("si", 0)
+            if not 1 <= hz <= 100_000:
+                problems.append(f"transient test: frequency {value!r} must be 1 Hz to 100 kHz")
+            frequencies.append(hz)
+        if problems:
+            return Validated(None, problems, uncovered)
+        tests = TransientTests(resolved[0], list(dict.fromkeys(frequencies)), resolved[1:])
+
     blocks = []
     for pid in order:
         b = by_id[pid]
@@ -169,7 +226,7 @@ def validate(raw: Any, session: cc.Session, prompts: Prompts, rounds: int) -> Va
             block_title=t["title"],
             inputs={p: (ids[src], sp) for p, (src, sp) in inputs[pid].items()},
         ))
-    return Validated(Plan(blocks, rounds), [], uncovered)
+    return Validated(Plan(blocks, rounds, tests, raw.max_breadboards), [], uncovered)
 
 
 async def plan(gw: Gateway, prompts: Prompts, session: cc.Session, *, prompt: str, level: str, tier: Tier,

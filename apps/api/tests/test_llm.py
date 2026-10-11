@@ -60,10 +60,12 @@ class MockLLM:
     def __init__(self) -> None:
         self.handlers: list[Callable[[dict[str, Any]], Any]] = []
         self.requests: list[tuple[dict[str, str], dict[str, Any]]] = []
+        self.paths: list[str] = []
 
     async def chat(self, request: Request) -> Response:
         body = await request.json()
         self.requests.append((dict(request.headers), body))
+        self.paths.append(request.url.path)
         handler = self.handlers.pop(0)
         out = handler(body)
         if asyncio.iscoroutine(out):
@@ -80,7 +82,8 @@ def free_port() -> int:
 @pytest.fixture(scope="module")
 async def mock_server() -> AsyncIterator[tuple[str, MockLLM]]:
     mock = MockLLM()
-    app = Starlette(routes=[Route("/v1/chat/completions", mock.chat, methods=["POST"])])
+    app = Starlette(routes=[Route(path, mock.chat, methods=["POST"])
+                            for path in ("/v1/chat/completions", "/v1/responses")])
     port = free_port()
     srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     task = asyncio.create_task(srv.serve())
@@ -96,12 +99,153 @@ def mock(mock_server) -> MockLLM:
     url, m = mock_server
     m.handlers.clear()
     m.requests.clear()
+    m.paths.clear()
     return m
 
 
-def provider(mock_server, json_mode="json_schema", timeout_s=5.0, name="gemini") -> OpenAICompatProvider:
+def provider(mock_server, json_mode="json_schema", timeout_s=5.0, name="gemini", api="chat") -> OpenAICompatProvider:
     return OpenAICompatProvider(name, mock_server[0], "test-key", {"large": "m-large", "small": "m-small"},
-                                json_mode=json_mode, timeout_s=timeout_s)
+                                json_mode=json_mode, timeout_s=timeout_s, api=api)
+
+
+def model_response(text: str, *, status="completed", reason=None) -> dict[str, Any]:
+    return {
+        "model": "gpt-6.1-sol", "status": status,
+        "output": [{"type": "reasoning", "summary": []},
+                   {"type": "message", "content": [{"type": "output_text", "text": text}]}],
+        "incomplete_details": {"reason": reason} if reason else None,
+        "usage": {"input_tokens": 120, "output_tokens": 50,
+                  "input_tokens_details": {"cached_tokens": 96},
+                  "output_tokens_details": {"reasoning_tokens": 43}},
+    }
+
+
+async def test_sol_and_luna_route_to_their_endpoints_with_separate_keys(mock_server, mock):
+    gw = gateway_from_env({
+        "LLM_PROVIDER": "openai", "OPENAI_SOL_API_KEY": "sol-key", "OPENAI_LUNA_API_KEY": "luna-key",
+        "OPENAI_SOL_BASE_URL": mock_server[0], "OPENAI_BASE_URL": mock_server[0],
+        # Historical single-model and generic settings must not override Sol's deployment.
+        "OPENAI_MODEL": "gpt-6-luna", "LLM_MODEL_LARGE": "gemini-3.5-flash",
+    })
+    (p,) = gw.providers
+    mock.handlers.extend([lambda body: model_response('{"ok": true}'),
+                          lambda body: completion("A filter.", model="gpt-6-luna")])
+    try:
+        sol = await gw.complete(dataclasses.replace(REQ, effort="high"))
+        luna = await gw.complete(LlmRequest("assembly_audit", "small", "S", "U"))
+        assert p.models == {"large": "gpt-6.1-sol", "small": "gpt-6-luna"}
+        assert mock.paths == ["/v1/responses", "/v1/chat/completions"]
+        assert [h["authorization"] for h, _ in mock.requests] == ["Bearer sol-key", "Bearer luna-key"]
+        body = mock.requests[0][1]
+        assert body == {
+            "model": "gpt-6.1-sol", "instructions": REQ.system, "input": REQ.user,
+            "max_output_tokens": 100, "store": False, "reasoning": {"effort": "high"},
+            "text": {"format": {"type": "json_schema", "name": "plan", "schema": SCHEMA, "strict": False}},
+        }
+        assert sol == LlmResponse('{"ok": true}', "gpt-6.1-sol", Usage(120, 50, 96))
+        assert luna.model == "gpt-6-luna"
+        assert mock.requests[1][1]["max_completion_tokens"] == 2000
+        assert "temperature" not in mock.requests[1][1]
+    finally:
+        await p.aclose()
+    assert all(t.client.is_closed for t in p.tiers.values())
+
+
+async def test_renamed_luna_key_works_without_sol_and_legacy_key_is_supported(mock_server, mock):
+    for keys in ({"OPENAI_LUNA_API_KEY": "renamed", "OPENAI_API_KEY": "old"}, {"OPENAI_API_KEY": "old"}):
+        gw = gateway_from_env({"LLM_PROVIDER": "openai", "OPENAI_BASE_URL": mock_server[0],
+                               "OPENAI_MODEL": "gpt-6-luna", "OPENAI_REASONING": "1", **keys})
+        mock.handlers.append(lambda body: completion("OK"))
+        try:
+            await gw.complete(REQ)
+            assert mock.requests[-1][0]["authorization"] == f"Bearer {keys.get('OPENAI_LUNA_API_KEY', 'old')}"
+        finally:
+            await gw.providers[0].aclose()
+
+
+def test_split_openai_configuration_requires_both_credentials():
+    with pytest.raises(RuntimeError, match="OPENAI_LUNA_API_KEY"):
+        gateway_from_env({"LLM_PROVIDER": "openai", "OPENAI_SOL_API_KEY": "sol"})
+    with pytest.raises(RuntimeError, match="OPENAI_SOL_API_KEY"):
+        gateway_from_env({"LLM_PROVIDER": "openai", "OPENAI_SOL_API_KEY": "REPLACE_ME", "OPENAI_LUNA_API_KEY": "luna"})
+
+
+async def test_responses_stream_delivers_only_text_and_preserves_usage(mock_server, mock):
+    events = [
+        {"type": "response.created", "response": {"status": "in_progress"}},
+        {"type": "response.reasoning_summary_text.delta", "delta": "hidden reasoning"},
+        {"type": "response.output_text.delta", "delta": "A "},
+        {"type": "response.output_text.delta", "delta": "filter."},
+        {"type": "response.completed", "response": model_response("A filter.")},
+    ]
+    mock.handlers.append(lambda body: StreamingResponse(
+        iter([f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events]), media_type="text/event-stream"))
+    seen = []
+
+    async def delta(text):
+        seen.append(text)
+
+    p = provider(mock_server, api="responses")
+    try:
+        resp = await p.stream(dataclasses.replace(REQ, schema=None), delta)
+        assert seen == ["A ", "filter."]
+        assert resp == LlmResponse("A filter.", "gpt-6.1-sol", Usage(120, 50, 96))
+        body = mock.requests[0][1]
+        assert body["stream"] is True and "stream_options" not in body and "text" not in body
+    finally:
+        await p.aclose()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_responses_token_limit_is_reported_to_the_orchestrator(mock_server, mock, stream):
+    data = model_response('{"ok":', status="incomplete", reason="max_output_tokens")
+    mock.handlers.append(lambda body: StreamingResponse(
+        iter([f'data: {json.dumps({"type": "response.incomplete", "response": data})}\n\n']),
+        media_type="text/event-stream") if stream else data)
+    p = provider(mock_server, api="responses")
+
+    async def delta(text):
+        pass
+
+    try:
+        resp = await p.stream(REQ, delta) if stream else await p.complete(REQ)
+        assert resp.finish_reason == "length" and resp.text == '{"ok":'
+    finally:
+        await p.aclose()
+
+
+@pytest.mark.parametrize("event", [None, {"type": "response.failed", "response": {"status": "failed"}},
+                                   {"type": "error", "code": "server_error", "message": "overloaded"}])
+async def test_responses_failed_or_interrupted_stream_is_not_success(mock_server, mock, event):
+    mock.handlers.append(lambda body: StreamingResponse(
+        iter([f"data: {json.dumps(event)}\n\n"] if event else []), media_type="text/event-stream"))
+    p = provider(mock_server, api="responses")
+
+    async def delta(text):
+        pass
+
+    try:
+        with pytest.raises(ProviderError) as error:
+            await p.stream(REQ, delta)
+        assert error.value.retryable
+    finally:
+        await p.aclose()
+
+
+@pytest.mark.parametrize("output, code", [
+    ([{"type": "message", "content": [{"type": "refusal", "refusal": "Cannot help"}]}], "refusal"),
+    ([{"type": "message", "content": [{"type": "output_text"}]}], "bad_response"),
+    ([], "bad_response"),
+])
+async def test_responses_refusals_and_malformed_output_are_errors(mock_server, mock, output, code):
+    mock.handlers.append(lambda body: model_response("") | {"output": output})
+    p = provider(mock_server, api="responses")
+    try:
+        with pytest.raises(ProviderError) as error:
+            await p.complete(REQ)
+        assert error.value.code == code
+    finally:
+        await p.aclose()
 
 
 async def test_complete_sends_the_schema_and_reads_usage(mock_server, mock):
@@ -187,11 +331,12 @@ async def test_stream_delivers_deltas_in_order_and_the_final_usage(mock_server, 
         (400, [{"error": {"message": "schema not supported"}}], "bad_request", False, None),
     ],
 )
-async def test_http_errors_are_classified(mock_server, mock, status, payload, code, retryable, retry_after):
+@pytest.mark.parametrize("api", ["chat", "responses"])
+async def test_http_errors_are_classified(mock_server, mock, status, payload, code, retryable, retry_after, api):
     headers = {"retry-after": "2"} if retry_after else {}
     mock.handlers.append(lambda body: JSONResponse(payload, status_code=status, headers=headers))
     with pytest.raises(ProviderError) as e:
-        await provider(mock_server).complete(REQ)
+        await provider(mock_server, api=api).complete(REQ)
     assert (e.value.code, e.value.retryable, e.value.retry_after_s) == (code, retryable, retry_after)
     assert f"HTTP {status}" in e.value.message
     want = payload[0] if isinstance(payload, list) else payload

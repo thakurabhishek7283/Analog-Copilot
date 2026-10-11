@@ -91,6 +91,25 @@ def unsupported(circuit: dict) -> list[str]:
             if part["part"] not in FOOTPRINTS and not part["part"].startswith("vsource_")]
 
 
+def fit(circuit: dict, registry: dict, max_boards: int) -> Layout:
+    """Prove physical fit with the same packages, routing and net validation as a build guide."""
+    if unsupported(circuit):
+        raise ValueError("Unsupported breadboard footprints: " + ", ".join(unsupported(circuit)))
+    placements = []
+    board, row = 1, 1
+    for ref, part in circuit["parts"].items():
+        if part["part"].startswith("vsource_"):
+            continue
+        height = max(offset for _, offset in FOOTPRINTS[part["part"]][1]) + 1
+        if row + height - 1 > ROWS:
+            board, row = board + 1, 1
+        if board > max_boards:
+            raise ValueError(f"The supported packages do not fit within {max_boards} breadboards using this placement")
+        placements.append(CandidatePart(refdes=ref, board=board, row=row))
+        row += height + 1
+    return assemble(Candidate(boards=board, placements=placements), circuit, registry)
+
+
 def _strip(hole: str, boards: int) -> str:
     if hole.startswith("X:"):
         return hole

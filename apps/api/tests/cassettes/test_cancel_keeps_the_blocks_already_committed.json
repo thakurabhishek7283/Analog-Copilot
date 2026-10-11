@@ -2,15 +2,15 @@
  "version": 1,
  "interactions": [
   {
-   "key": "e760b7799d2a56aa8075aa838404113e38025b00cfde7f3179a1ee0c68cb8bc2",
+   "key": "b542a042621131c62165eff27daadba0436f7bd74277eef20eb26b6476b67a3c",
    "kind": "plan",
    "tier": "large",
-   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Signal\", \"purpose\": \"A 300 Hz test signal.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"300\"}]}, {\"id\": \"b2\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"R1 and C1 let low frequencies through and send high ones to ground.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"2k\"}]}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3606,
+     "in_tokens": 4485,
      "out_tokens": 103,
      "cached_tokens": 0,
      "estimated": true
@@ -19,7 +19,7 @@
    }
   },
   {
-   "key": "5a9e556f5366a1fc4fef16400fc2e87538c8373436eb21997fc8651053b306ab",
+   "key": "bc0a875855436e81c0b41cc38c84efc8470126036e029969ca31b0c99f5ed7f0",
    "kind": "compose",
    "tier": "large",
    "user_tail": "umber: R1, C2, U1), the part id, and a value for each of its params (name and value).\n- nets: a net named after a port of the template (out, gnd) is that port; any other name is a net inside the block. Pins are REF.PIN, such as R1.2 or U1.OUT_A. Every port needs a net, and a pin is on one net only.\n",
@@ -27,7 +27,7 @@
     "text": "{\"use_template\": true, \"parts\": [], \"nets\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3736,
+     "in_tokens": 4267,
      "out_tokens": 11,
      "cached_tokens": 0,
      "estimated": true

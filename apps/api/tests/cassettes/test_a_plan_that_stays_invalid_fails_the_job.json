@@ -2,15 +2,15 @@
  "version": 1,
  "interactions": [
   {
-   "key": "d49915dd72c94372d7bbb60646f35ec90e2b811201c6d78ea978434f5f6c174f",
+   "key": "5385e25c771de190d5eec8d39f9c01027f705b806506755e116ad64ab4cfe1a8",
    "kind": "plan",
    "tier": "large",
-   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3606,
+     "in_tokens": 4484,
      "out_tokens": 44,
      "cached_tokens": 0,
      "estimated": true
@@ -19,15 +19,15 @@
    }
   },
   {
-   "key": "4851afd0d6938b224b63f307664091c29af6fa8f1a7c02ea56747874ec800920",
+   "key": "4954b4a8b882d6502877216a0d792982f305f9ee002e7f5e960e564da540abc5",
    "kind": "plan",
    "tier": "large",
-   "user_tail": "ng.\n\nYour previous plan:\n{\"blocks\": [{\"id\": \"b1\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [], \"uncovered\": []}\n\nIt has these problems. Fix every one:\n- b1 (rc_lowpass): Cutoff frequency must be 10Hz to 100kHz\n",
+   "user_tail": "\"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [], \"uncovered\": [], \"transient_tests\": null, \"max_breadboards\": null}\n\nIt has these problems. Fix every one:\n- b1 (rc_lowpass): Cutoff frequency must be 10Hz to 100kHz\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3680,
+     "in_tokens": 4571,
      "out_tokens": 44,
      "cached_tokens": 0,
      "estimated": true
@@ -36,15 +36,15 @@
    }
   },
   {
-   "key": "4851afd0d6938b224b63f307664091c29af6fa8f1a7c02ea56747874ec800920",
+   "key": "4954b4a8b882d6502877216a0d792982f305f9ee002e7f5e960e564da540abc5",
    "kind": "plan",
    "tier": "large",
-   "user_tail": "ng.\n\nYour previous plan:\n{\"blocks\": [{\"id\": \"b1\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [], \"uncovered\": []}\n\nIt has these problems. Fix every one:\n- b1 (rc_lowpass): Cutoff frequency must be 10Hz to 100kHz\n",
+   "user_tail": "\"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [], \"uncovered\": [], \"transient_tests\": null, \"max_breadboards\": null}\n\nIt has these problems. Fix every one:\n- b1 (rc_lowpass): Cutoff frequency must be 10Hz to 100kHz\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3680,
+     "in_tokens": 4571,
      "out_tokens": 44,
      "cached_tokens": 0,
      "estimated": true

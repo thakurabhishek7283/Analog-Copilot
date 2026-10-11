@@ -2,7 +2,7 @@
 source: crates/circuit-core/tests/tutor.rs
 expression: ctx.text
 ---
-EDIT (rev 20 → 21):
+EDIT (rev 21 → 22):
   R1 [b2]: resistance 18kΩ → 36kΩ
 BLOCK b2 "Sallen-Key low-pass (2nd order)" template sallen_key_lp, filter
   teaches: Two RC sections with feedback from the output through C1: a 40 dB/decade roll-off, and Q sets how sharp the knee is (0.707 is maximally flat).

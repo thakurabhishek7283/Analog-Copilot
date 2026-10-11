@@ -2,15 +2,15 @@
  "version": 1,
  "interactions": [
   {
-   "key": "47c59b512af2c20a7c3b46ea625314d7fd7895f1d9a157c9a3c75e1b807b57ec",
+   "key": "3a9f4cf1eb43648e20df24aa009ca09765a6207bb0359c6b9044e6f55d102729",
    "kind": "plan",
    "tier": "large",
-   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Audio\", \"purpose\": \"The audio to send.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"1k\"}]}, {\"id\": \"b2\", \"template\": \"noninverting_amp\", \"title\": \"Mic amp\", \"purpose\": \"Raises the audio.\", \"targets\": []}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3608,
+     "in_tokens": 4487,
      "out_tokens": 104,
      "cached_tokens": 0,
      "estimated": true
@@ -19,15 +19,15 @@
    }
   },
   {
-   "key": "36419850d5370b3a3b038b0402aa2a3988ab739f6de274e3e8f909e0a4052b2d",
+   "key": "dd52b9f1595f7f74c9437b23400310915ad66087c341fe79974137098849719e",
    "kind": "plan",
    "tier": "large",
-   "user_tail": "\"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}\n\nIt has these problems. Fix every one:\n- b2.in is linked twice\n- no template builds 'a 100 MHz oscillator and its FM modulator': leave it out of the request, or plan it from the templates\n",
+   "user_tail": ", \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"], \"transient_tests\": null, \"max_breadboards\": null}\n\nIt has these problems. Fix every one:\n- b2.in is linked twice\n- no template builds 'a 100 MHz oscillator and its FM modulator': leave it out of the request, or plan it from the templates\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Audio\", \"purpose\": \"The audio to send.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"1k\"}]}, {\"id\": \"b2\", \"template\": \"noninverting_amp\", \"title\": \"Mic amp\", \"purpose\": \"Raises the audio.\", \"targets\": []}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3765,
+     "in_tokens": 4656,
      "out_tokens": 104,
      "cached_tokens": 0,
      "estimated": true
@@ -36,15 +36,15 @@
    }
   },
   {
-   "key": "36419850d5370b3a3b038b0402aa2a3988ab739f6de274e3e8f909e0a4052b2d",
+   "key": "dd52b9f1595f7f74c9437b23400310915ad66087c341fe79974137098849719e",
    "kind": "plan",
    "tier": "large",
-   "user_tail": "\"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}\n\nIt has these problems. Fix every one:\n- b2.in is linked twice\n- no template builds 'a 100 MHz oscillator and its FM modulator': leave it out of the request, or plan it from the templates\n",
+   "user_tail": ", \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"], \"transient_tests\": null, \"max_breadboards\": null}\n\nIt has these problems. Fix every one:\n- b2.in is linked twice\n- no template builds 'a 100 MHz oscillator and its FM modulator': leave it out of the request, or plan it from the templates\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Audio\", \"purpose\": \"The audio to send.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"1k\"}]}, {\"id\": \"b2\", \"template\": \"noninverting_amp\", \"title\": \"Mic amp\", \"purpose\": \"Raises the audio.\", \"targets\": []}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}, {\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": [\"a 100 MHz oscillator and its FM modulator\"]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3765,
+     "in_tokens": 4656,
      "out_tokens": 104,
      "cached_tokens": 0,
      "estimated": true

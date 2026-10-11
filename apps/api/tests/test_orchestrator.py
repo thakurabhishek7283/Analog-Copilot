@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-from helpers import create_project, read_events
+from helpers import create_project, envelopes, read_events
 from tutor_api.db.tables import block_attempts, jobs
 from tutor_api.llm.base import LlmRequest, LlmResponse, OnDelta, ProviderError
 from tutor_api.llm.cassette import Recorder, Replayer
@@ -186,6 +186,29 @@ def ops_of(events, block: str) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------- tests
+
+async def test_generation_reuses_an_existing_source(http, alice, app, scenario):
+    import circuit_core as cc
+
+    pid = await create_project(http, alice)
+    session = cc.Session(app.state.regs.current)
+    ins = cc.unwrap(session.insert_block(json.dumps({"template": "sine_source", "targets": {"freq_hz": "300"}})))
+    response = await http.post(f"/v1/projects/{pid}/ops", headers=alice,
+                               json={"base_rev": 0, "ops": envelopes(ins["ops"], 0, "template")})
+    assert response.status_code == 200, response.text
+    original = (await snapshot(http, alice, pid)).circuit.blocks["b1"]
+    scenario({"plan": [plan(block("b1", "rc_lowpass", "Low-pass", RC_PURPOSE, fc_hz="2k"),
+                            links=[("existing.b1.out", "b1.in")])],
+              "narrate": [NARRATION], "compose": [USE_TEMPLATE], "assembly_audit": [SOURCE_FILTER_AUDIT]})
+    response = await http.post(f"/v1/projects/{pid}/generate", headers=alice,
+                               json={"prompt": "Connect a 2 kHz RC low-pass to the existing 300 Hz sine source"})
+    assert response.status_code == 202, response.text
+    events = await read_events(http, response.json()["job_id"], alice)
+    assert events[-1]["event"] == "done", events[-1]
+    snap = await snapshot(http, alice, pid)
+    assert snap.circuit.blocks["b1"] == original
+    assert next(p.net for p in snap.circuit.blocks["b2"].ports if p.name == "in") == "B1_OUT"
+    assert snap.verification.status == "passed"
 
 async def test_a_draft_that_passes_first_time_commits(http, alice, app, scenario):
     spy = scenario({"plan": [RC_2K], "narrate": [NARRATION], "compose": [rc()]})

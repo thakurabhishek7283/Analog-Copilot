@@ -1,4 +1,4 @@
-"""One adapter for every OpenAI-compatible chat completions endpoint: Gemini
+"""One HTTP adapter for OpenAI Responses and compatible chat completions endpoints: Gemini
 (`generativelanguage.googleapis.com/v1beta/openai`) and DeepSeek on Azure AI Foundry
 (`<resource>.services.ai.azure.com/openai/v1`). Plain httpx, no vendor SDK.
 
@@ -31,12 +31,14 @@ class OpenAICompatProvider:
         models: dict[Tier, str],
         *,
         json_mode: JsonMode = "json_schema",
+        api: Literal["chat", "responses"] = "chat",
         reasoning: bool = False,
         timeout_s: float = CALL_TIMEOUT_S,
         client: httpx.AsyncClient | None = None,
     ):
         self.name = name
-        self.url = base_url.rstrip("/") + "/chat/completions"
+        self.api = api
+        self.url = base_url.rstrip("/") + ("/responses" if api == "responses" else "/chat/completions")
         self.models = models
         self.json_mode = json_mode
         # OpenAI's reasoning models (on Azure too) take `max_completion_tokens`, which also covers their
@@ -56,6 +58,23 @@ class OpenAICompatProvider:
         await self.client.aclose()
 
     def body(self, req: LlmRequest, stream: bool) -> dict[str, Any]:
+        if self.api == "responses":
+            body: dict[str, Any] = {
+                "model": self.models[req.tier], "instructions": req.system, "input": req.user,
+                "max_output_tokens": req.max_tokens, "store": False,
+            }
+            if self.reasoning:
+                if req.effort:
+                    body["reasoning"] = {"effort": req.effort}
+            else:
+                body["temperature"] = req.temperature
+            if req.schema is not None:
+                body["text"] = {"format": {
+                    "type": "json_schema", "name": req.schema_name, "schema": req.schema, "strict": False,
+                }}
+            if stream:
+                body["stream"] = True
+            return body
         user = req.user
         body: dict[str, Any] = {"model": self.models[req.tier]}
         if self.reasoning:
@@ -93,6 +112,8 @@ class OpenAICompatProvider:
             raise ProviderError("network", f"{self.name}: {type(e).__name__}: {e}", True) from None
         except ValueError as e:  # not JSON
             raise ProviderError("bad_response", f"{self.name}: {e}", True) from None
+        if self.api == "responses":
+            return read_response(data, self.models[req.tier])
         try:
             choice = data["choices"][0]
             text = choice["message"].get("content") or ""
@@ -118,6 +139,17 @@ class OpenAICompatProvider:
                         if payload == "[DONE]":
                             break
                         chunk = json.loads(payload)
+                        if self.api == "responses":
+                            kind = chunk.get("type")
+                            if kind == "response.output_text.delta":
+                                await on_delta(chunk["delta"])
+                            elif kind in ("response.completed", "response.incomplete", "response.failed"):
+                                return read_response(chunk.get("response"), model)
+                            elif kind == "error":
+                                code = chunk.get("code") or "bad_response"
+                                raise ProviderError(code, chunk.get("message") or "Response stream failed",
+                                                    code in ("server_error", "rate_limit_exceeded"))
+                            continue
                         model = chunk.get("model") or model
                         if chunk.get("usage"):
                             used = usage(chunk["usage"])
@@ -132,9 +164,40 @@ class OpenAICompatProvider:
             # OSError: httpcore does not wrap an SSL error raised while reading the body (live, 2026-05-22:
             # "ssl.SSLError: record layer failure" mid-answer reached the router as an internal error).
             raise ProviderError("network", f"{self.name}: {type(e).__name__}: {e}", True) from None
-        except ValueError as e:
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
             raise ProviderError("bad_response", f"{self.name}: {e}", True) from None
+        if self.api == "responses":
+            raise ProviderError("bad_response", "Response stream ended without a terminal event", True)
         return LlmResponse("".join(parts), model, used, finish)
+
+
+def read_response(data: Any, model: str) -> LlmResponse:
+    """Read message text, skipping reasoning items, and preserve token-limit failures."""
+    if not isinstance(data, dict) or data.get("status") not in ("completed", "incomplete", "failed"):
+        raise ProviderError("bad_response", "Missing response status", True)
+    if data["status"] == "failed":
+        raise ProviderError("bad_response", (data.get("error") or {}).get("message") or "Response failed", True)
+    finish = "stop"
+    if data["status"] == "incomplete":
+        reason = (data.get("incomplete_details") or {}).get("reason")
+        if reason != "max_output_tokens":
+            raise ProviderError("bad_response", f"Response incomplete: {reason}", False)
+        finish = "length"
+    try:
+        text = []
+        for item in data["output"]:
+            if item.get("type") != "message":
+                continue
+            for content in item["content"]:
+                if content.get("type") == "refusal":
+                    raise ProviderError("refusal", content.get("refusal") or "Model refused the request", False)
+                if content.get("type") == "output_text":
+                    text.append(content["text"])
+        if not any(text) and finish != "length":
+            raise ProviderError("bad_response", "Response completed without message text", True)
+        return LlmResponse("".join(text), data.get("model") or model, usage(data.get("usage")), finish)
+    except (KeyError, TypeError, AttributeError, ValueError):
+        raise ProviderError("bad_response", "Malformed response output", True) from None
 
 
 def check(r: httpx.Response, body: str) -> None:
@@ -181,5 +244,6 @@ def seconds(text: Any) -> float | None:
 def usage(u: dict[str, Any] | None) -> Usage:
     if not u:
         return Usage()
-    cached = (u.get("prompt_tokens_details") or {}).get("cached_tokens") or 0
-    return Usage(int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0), int(cached))
+    cached = (u.get("input_tokens_details") or u.get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+    return Usage(int(u.get("input_tokens") or u.get("prompt_tokens") or 0),
+                 int(u.get("output_tokens") or u.get("completion_tokens") or 0), int(cached))

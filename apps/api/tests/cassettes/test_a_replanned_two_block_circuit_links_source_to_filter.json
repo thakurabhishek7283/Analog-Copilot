@@ -2,15 +2,15 @@
  "version": 1,
  "interactions": [
   {
-   "key": "ebc0303594f39b3a82dc49c37864ea34e8a5f82857c6762c488ddbbea3e72ccc",
+   "key": "399b758cc68aa6c81dc53d66138f270968f7f6941758acad1f98d60cc3cf8a62",
    "kind": "plan",
    "tier": "large",
-   "user_tail": " target \"b2.in\". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
+   "user_tail": "d. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.\n- uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Signal\", \"purpose\": \"A test signal.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"300\"}]}, {\"id\": \"b2\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.gnd\"}], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3611,
+     "in_tokens": 4489,
      "out_tokens": 88,
      "cached_tokens": 0,
      "estimated": true
@@ -19,15 +19,15 @@
    }
   },
   {
-   "key": "a38303dcd260cb159e880e7fa36c2525bcdc20fb202b5941fe21c89481dbf4b7",
+   "key": "f6cbe20ae811f4694545a257b2d53e52cce41dd9de4bcb9fc27e1c9c4cf5837f",
    "kind": "plan",
    "tier": "large",
-   "user_tail": "itle\": \"Filter\", \"purpose\": \"The filter.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.gnd\"}], \"uncovered\": []}\n\nIt has these problems. Fix every one:\n- link b1.out -> b2.gnd: b2.gnd is ground, not an input; power and ground join through the rails\n",
+   "user_tail": "s\": [{\"name\": \"fc_hz\", \"value\": \"500k\"}]}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.gnd\"}], \"uncovered\": [], \"transient_tests\": null, \"max_breadboards\": null}\n\nIt has these problems. Fix every one:\n- link b1.out -> b2.gnd: b2.gnd is ground, not an input; power and ground join through the rails\n",
    "response": {
     "text": "{\"blocks\": [{\"id\": \"b1\", \"template\": \"sine_source\", \"title\": \"Signal\", \"purpose\": \"V1 makes a 300 Hz sine wave to test the filter with.\", \"targets\": [{\"name\": \"freq_hz\", \"value\": \"300\"}]}, {\"id\": \"b2\", \"template\": \"rc_lowpass\", \"title\": \"Filter\", \"purpose\": \"R1 and C1 let low frequencies through and send high ones to ground.\", \"targets\": [{\"name\": \"fc_hz\", \"value\": \"2k\"}]}], \"links\": [{\"source\": \"b1.out\", \"target\": \"b2.in\"}], \"uncovered\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3739,
+     "in_tokens": 4630,
      "out_tokens": 111,
      "cached_tokens": 0,
      "estimated": true
@@ -36,7 +36,7 @@
    }
   },
   {
-   "key": "bc0b67a7f77132feecad30fa8bdfa9dd71ea5e1cc613d5bac57218e74220df09",
+   "key": "89968d34b2d9c0a92a1f5d82856a25405ac1288a0ca560d96c55a968e91c93e9",
    "kind": "compose",
    "tier": "large",
    "user_tail": "umber: R1, C2, U1), the part id, and a value for each of its params (name and value).\n- nets: a net named after a port of the template (out, gnd) is that port; any other name is a net inside the block. Pins are REF.PIN, such as R1.2 or U1.OUT_A. Every port needs a net, and a pin is on one net only.\n",
@@ -44,7 +44,7 @@
     "text": "{\"use_template\": true, \"parts\": [], \"nets\": []}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3748,
+     "in_tokens": 4279,
      "out_tokens": 11,
      "cached_tokens": 0,
      "estimated": true
@@ -92,7 +92,7 @@
    }
   },
   {
-   "key": "8955b8ccf3b359d7f60fcfacb4586dc29e0fd3fcc7da8b72a6450a5a50525637",
+   "key": "cdb98ffe63bb9b1128a3f022e730faae88b8901a65ef17adffecbfd5b3bf5347",
    "kind": "compose",
    "tier": "large",
    "user_tail": "r: R1, C2, U1), the part id, and a value for each of its params (name and value).\n- nets: a net named after a port of the template (in, out, gnd) is that port; any other name is a net inside the block. Pins are REF.PIN, such as R1.2 or U1.OUT_A. Every port needs a net, and a pin is on one net only.\n",
@@ -100,7 +100,7 @@
     "text": "{\"use_template\": false, \"parts\": [{\"ref\": \"R1\", \"part\": \"resistor_th\", \"params\": [{\"name\": \"resistance\", \"value\": \"8.2k\"}]}, {\"ref\": \"C1\", \"part\": \"cap_film\", \"params\": [{\"name\": \"capacitance\", \"value\": \"10n\"}]}], \"nets\": [{\"name\": \"in\", \"pins\": [\"R1.1\"]}, {\"name\": \"out\", \"pins\": [\"R1.2\", \"C1.1\"]}, {\"name\": \"gnd\", \"pins\": [\"C1.2\"]}]}",
     "model": "fake-large",
     "usage": {
-     "in_tokens": 3769,
+     "in_tokens": 4300,
      "out_tokens": 83,
      "cached_tokens": 0,
      "estimated": true
@@ -109,7 +109,7 @@
    }
   },
   {
-   "key": "3b4bf43be0494cbac3942a97f52a34e2ff070d0092689eeffc8d32c77faf5fd9",
+   "key": "e49323f89a9d32a509d67a97db7111139eac775f659ab0fbaeb486aaeb015b66",
    "kind": "assembly_audit",
    "tier": "small",
    "user_tail": "rget\": 300.0, \"target_display\": \"300Hz\", \"tol_pct\": 2.0, \"unit\": \"hertz\"}, {\"block\": \"b2\", \"label\": \"Cutoff (\\u22123 dB)\", \"measured\": 1956.82, \"measured_display\": \"1.96kHz\", \"name\": \"fc_hz\", \"pass\": true, \"symbol\": \"fc\", \"target\": 2000.0, \"target_display\": \"2kHz\", \"tol_pct\": 10.0, \"unit\": \"hertz\"}]",
@@ -117,7 +117,7 @@
     "text": "{\"requirements\": [{\"text\": \"A sine source drives the RC low-pass filter\", \"status\": \"met\", \"evidence\": \"The source output and filter input share net B1_OUT.\", \"blocks\": [\"b1\", \"b2\"], \"checks\": []}, {\"text\": \"The source frequency is 300 Hz\", \"status\": \"met\", \"evidence\": \"The source frequency measurement passes its 300 Hz target check.\", \"blocks\": [\"b1\"], \"checks\": [\"b1.freq_hz\"]}, {\"text\": \"The filter cutoff is 2 kHz\", \"status\": \"met\", \"evidence\": \"The measured cutoff passes the 2 kHz target check.\", \"blocks\": [\"b2\"], \"checks\": [\"b2.fc_hz\"]}]}",
     "model": "fake-small",
     "usage": {
-     "in_tokens": 4488,
+     "in_tokens": 5162,
      "out_tokens": 137,
      "cached_tokens": 0,
      "estimated": true

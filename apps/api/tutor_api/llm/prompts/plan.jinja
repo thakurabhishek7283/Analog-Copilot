@@ -13,6 +13,11 @@ Plan the circuit as blocks:
 - At most 8 blocks. Each has a plan id (b1, b2, ...), the template it is built on, a short title, and one sentence (purpose) telling a {{ level }} student what the block does in this circuit.
 - targets: only names the template lists, with values inside their ranges ("2k" for 2 kHz). Leave a target out to take its default.
 - links: each joins an output port to an input port, written as source "b1.out" and target "b2.in". An input port takes at most one link. Power and ground ports join through the shared rails by themselves; never link them.
+- Reuse an existing signal source or other output when suitable. Refer to existing circuit ports as "existing.b1.out" to distinguish them from new plan ids. A link target must be a new block; this step does not edit existing blocks.
+- For a 5 V single-supply analyzer, use reg_7805, bias_2v5, lm358_ac_buffer and mfb_bandpass_5v, with passive rc_lowpass/rc_highpass channels. Connect bias_2v5.out to every vref input and the buffer output to all filter inputs. The LM358 buffer AC-couples an input centered on ground to 2.5 V; keep the sine amplitude at 0.5 V peak or below for headroom. Do not substitute dual-supply TL072 templates when single-supply operation is requested.
+- transient_tests: when the request asks for sine tests at multiple frequencies, give the source output, requested frequencies and channel output ports. The verifier runs these on scratch copies after assembly and measures their outputs. Otherwise null. Do not claim tests have already run.
+- max_breadboards: the requested maximum number of breadboards, otherwise null. Physical fit is checked separately using supported footprints.
+- Simulation runs, AC sweeps, component lists, labels, and breadboard layout are not missing circuit templates. Do not put these in uncovered. Scope supports transient and AC analyses; exposed output ports are test points. Do not claim a physical layout has already been created.
 - uncovered: whatever the request needs that no template can build (a microcontroller, mains power, a motor driver). Empty when the templates cover everything.
 {% if previous %}
 
