@@ -10,6 +10,8 @@ use indexmap::IndexMap;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::library::ComponentDef;
+use crate::testplan::{Requirement, TestPlan};
 use crate::units::Quantity;
 
 pub type PartId = String;
@@ -17,12 +19,16 @@ pub type RefDes = String;
 pub type NetId = String;
 pub type BlockId = String;
 
-pub const SCHEMA_VERSION: u16 = 1;
+/// 2 (LLD §17 D15): the project library, test plans and requirements. Version 1 circuits load
+/// through [`migrate`].
+pub const SCHEMA_VERSION: u16 = 2;
 pub const GND: &str = "GND";
 
-/// Hard limits (LLD §1).
+/// Hard limits (LLD §1), per level: parts inside a library component count against its own
+/// limits (`library::MAX_DEF_PARTS`), not the circuit's. Blocks went from 8 to 32 with the
+/// component platform (LLD §17 D12).
 pub const MAX_PARTS: usize = 300;
-pub const MAX_BLOCKS: usize = 8;
+pub const MAX_BLOCKS: usize = 32;
 pub const MAX_NETS: usize = 400;
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
@@ -37,6 +43,24 @@ pub struct Circuit {
     pub analyses: Vec<Analysis>,
     /// Kept sorted and de-duplicated so the order never depends on edit history.
     pub hints: Vec<LayoutHint>,
+    /// Component definitions the parts use (`lib:<name>`), embedded so the circuit is
+    /// self-contained (LLD §17 D1). Changed only by `lib.*` ops.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub library: IndexMap<PartId, ComponentDef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tests: Vec<TestPlan>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<Requirement>,
+}
+
+/// Bring a circuit of an earlier schema version to this one. Version 1 had none of the new fields,
+/// which default to empty, so only the number changes; a newer version than this core knows is
+/// left alone for `validate` to refuse.
+pub fn migrate(mut c: Circuit) -> Circuit {
+    if c.schema_version == 1 {
+        c.schema_version = SCHEMA_VERSION;
+    }
+    c
 }
 
 impl Circuit {
@@ -50,6 +74,9 @@ impl Circuit {
             blocks: IndexMap::new(),
             analyses: Vec::new(),
             hints: Vec::new(),
+            library: IndexMap::new(),
+            tests: Vec::new(),
+            requirements: Vec::new(),
         }
     }
 

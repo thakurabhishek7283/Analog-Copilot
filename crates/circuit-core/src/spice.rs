@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::erc::{floating_nets, implicit_supplies};
 use crate::ir::*;
+use crate::library::{self, Model};
 use crate::registry::{Category, PartDef, Registry};
 use crate::template::checks::{SpecCheckDef, emit as emit_checks};
 use crate::units::{Unit, spice_number};
@@ -37,6 +38,10 @@ pub struct Netlist {
     pub pin_currents: BTreeMap<String, Vec<CurrentTerm>>,
     /// The analyses in the deck, in order (resolved from `CompileOpts`).
     pub analyses: Vec<Analysis>,
+    /// Primitive devices the deck simulates, library components flattened (LLD §17 D12: the
+    /// editor runs live below a budget and asks for a Run above it).
+    #[serde(default)]
+    pub leaf_devices: u64,
 }
 
 /// `coeff · vector`, e.g. `-1 · @r1[i]`.
@@ -94,14 +99,37 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
     let mut nc_nodes = BTreeSet::new();
     let mut pin_currents = BTreeMap::new();
 
+    let mut leaf_devices = 0;
     for refdes in c.sorted_refdes() {
         let inst = &c.parts[refdes];
-        let def =
-            reg.part(&inst.part).ok_or_else(|| cerr(Some(refdes), format!("{} is not in the registry", inst.part)))?;
+        let def = library::part_def(reg, c, &inst.part)
+            .ok_or_else(|| cerr(Some(refdes), format!("{} is not in the registry or the library", inst.part)))?;
+        if c.library.contains_key(&inst.part) {
+            leaf_devices += library::leaf_devices(reg, &c.library, &inst.part);
+            // An instance of a library component: one `X` line, pins in the definition's order.
+            let mut line = format!("X{refdes}");
+            for p in &def.pins {
+                let n = match pin_net.get(&PinRef::new(refdes, &p.name)) {
+                    Some(net) => node_name(net),
+                    None => {
+                        let n = format!("nc_{refdes}_{}", p.name).to_ascii_lowercase();
+                        nc_nodes.insert(n.clone());
+                        n
+                    }
+                };
+                line.push(' ');
+                line.push_str(&n);
+            }
+            line.push(' ');
+            line.push_str(&library::subckt_name(&inst.part));
+            elements.push(line);
+            continue;
+        }
         let Some(sp) = &def.spice else { continue };
         if let Some(inc) = &sp.include {
             includes.insert(inc.clone());
         }
+        let before = elements.len();
         let mut node = |pin: &str| -> String {
             match pin_net.get(&PinRef::new(refdes, pin)) {
                 Some(net) => node_name(net),
@@ -127,6 +155,7 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
                 }
             }
         }
+        leaf_devices += (elements.len() - before) as u64;
         let r = refdes.to_ascii_lowercase();
         match def.category {
             Category::R | Category::C | Category::L => saves.push(format!("@{r}[i]")),
@@ -180,10 +209,15 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
         });
     }
 
+    let subckts = subckts(c, reg, &mut includes)?;
     let includes: Vec<String> = includes.into_iter().collect();
     let mut text = String::from("* circuit-tutor netlist\n");
     for inc in &includes {
         text.push_str(&format!(".include {inc}\n"));
+    }
+    for line in &subckts {
+        text.push_str(line);
+        text.push('\n');
     }
     for e in &elements {
         text.push_str(e);
@@ -203,7 +237,86 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
     text.push_str(".end\n");
 
     let hash = Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
-    Ok(Netlist { text, hash, node_map, includes, meas, checks, pin_currents, analyses })
+    Ok(Netlist { text, hash, node_map, includes, meas, checks, pin_currents, analyses, leaf_devices })
+}
+
+/// One `.subckt` per library definition the circuit uses, directly or inside another, in id
+/// order. Inside, nodes are the definition's own net names (`GND` is node 0) and refdes are its
+/// local ones; values are written in, so the hash covers them and no value goes through numparam
+/// (LLD §17, P5.0). A pin no net reaches (an `nc` pin) gets a 1 GΩ shunt: inside a definition
+/// nothing else can tie it down.
+fn subckts(c: &Circuit, reg: &Registry, includes: &mut BTreeSet<String>) -> Result<Vec<String>, CompileError> {
+    let used = library::closure(&c.library, c.parts.values().map(|p| p.part.as_str()));
+    let mut out = Vec::new();
+    for id in used {
+        let def = &c.library[id];
+        let Model::Composite(m) = &def.model;
+        let ports: Vec<String> = def.part.pins.iter().map(|p| p.name.to_ascii_lowercase()).collect();
+        out.push(format!(".subckt {} {}", library::subckt_name(id), ports.join(" ")));
+        let mut net_of: BTreeMap<PinRef, String> = BTreeMap::new();
+        for (name, pins) in &m.nets {
+            for p in pins {
+                net_of.insert(p.clone(), if name == GND { "0".to_string() } else { name.to_ascii_lowercase() });
+            }
+        }
+        let mut locals: Vec<&String> = m.parts.keys().collect();
+        locals.sort_by_key(|r| refdes_sort_key(r));
+        let mut floating = BTreeSet::new();
+        for local in locals {
+            let cp = &m.parts[local];
+            let at = format!("{id} {local}");
+            let at = Some(at.as_str());
+            let pdef =
+                library::part_def(reg, c, &cp.part).ok_or_else(|| cerr(at, format!("{} is unknown", cp.part)))?;
+            let mut node = |pin: &str| -> String {
+                net_of.get(&PinRef::new(local, pin)).cloned().unwrap_or_else(|| {
+                    let n = format!("nc_{local}_{pin}").to_ascii_lowercase();
+                    floating.insert(n.clone());
+                    n
+                })
+            };
+            if c.library.contains_key(&cp.part) {
+                let nodes: Vec<String> = pdef.pins.iter().map(|p| node(&p.name)).collect();
+                out.push(format!("X{local} {} {}", nodes.join(" "), library::subckt_name(&cp.part)));
+                continue;
+            }
+            let Some(sp) = &pdef.spice else { continue };
+            if let Some(inc) = &sp.include {
+                includes.insert(inc.clone());
+            }
+            let mut params = BTreeMap::new();
+            for (k, pd) in &pdef.params {
+                let text = cp.params.get(k).unwrap_or(&pd.default);
+                let q = crate::units::parse_quantity(text, pd.unit).map_err(|e| cerr(at, format!("{k}: {e}")))?;
+                params.insert(k.clone(), q);
+            }
+            let inst = PartInstance {
+                refdes: local.clone(),
+                part: cp.part.clone(),
+                params,
+                block: None,
+                origin: Origin::User,
+                pinned: None,
+            };
+            if let Some(line) = &sp.line {
+                out.push(expand(line, |name| resolve(name, &inst, pdef, None, &mut node)).map_err(|m| cerr(at, m))?);
+            } else if let Some(line) = &sp.unit_line {
+                for unit in &pdef.units {
+                    if pdef.unit_pins(unit).any(|p| net_of.contains_key(&PinRef::new(local, &p.name))) {
+                        out.push(
+                            expand(line, |name| resolve(name, &inst, pdef, Some(unit), &mut node))
+                                .map_err(|m| cerr(at, m))?,
+                        );
+                    }
+                }
+            }
+        }
+        for n in floating {
+            out.push(format!("Rshunt_{n} {n} 0 {}", spice_number(SHUNT_OHMS)));
+        }
+        out.push(format!(".ends {}", library::subckt_name(id)));
+    }
+    Ok(out)
 }
 
 /// Pin currents of a primitive device, from SPICE's fixed terminal order (`R n+ n-`,

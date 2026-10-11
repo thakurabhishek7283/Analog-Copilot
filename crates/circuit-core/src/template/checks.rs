@@ -86,7 +86,7 @@ pub fn emit(c: &Circuit, reg: &Registry, analyses: &[Analysis]) -> (Vec<MeasDef>
     // A signal to measure a response to: a periodic source (one with a frequency), as for the
     // editor's default transient.
     let signal = c.parts.values().any(|p| {
-        reg.part(&p.part).is_some_and(|d| d.category == crate::registry::Category::V)
+        crate::library::part_def(reg, c, &p.part).is_some_and(|d| d.category == crate::registry::Category::V)
             && p.params.values().any(|q| q.unit == Unit::Hertz && q.si > 0.0)
     });
     let mut cards = Vec::new();

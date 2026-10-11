@@ -17,8 +17,9 @@ const CATEGORY_TITLES: Record<Category, string> = {
   Q: "Transistors",
   U: "ICs",
   J: "Connectors",
+  X: "Components",
 };
-const CATEGORY_ORDER: Category[] = ["V", "R", "C", "L", "D", "Q", "U", "J"];
+const CATEGORY_ORDER: Category[] = ["V", "R", "C", "L", "D", "Q", "U", "J", "X"];
 
 const sameTool = (a: Tool, b: Tool) => a.kind === b.kind && (a.kind !== "rail" || (b.kind === "rail" && a.net === b.net));
 

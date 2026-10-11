@@ -53,6 +53,13 @@
         "$ref": "#/$defs/Analysis"
       },
       "description": "The analyses in the deck, in order (resolved from `CompileOpts`)."
+    },
+    "leaf_devices": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0,
+      "description": "Primitive devices the deck simulates, library components flattened (LLD §17 D12: the\neditor runs live below a budget and asks for a Run above it).",
+      "default": 0
     }
   },
   "required": [

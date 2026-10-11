@@ -119,6 +119,88 @@ pub fn sprite_sheet<'a>(symbols: impl IntoIterator<Item = (&'a str, &'a ParsedSy
     out
 }
 
+/// A library component's symbol when it has no registry symbol (`symbol: auto`, LLD §17): a box in
+/// the registry's own style (the NE555's), inputs on the left, outputs on the right, positive
+/// supplies on top, negative supplies and ground below; passive and `nc` pins fill the shorter
+/// side. Built here, not in the editor, so geometry still comes only from the core.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+pub struct AutoSymbol {
+    /// Symbol id in the sprite sheet: `lib_<name>`.
+    pub id: String,
+    pub def: SymbolDef,
+    /// SVG markup for the inside of its `<symbol>` (plain shapes, `currentColor`, pin names as text).
+    pub body: String,
+}
+
+/// Pin spacing on an auto symbol's sides, and the stub between box and anchor.
+const AUTO_PITCH: u32 = 2 * GRID;
+
+pub fn auto_symbol(part: &crate::registry::PartDef) -> AutoSymbol {
+    use crate::registry::PinType;
+    let (mut left, mut right, mut top, mut bottom) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut free = Vec::new();
+    for p in &part.pins {
+        match p.kind {
+            PinType::Input => left.push(p.name.as_str()),
+            PinType::Output => right.push(p.name.as_str()),
+            PinType::PowerPos => top.push(p.name.as_str()),
+            PinType::PowerNeg => bottom.push(p.name.as_str()),
+            PinType::Passive | PinType::Nc => free.push(p.name.as_str()),
+        }
+    }
+    for name in free {
+        if left.len() <= right.len() { left.push(name) } else { right.push(name) }
+    }
+    // Pin names are [A-Za-z0-9_] (the registry checks it), so they need no escaping. About 4.5
+    // units per character at the 7-unit font.
+    let text_w = |names: &[&str]| names.iter().map(|n| n.len() as u32 * 9 / 2).max().unwrap_or(0);
+    // Widths are whole multiples of two grid units, so pins centred on top and below sit on the grid.
+    let snap = |x: u32| x.div_ceil(2 * GRID) * 2 * GRID;
+    let rows = left.len().max(right.len()).max(1) as u32;
+    let cols = top.len().max(bottom.len()) as u32;
+    let height = 2 * GRID + AUTO_PITCH * (rows + 1);
+    let width =
+        snap((4 * GRID + AUTO_PITCH * cols).max(6 * GRID).max(2 * GRID + text_w(&left) + text_w(&right) + 3 * GRID));
+    let mut pins = BTreeMap::new();
+    let mut body =
+        format!("<rect x=\"{GRID}\" y=\"{GRID}\" width=\"{}\" height=\"{}\"/>", width - 2 * GRID, height - 2 * GRID);
+    let mut stubs = String::new();
+    let mut labels = String::new();
+    let row_y = |i: usize| GRID + AUTO_PITCH * (i as u32 + 1);
+    let col_x = |i: usize, n: usize| width / 2 + AUTO_PITCH * i as u32 - GRID * (n as u32 - 1);
+    for (i, name) in left.iter().enumerate() {
+        let y = row_y(i);
+        pins.insert(name.to_string(), Anchor { x: 0, y, side: Side::Left });
+        stubs.push_str(&format!("M0 {y}H{GRID}"));
+        labels.push_str(&format!("<text x=\"{}\" y=\"{}.5\">{name}</text>", GRID + 3, y + 2));
+    }
+    for (i, name) in right.iter().enumerate() {
+        let y = row_y(i);
+        pins.insert(name.to_string(), Anchor { x: width, y, side: Side::Right });
+        stubs.push_str(&format!("M{} {y}H{width}", width - GRID));
+        labels.push_str(&format!(
+            "<text x=\"{}\" y=\"{}.5\" text-anchor=\"end\">{name}</text>",
+            width - GRID - 3,
+            y + 2
+        ));
+    }
+    for (i, name) in top.iter().enumerate() {
+        let x = col_x(i, top.len());
+        pins.insert(name.to_string(), Anchor { x, y: 0, side: Side::Top });
+        stubs.push_str(&format!("M{x} 0V{GRID}"));
+        labels.push_str(&format!("<text x=\"{x}\" y=\"{}\" text-anchor=\"middle\">{name}</text>", GRID + 8));
+    }
+    for (i, name) in bottom.iter().enumerate() {
+        let x = col_x(i, bottom.len());
+        pins.insert(name.to_string(), Anchor { x, y: height, side: Side::Bottom });
+        stubs.push_str(&format!("M{x} {}V{height}", height - GRID));
+        labels.push_str(&format!("<text x=\"{x}\" y=\"{}\" text-anchor=\"middle\">{name}</text>", height - GRID - 3));
+    }
+    body.push_str(&format!("<path d=\"{stubs}\"/>"));
+    body.push_str(&format!("<g font-size=\"7\" fill=\"currentColor\" stroke=\"none\">{labels}</g>"));
+    AutoSymbol { id: crate::library::subckt_name(&part.id), def: SymbolDef { width, height, pins }, body }
+}
+
 #[cfg(feature = "sources")]
 pub use parse::parse_svg;
 
@@ -357,5 +439,73 @@ mod tests {
         assert_eq!(symbol_id("symbols/Opamp.svg"), None);
         assert_eq!(symbol_id("opamp.svg"), None);
         assert_eq!(symbol_id("symbols/../x.svg"), None);
+    }
+}
+
+#[cfg(test)]
+mod auto_tests {
+    use super::*;
+    use crate::registry::{Category, PartDef, PinDef, PinType};
+
+    fn part(pins: &[(&str, PinType)]) -> PartDef {
+        PartDef {
+            id: "lib:t".into(),
+            category: Category::X,
+            prefix: None,
+            title: "T".into(),
+            role_tags: vec![],
+            units: vec![],
+            pins: pins
+                .iter()
+                .enumerate()
+                .map(|(i, (n, k))| PinDef {
+                    name: n.to_string(),
+                    num: i as u16 + 1,
+                    kind: *k,
+                    unit: None,
+                    dc_group: None,
+                })
+                .collect(),
+            params: Default::default(),
+            limits: Default::default(),
+            dc_param: None,
+            spice: None,
+            symbol: "auto".into(),
+            breadboard: None,
+            teach: None,
+            hazard: None,
+        }
+    }
+
+    #[test]
+    fn auto_symbols_follow_the_registry_rules() {
+        use PinType::*;
+        let cases: Vec<Vec<(&str, PinType)>> = vec![
+            vec![("IN", Input), ("OUT", Output), ("VCC", PowerPos), ("VEE", PowerNeg)],
+            vec![("A", Passive)],
+            vec![
+                ("IN1", Input),
+                ("IN2", Input),
+                ("IN3", Input),
+                ("OUT", Output),
+                ("REF", Passive),
+                ("V1", PowerPos),
+                ("V2", PowerPos),
+                ("G", PowerNeg),
+            ],
+            vec![("A_VERY_LONG_PIN_NAME", Input), ("ANOTHER_LONG_ONE", Output)],
+        ];
+        for pins in cases {
+            let s = auto_symbol(&part(&pins));
+            assert_eq!(s.id, "lib_t");
+            assert!(s.def.validate().is_empty(), "{pins:?}: {:?}", s.def.validate());
+            assert_eq!(s.def.pins.len(), pins.len(), "every pin has an anchor");
+            assert!(!s.body.contains("data-pin"));
+        }
+        let s = auto_symbol(&part(&[("IN", Input), ("OUT", Output), ("VCC", PowerPos), ("VEE", PowerNeg)]));
+        assert_eq!(s.def.pins["IN"].side, Side::Left);
+        assert_eq!(s.def.pins["OUT"].side, Side::Right);
+        assert_eq!(s.def.pins["VCC"].side, Side::Top);
+        assert_eq!(s.def.pins["VEE"].side, Side::Bottom);
     }
 }

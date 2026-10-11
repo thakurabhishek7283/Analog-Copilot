@@ -22,7 +22,7 @@ pub fn circuit_text(c: &Circuit, reg: &Registry) -> String {
         for (k, q) in &inst.params {
             out.push_str(&format!(" {k}={}", q.display));
         }
-        if let Some(def) = reg.part(&inst.part) {
+        if let Some(def) = crate::library::part_def(reg, c, &inst.part) {
             for p in &def.pins {
                 let net = pin_net.get(&crate::ir::PinRef::new(refdes, &p.name)).map(|n| n.as_str()).unwrap_or("-");
                 out.push_str(&format!(" {}:{net}", p.name));

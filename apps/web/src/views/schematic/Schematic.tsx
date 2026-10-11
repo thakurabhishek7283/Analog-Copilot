@@ -10,7 +10,7 @@ import { select } from "d3-selection";
 import { type D3ZoomEvent, type ZoomBehavior, type ZoomTransform, zoom, zoomIdentity } from "d3-zoom";
 import { memo, useEffect, useMemo, useRef } from "react";
 import { DomStage } from "../../anim/stage.ts";
-import type { CheckResult, PartDef, PartInstance } from "../../gen/contract.ts";
+import type { AutoSymbol, CheckResult, PartDef, PartInstance } from "../../gen/contract.ts";
 import { useCircuit, useEditor, useGen, useRetuned, useSwings, useUi } from "../../app/editorContext.ts";
 import { checkKey } from "../../tutor/predict.ts";
 import type { GhostView } from "../../store/generationStore.ts";
@@ -20,6 +20,25 @@ import { type Point, symbolTransform } from "../../workers/layout.geometry.ts";
 import type { BlockFrame, Layout, PlacedFlag, PlacedSymbol } from "../../workers/layout.types.ts";
 import { formatNet, netTitle, partName, partValue, type Swing } from "./labels.ts";
 import { OverlayRenderer } from "./overlay.ts";
+
+/** The library components' generated symbols (LLD §17), next to the sprite sheet's. Their markup
+ * comes from the core, built from pin names the core has checked are [A-Za-z0-9_]. */
+export function LibrarySymbolDefs({ symbols }: { symbols: Record<string, AutoSymbol | undefined> }) {
+  const inner = useMemo(
+    () =>
+      Object.values(symbols)
+        .filter((s): s is AutoSymbol => !!s)
+        .map((s) => `<symbol id="sym-${s.id}" viewBox="0 0 ${s.def.width} ${s.def.height}" overflow="visible">${s.body}</symbol>`)
+        .join(""),
+    [symbols],
+  );
+  if (!inner) return null;
+  return (
+    <svg className="symbol-defs" aria-hidden="true" width="0" height="0">
+      <defs dangerouslySetInnerHTML={{ __html: inner }} />
+    </svg>
+  );
+}
 
 /** The sprite sheet's <symbol> elements, inlined once (cross-origin <use href> is not allowed). */
 export function SymbolDefs({ sprite }: { sprite: string }) {

@@ -44,6 +44,13 @@
         "category": {
           "$ref": "#/$defs/Category"
         },
+        "prefix": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Refdes prefix when it is not the category letter (`RV`, `TP`); see [`EXTRA_PREFIXES`]."
+        },
         "title": {
           "type": "string"
         },
@@ -138,16 +145,25 @@
       ]
     },
     "Category": {
-      "type": "string",
-      "enum": [
-        "R",
-        "C",
-        "L",
-        "D",
-        "Q",
-        "U",
-        "V",
-        "J"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "R",
+            "C",
+            "L",
+            "D",
+            "Q",
+            "U",
+            "V",
+            "J"
+          ]
+        },
+        {
+          "type": "string",
+          "const": "X",
+          "description": "A component from the project library (a sub-circuit): its behaviour comes from its pins'\nsemantics, not from a category rule, and it compiles to an `X` line."
+        }
       ]
     },
     "PinDef": {
@@ -171,6 +187,16 @@
             "string",
             "null"
           ]
+        },
+        "dc_group": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "For a library component: the pins joined by a DC path inside it share a group, and group 0\nis a DC path to ground (ERC003 on the outside, LLD §17 D6). Computed by `apply()` from the\ncomponent's own netlist, never taken from a client; unused on registry parts, whose\ncategory says which pins conduct."
         }
       },
       "required": [

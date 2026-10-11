@@ -16,7 +16,7 @@ use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::apply::{apply_ops, net_conflict, refdes_category, valid_net_id};
+use crate::apply::{apply_ops, net_conflict, refdes_prefix, valid_net_id};
 use crate::error::{ErrorCode as E, OpError, err};
 use crate::ir::*;
 use crate::ops::{Author, BlockBegin, BlockRef, NetConnect, Op, PartAdd};
@@ -342,11 +342,11 @@ impl TemplateDef {
                 errs.push(format!("part {local}: {} is not in the registry", tp.part));
                 continue;
             };
-            if refdes_category(local) != Some(def.category) {
+            if refdes_prefix(local) != Some(def.refdes_prefix()) {
                 errs.push(format!(
                     "part {local}: a {:?} part needs a refdes like {}1",
                     def.category,
-                    def.category.letter()
+                    def.refdes_prefix()
                 ));
             }
         }

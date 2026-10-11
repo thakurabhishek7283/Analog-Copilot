@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{ErrorCode as E, OpError, err};
 use crate::ir::*;
+use crate::library::{self, Model};
 use crate::ops::*;
-use crate::registry::{Category, PartDef, Registry};
+use crate::registry::{Category, PartDef, PinType, Registry};
+use crate::testplan;
 use crate::units::{Quantity, parse_quantity};
 
 /// Result of applying one op.
@@ -33,6 +35,12 @@ pub struct Patch {
     pub blocks_removed: Vec<BlockId>,
     pub analyses_changed: bool,
     pub hints_changed: bool,
+    #[serde(default)]
+    pub library_changed: bool,
+    #[serde(default)]
+    pub tests_changed: bool,
+    #[serde(default)]
+    pub requirements_changed: bool,
 }
 
 impl Patch {
@@ -54,6 +62,9 @@ impl Patch {
             blocks_removed,
             analyses_changed: before.analyses != after.analyses,
             hints_changed: before.hints != after.hints,
+            library_changed: before.library != after.library,
+            tests_changed: before.tests != after.tests,
+            requirements_changed: before.requirements != after.requirements,
         }
     }
 }
@@ -154,7 +165,18 @@ pub fn apply_all(c: &Circuit, reg: &Registry, envs: &[OpEnvelope]) -> Trial {
 }
 
 fn apply_in_place(c: &mut Circuit, reg: &Registry, op: &Op, ctx: &Ctx) -> Result<Vec<Op>, OpError> {
-    let inverse = match op {
+    if let Op::Narrate(_) = op {
+        return Ok(Vec::new()); // lesson track only; not an IR change
+    }
+    let inverse = dispatch(c, reg, op, ctx)?;
+    c.rev += 1;
+    Ok(inverse)
+}
+
+/// One op's change, without the rev bump: `instance.expand` applies its parts through here, so it
+/// is still one op (and one rev) to the log.
+fn dispatch(c: &mut Circuit, reg: &Registry, op: &Op, ctx: &Ctx) -> Result<Vec<Op>, OpError> {
+    Ok(match op {
         Op::BlockBegin(b) => block_begin(c, b)?,
         Op::BlockCommit(b) => block_commit(c, b)?,
         Op::BlockAbort(b) => block_abort(c, b)?,
@@ -168,24 +190,40 @@ fn apply_in_place(c: &mut Circuit, reg: &Registry, op: &Op, ctx: &Ctx) -> Result
         Op::NetConnect(b) => net_connect(c, reg, b)?,
         Op::NetDisconnect(b) => net_disconnect(c, b)?,
         Op::NetRename(b) => net_rename(c, b)?,
-        Op::AnalysisSet(b) => analysis_set(c, b)?,
+        Op::AnalysisSet(b) => analysis_set(c, reg, b)?,
         Op::HintAdd(b) => hint_add(c, b)?,
         Op::HintRemove(b) => hint_remove(c, b)?,
-        Op::Narrate(_) => return Ok(Vec::new()), // lesson track only; not an IR change
-    };
-    c.rev += 1;
-    Ok(inverse)
+        Op::Narrate(_) => Vec::new(),
+        Op::LibAdd(b) => lib_add(c, reg, b)?,
+        Op::LibUpdate(b) => lib_update(c, reg, b)?,
+        Op::LibRemove(b) => lib_remove(c, b)?,
+        Op::InstanceExpand(b) => instance_expand(c, reg, b, ctx)?,
+        Op::BlockSetSpec(b) => block_set_spec(c, b)?,
+        Op::TestSet(b) => test_set(c, reg, b)?,
+        Op::ReqSet(b) => req_set(c, b)?,
+    })
 }
 
 // ---------------------------------------------------------------- identifiers
 
-/// `R12`, `U1`: category letter plus 1–4 digits without a leading zero.
-pub fn refdes_category(r: &str) -> Option<Category> {
-    let mut chars = r.chars();
-    let cat = Category::from_letter(chars.next()?)?;
-    let digits = chars.as_str();
-    let ok = (1..=4).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()) && !digits.starts_with('0');
-    ok.then_some(cat)
+/// The prefix of a refdes: `R12` -> `R`, `TP3` -> `TP`. A refdes is 1–3 capital letters, then 1–4
+/// digits without a leading zero; which prefix a part takes is its own (`PartDef::refdes_prefix`).
+pub fn refdes_prefix(r: &str) -> Option<String> {
+    let split = r.find(|c: char| !c.is_ascii_uppercase())?;
+    let (letters, digits) = r.split_at(split);
+    let ok = (1..=3).contains(&letters.len())
+        && (1..=4).contains(&digits.len())
+        && digits.bytes().all(|b| b.is_ascii_digit())
+        && !digits.starts_with('0');
+    ok.then(|| letters.to_string())
+}
+
+/// The definition of `id`, cloned so the circuit can change while it is in use.
+fn find_def(c: &Circuit, reg: &Registry, id: &str) -> Result<PartDef, OpError> {
+    library::part_def(reg, c, id).cloned().ok_or_else(|| {
+        let what = if id.starts_with(library::LIB_PREFIX) { "the project library" } else { "the registry" };
+        OpError::new(E::PartNotInRegistry, format!("{id} is not in {what}"))
+    })
 }
 
 /// `GND`, or a letter followed by up to 63 of `[A-Za-z0-9_]`. Case-insensitive `gnd` and the
@@ -325,11 +363,9 @@ fn block_remove(c: &mut Circuit, b: &BlockRef) -> Result<Vec<Op>, OpError> {
 
 // ---------------------------------------------------------------- parts
 
-fn lookup_part<'r>(c: &Circuit, reg: &'r Registry, refdes: &str) -> Result<(PartInstance, &'r PartDef), OpError> {
+fn lookup_part(c: &Circuit, reg: &Registry, refdes: &str) -> Result<(PartInstance, PartDef), OpError> {
     let inst = c.parts.get(refdes).ok_or_else(|| OpError::new(E::PartNotFound, format!("no part {refdes}")))?;
-    let def = reg
-        .part(&inst.part)
-        .ok_or_else(|| OpError::new(E::PartNotInRegistry, format!("{} is not in the registry", inst.part)))?;
+    let def = find_def(c, reg, &inst.part)?;
     Ok((inst.clone(), def))
 }
 
@@ -359,16 +395,11 @@ fn default_params(def: &PartDef) -> BTreeMap<String, Quantity> {
 }
 
 fn part_add(c: &mut Circuit, reg: &Registry, b: &PartAdd, ctx: &Ctx) -> Result<Vec<Op>, OpError> {
-    let cat = refdes_category(&b.refdes)
+    let prefix = refdes_prefix(&b.refdes)
         .ok_or_else(|| OpError::new(E::RefdesInvalid, format!("\"{}\" is not a valid refdes", b.refdes)))?;
-    let def = reg
-        .part(&b.part)
-        .ok_or_else(|| OpError::new(E::PartNotInRegistry, format!("{} is not in the registry", b.part)))?;
-    if def.category != cat {
-        return err(
-            E::RefdesInvalid,
-            format!("{} is a {:?} part; its refdes must start with {}", b.part, def.category, def.category.letter()),
-        );
+    let def = &find_def(c, reg, &b.part)?;
+    if def.refdes_prefix() != prefix {
+        return err(E::RefdesInvalid, format!("the refdes of a {} must start with {}", b.part, def.refdes_prefix()));
     }
     if c.parts.contains_key(&b.refdes) {
         return err(E::RefdesConflict, format!("{} already exists", b.refdes));
@@ -465,7 +496,7 @@ fn part_remove(c: &mut Circuit, b: &PartRef) -> Result<Vec<Op>, OpError> {
 
 fn part_set_param(c: &mut Circuit, reg: &Registry, b: &PartSetParam) -> Result<Vec<Op>, OpError> {
     let (inst, def) = lookup_part(c, reg, &b.refdes)?;
-    let q = parse_param(def, &b.key, &b.value)?;
+    let q = parse_param(&def, &b.key, &b.value)?;
     let old = inst.params.get(&b.key).map(|q| q.display.clone()).unwrap_or_else(|| def.params[&b.key].default.clone());
     c.parts[&b.refdes].params.insert(b.key.clone(), q);
     Ok(vec![Op::PartSetParam(PartSetParam { refdes: b.refdes.clone(), key: b.key.clone(), value: old })])
@@ -473,11 +504,9 @@ fn part_set_param(c: &mut Circuit, reg: &Registry, b: &PartSetParam) -> Result<V
 
 fn part_swap(c: &mut Circuit, reg: &Registry, b: &PartSwap) -> Result<Vec<Op>, OpError> {
     let (inst, old_def) = lookup_part(c, reg, &b.refdes)?;
-    let new_def = reg
-        .part(&b.part)
-        .ok_or_else(|| OpError::new(E::PartNotInRegistry, format!("{} is not in the registry", b.part)))?;
-    if new_def.category != old_def.category {
-        return err(E::CategoryMismatch, format!("cannot swap {} for a {:?} part", b.refdes, new_def.category));
+    let new_def = &find_def(c, reg, &b.part)?;
+    if new_def.category != old_def.category || new_def.refdes_prefix() != old_def.refdes_prefix() {
+        return err(E::CategoryMismatch, format!("cannot swap {} for {}, a different kind of part", b.refdes, b.part));
     }
     for net in c.nets.values() {
         for p in net.pins.iter().filter(|p| p.refdes == b.refdes) {
@@ -529,8 +558,7 @@ pub(crate) fn check_pin_exists(c: &Circuit, reg: &Registry, pin: &PinRef) -> Res
         .parts
         .get(&pin.refdes)
         .ok_or_else(|| OpError::new(E::PinNotFound, format!("{pin}: no part {}", pin.refdes)))?;
-    let def = reg
-        .part(&inst.part)
+    let def = library::part_def(reg, c, &inst.part)
         .ok_or_else(|| OpError::new(E::PartNotInRegistry, format!("{} is not in the registry", inst.part)))?;
     if def.pin(&pin.pin).is_none() {
         let names: Vec<&str> = def.pins.iter().map(|p| p.name.as_str()).collect();
@@ -651,12 +679,17 @@ fn net_rename(c: &mut Circuit, b: &NetRename) -> Result<Vec<Op>, OpError> {
 
 // ---------------------------------------------------------------- analyses and hints
 
-fn validate_analysis(c: &Circuit, a: &Analysis) -> Result<(), OpError> {
+fn validate_analysis(c: &Circuit, reg: &Registry, a: &Analysis) -> Result<(), OpError> {
     let bad = |m: &str| err(E::AnalysisInvalid, m.to_string());
     match a {
         Analysis::Op => Ok(()),
         Analysis::Dc { source, start, stop, step } => {
-            if refdes_category(source) != Some(Category::V) || !c.parts.contains_key(source) {
+            let is_source = c
+                .parts
+                .get(source)
+                .and_then(|p| library::part_def(reg, c, &p.part))
+                .is_some_and(|d| d.category == Category::V);
+            if !is_source {
                 return bad(&format!("DC sweep source {source} must be an existing voltage source"));
             }
             if ![start, stop, step].iter().all(|x| x.is_finite()) || *step == 0.0 {
@@ -689,9 +722,9 @@ fn validate_analysis(c: &Circuit, a: &Analysis) -> Result<(), OpError> {
     }
 }
 
-fn analysis_set(c: &mut Circuit, b: &AnalysisSet) -> Result<Vec<Op>, OpError> {
+fn analysis_set(c: &mut Circuit, reg: &Registry, b: &AnalysisSet) -> Result<Vec<Op>, OpError> {
     for a in &b.analyses {
-        validate_analysis(c, a)?;
+        validate_analysis(c, reg, a)?;
     }
     let prev = std::mem::replace(&mut c.analyses, b.analyses.clone());
     Ok(vec![Op::AnalysisSet(AnalysisSet { analyses: prev })])
@@ -731,6 +764,220 @@ fn hint_remove(c: &mut Circuit, b: &HintBody) -> Result<Vec<Op>, OpError> {
     Ok(vec![Op::HintAdd(HintBody { hint: b.hint.clone() })])
 }
 
+// ---------------------------------------------------------------- library (LLD §17)
+
+fn lib_add(c: &mut Circuit, reg: &Registry, b: &LibAdd) -> Result<Vec<Op>, OpError> {
+    let id = &b.def.part.id;
+    if c.library.contains_key(id) {
+        return err(E::ComponentInvalid, format!("{id} is already in the library; change it with lib.update"));
+    }
+    if c.library.len() >= library::MAX_LIBRARY {
+        return err(E::LimitExceeded, format!("at most {} library components", library::MAX_LIBRARY));
+    }
+    let def = library::prepare(&b.def, reg, &c.library)?;
+    c.library.insert(id.clone(), def);
+    // Sorted, like hints: the order never depends on edit history, so undo restores it exactly.
+    c.library.sort_keys();
+    Ok(vec![Op::LibRemove(LibRemove { id: id.clone() })])
+}
+
+fn lib_remove(c: &mut Circuit, b: &LibRemove) -> Result<Vec<Op>, OpError> {
+    if !c.library.contains_key(&b.id) {
+        return err(E::ComponentNotFound, format!("no library component {}", b.id));
+    }
+    let mut users: Vec<String> = c.parts.values().filter(|p| p.part == b.id).map(|p| p.refdes.clone()).collect();
+    users.extend(
+        c.library.iter().filter(|(_, d)| library::direct_uses(d).contains(b.id.as_str())).map(|(k, _)| k.clone()),
+    );
+    if !users.is_empty() {
+        return err(E::ComponentInUse, format!("{} is used by {}", b.id, users.join(", ")));
+    }
+    let def = c.library.shift_remove(&b.id).expect("checked above");
+    Ok(vec![Op::LibAdd(LibAdd { def: Box::new(def) })])
+}
+
+fn lib_update(c: &mut Circuit, reg: &Registry, b: &LibUpdate) -> Result<Vec<Op>, OpError> {
+    if b.def.part.id != b.id {
+        return err(E::ComponentInvalid, format!("lib.update {} carries a definition of {}", b.id, b.def.part.id));
+    }
+    let old = c
+        .library
+        .get(&b.id)
+        .cloned()
+        .ok_or_else(|| OpError::new(E::ComponentNotFound, format!("no library component {}", b.id)))?;
+    let new = library::prepare(&b.def, reg, &c.library)?;
+    if new.part.refdes_prefix() != old.part.refdes_prefix() {
+        return err(E::ComponentInvalid, format!("{} keeps its refdes prefix {}", b.id, old.part.refdes_prefix()));
+    }
+    // Instances keep their wiring, pins matched by name as `part.swap` does.
+    for net in c.nets.values() {
+        for p in net.pins.iter().filter(|p| c.parts[&p.refdes].part == b.id) {
+            if new.part.pin(&p.pin).is_none() {
+                return err(
+                    E::PinNotFound,
+                    format!("{} would lose pin {}, which {p} connects to {}", b.id, p.pin, net.id),
+                );
+            }
+        }
+    }
+    let mut lib = c.library.clone();
+    lib.insert(b.id.clone(), new);
+    // The definitions that use it are checked again, users last: their pins' DC groups may change.
+    for d in library::dependents_in_order(&lib, &b.id) {
+        let again = library::prepare(&lib[&d], reg, &lib)
+            .map_err(|e| OpError::new(e.code, format!("{d}, which uses {}: {}", b.id, e.message)))?;
+        lib.insert(d, again);
+    }
+    c.library = lib;
+    Ok(vec![Op::LibUpdate(LibUpdate { id: b.id.clone(), def: Box::new(old) })])
+}
+
+/// Replace an instance by the parts of its definition, one level deep, as a block whose ports are
+/// the component's pins. The instance's nets keep their ids, kinds and labels; internal nets get
+/// `<REFDES>_<NET>`. Applied through the ordinary handlers, so its inverse puts the instance back.
+fn instance_expand(c: &mut Circuit, reg: &Registry, b: &InstanceExpand, ctx: &Ctx) -> Result<Vec<Op>, OpError> {
+    let inst = c
+        .parts
+        .get(&b.refdes)
+        .cloned()
+        .ok_or_else(|| OpError::new(E::PartNotFound, format!("no part {}", b.refdes)))?;
+    let def = c.library.get(&inst.part).cloned().ok_or_else(|| {
+        OpError::new(
+            E::ComponentNotFound,
+            format!("{} is a {}, not a library component: it has nothing to expand", b.refdes, inst.part),
+        )
+    })?;
+    let Model::Composite(m) = &def.model;
+    let block = b.block.clone().unwrap_or_else(|| crate::template::free_block_id(c));
+
+    let upper = b.refdes.to_ascii_uppercase();
+    let mut taken: BTreeSet<String> = c.nets.keys().map(|k| k.to_ascii_lowercase()).collect();
+    let mut fresh = |name: &str| {
+        let base = format!("{upper}_{}", name.to_ascii_uppercase());
+        let mut id = base.clone();
+        let mut n = 2;
+        while taken.contains(&id.to_ascii_lowercase()) || !valid_net_id(&id) {
+            id = format!("{base}_{n}");
+            n += 1;
+        }
+        taken.insert(id.to_ascii_lowercase());
+        id
+    };
+    let mut net_for: BTreeMap<&str, (NetId, Option<NetKind>, Option<String>)> = BTreeMap::new();
+    for name in m.nets.keys() {
+        let bound = if name == GND {
+            (GND.to_string(), Some(NetKind::Ground), None)
+        } else if def.part.pin(name).is_some() {
+            match c.net_of(&PinRef::new(&b.refdes, name)).and_then(|n| c.nets.get(n)) {
+                Some(n) => (n.id.clone(), Some(n.kind), n.label.clone()),
+                None => (fresh(name), None, None),
+            }
+        } else {
+            (fresh(name), None, None)
+        };
+        net_for.insert(name, bound);
+    }
+    let refdes = crate::template::renumber(c, reg, m.parts.iter().map(|(l, p)| (l.as_str(), p.part.as_str())))?;
+    let ports = def
+        .part
+        .pins
+        .iter()
+        .filter_map(|p| {
+            let direction = match p.kind {
+                PinType::Input => PortDirection::Input,
+                PinType::Output => PortDirection::Output,
+                PinType::PowerPos => PortDirection::PowerPos,
+                PinType::PowerNeg => PortDirection::PowerNeg,
+                PinType::Passive => PortDirection::Bidir,
+                PinType::Nc => return None,
+            };
+            Some(BlockPort { name: p.name.clone(), direction, net: net_for[p.name.as_str()].0.clone() })
+        })
+        .collect();
+
+    let mut ops = vec![
+        Op::PartRemove(PartRef { refdes: b.refdes.clone() }),
+        Op::BlockBegin(BlockBegin {
+            id: block.clone(),
+            role: BlockRole::Other,
+            title: def.part.title.clone(),
+            spec: BTreeMap::new(),
+            ports,
+            template: None,
+        }),
+    ];
+    for (local, cp) in &m.parts {
+        ops.push(Op::PartAdd(PartAdd {
+            refdes: refdes[local].clone(),
+            part: cp.part.clone(),
+            params: cp.params.clone(),
+            block: Some(block.clone()),
+            origin: None,
+        }));
+    }
+    for (name, pins) in &m.nets {
+        let (net, kind, label) = net_for[name.as_str()].clone();
+        ops.push(Op::NetConnect(NetConnect {
+            net,
+            pins: pins.iter().map(|p| PinRef::new(&refdes[&p.refdes], &p.pin)).collect(),
+            kind,
+            label,
+        }));
+    }
+    ops.push(Op::BlockCommit(BlockRef { id: block }));
+    let mut inverses = Vec::with_capacity(ops.len());
+    for op in &ops {
+        inverses.push(dispatch(c, reg, op, ctx)?);
+    }
+    Ok(inverses.into_iter().rev().flatten().collect())
+}
+
+fn block_set_spec(c: &mut Circuit, b: &BlockSetSpec) -> Result<Vec<Op>, OpError> {
+    for (k, s) in &b.spec {
+        if !s.target.is_finite() || !(s.tol_pct.is_finite() && s.tol_pct > 0.0) {
+            return err(E::BadValue, format!("spec {k}: target must be finite and tol_pct > 0"));
+        }
+    }
+    let block = get_block(c, &b.id)?;
+    let prev = std::mem::replace(&mut block.spec, b.spec.clone());
+    Ok(vec![Op::BlockSetSpec(BlockSetSpec { id: b.id.clone(), spec: prev })])
+}
+
+fn test_set(c: &mut Circuit, reg: &Registry, b: &TestSet) -> Result<Vec<Op>, OpError> {
+    let mut errs = {
+        let circuit: &Circuit = c;
+        let check = |refdes: &str, key: &str, value: &str| -> Result<(), String> {
+            let inst = circuit.parts.get(refdes).ok_or_else(|| format!("no part {refdes}"))?;
+            let def = library::part_def(reg, circuit, &inst.part).ok_or_else(|| format!("{} is unknown", inst.part))?;
+            parse_param(def, key, value).map(|_| ()).map_err(|e| e.message)
+        };
+        testplan::check_tests(circuit, &b.tests, Some(&check))
+    };
+    for t in &b.tests {
+        for s in &t.scenarios {
+            for a in s.analyses.iter().flatten() {
+                if let Err(e) = validate_analysis(c, reg, a) {
+                    errs.push(format!("test {}, {}: {}", t.id, s.name, e.message));
+                }
+            }
+        }
+    }
+    if !errs.is_empty() {
+        return err(E::TestInvalid, errs.join("; "));
+    }
+    let prev = std::mem::replace(&mut c.tests, b.tests.clone());
+    Ok(vec![Op::TestSet(TestSet { tests: prev })])
+}
+
+fn req_set(c: &mut Circuit, b: &ReqSet) -> Result<Vec<Op>, OpError> {
+    let errs = testplan::check_requirements(c, &b.requirements, true);
+    if !errs.is_empty() {
+        return err(E::TestInvalid, errs.join("; "));
+    }
+    let prev = std::mem::replace(&mut c.requirements, b.requirements.clone());
+    Ok(vec![Op::ReqSet(ReqSet { requirements: prev })])
+}
+
 // ---------------------------------------------------------------- whole-circuit validation
 
 /// Check every structural invariant (LLD §3) on a circuit that did not come from `apply`, such as
@@ -756,12 +1003,12 @@ pub fn validate(c: &Circuit, reg: &Registry) -> Vec<OpError> {
         if *k != p.refdes {
             fail(E::SchemaError, format!("part key {k} != refdes {}", p.refdes));
         }
-        let Some(def) = reg.part(&p.part) else {
-            fail(E::PartNotInRegistry, format!("{k}: {} not in registry", p.part));
+        let Some(def) = library::part_def(reg, c, &p.part) else {
+            fail(E::PartNotInRegistry, format!("{k}: {} not in registry or library", p.part));
             continue;
         };
-        if refdes_category(k) != Some(def.category) {
-            fail(E::RefdesInvalid, format!("{k} does not match category {:?}", def.category));
+        if refdes_prefix(k) != Some(def.refdes_prefix()) {
+            fail(E::RefdesInvalid, format!("{k} does not take prefix {}", def.refdes_prefix()));
         }
         let declared: BTreeSet<&String> = def.params.keys().collect();
         let present: BTreeSet<&String> = p.params.keys().collect();
@@ -805,9 +1052,28 @@ pub fn validate(c: &Circuit, reg: &Registry) -> Vec<OpError> {
         }
     }
     for a in &c.analyses {
-        if let Err(e) = validate_analysis(c, a) {
+        if let Err(e) = validate_analysis(c, reg, a) {
             fail(e.code, e.message);
         }
+    }
+    if c.library.len() > library::MAX_LIBRARY || !c.library.keys().is_sorted() {
+        fail(
+            E::ComponentInvalid,
+            format!("the library holds at most {} definitions, sorted by id", library::MAX_LIBRARY),
+        );
+    }
+    for (k, d) in &c.library {
+        match library::prepare(d, reg, &c.library) {
+            Ok(p) if p == *d && *k == d.part.id => {}
+            Ok(_) => fail(E::ComponentInvalid, format!("{k}: definition differs from what the core computes for it")),
+            Err(e) => fail(e.code, format!("{k}: {}", e.message)),
+        }
+    }
+    for m in testplan::check_tests(c, &c.tests, None) {
+        fail(E::TestInvalid, m);
+    }
+    for m in testplan::check_requirements(c, &c.requirements, false) {
+        fail(E::TestInvalid, m);
     }
     let mut sorted = c.hints.clone();
     sorted.sort();

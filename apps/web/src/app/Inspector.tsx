@@ -141,7 +141,8 @@ function PartPanel({ refdes }: { refdes: string }) {
   const swings = useSwings();
   const layout = useCircuit((s) => s.layout);
   const probes = useUi((s) => s.probes);
-  const def = inst && registry.parts[inst.part];
+  const library = useCircuit((s) => s.library);
+  const def = inst && (registry.parts[inst.part] ?? library[inst.part]?.part);
   if (!inst || !def) return null;
 
   const pinNets = def.pins.map((p) => {

@@ -123,16 +123,23 @@ interface Endpoint {
 
 export class LayoutEngine {
   private readonly cache = new Map<string, BlockLayout>();
-  private readonly reg: LayoutRegistry;
+  private readonly base: LayoutRegistry;
+  /** The registry, with the project library of the request being laid out after it. */
+  private reg: LayoutRegistry;
   private readonly elk: ElkLike;
 
   constructor(reg: LayoutRegistry, elk: ElkLike) {
+    this.base = reg;
     this.reg = reg;
     this.elk = elk;
   }
 
   async layout(input: LayoutInput): Promise<Layout> {
     const started = performance.now();
+    const lib = input.library;
+    this.reg = lib
+      ? { parts: { ...this.base.parts, ...lib.parts }, symbols: { ...this.base.symbols, ...lib.symbols } }
+      : this.base;
     const nets = new Map(input.nets.map((n) => [n.id, n]));
     const netOf = new Map<string, string>();
     for (const n of input.nets) for (const p of n.pins) netOf.set(p, n.id);
@@ -297,7 +304,8 @@ export class LayoutEngine {
     nets: Map<string, LayoutInput["nets"][number]>,
   ): Node[] {
     const def = this.reg.parts[part.part];
-    const symbol = def && /^symbols\/([a-z0-9_]+)\.svg$/.exec(def.symbol)?.[1];
+    // A registry path, or a library component's generated symbol by its id.
+    const symbol = def && (/^symbols\/([a-z0-9_]+)\.svg$/.exec(def.symbol)?.[1] ?? (/^lib_[a-z0-9_]+$/.test(def.symbol) ? def.symbol : undefined));
     const sym = symbol ? this.reg.symbols[symbol] : undefined;
     if (!def || !symbol || !sym) return []; // the core only accepts registry parts; a skewed bundle draws nothing
     const used = def.units.filter((u) => def.pins.some((p) => p.unit === u && netOf.has(`${part.refdes}.${p.name}`)));

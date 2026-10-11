@@ -17,6 +17,9 @@ export interface LayoutInput {
   nets: { id: string; kind: NetKind; label?: string | null; pins: string[] }[];
   /** In IR order; ties in signal order follow it. */
   blocks: { id: string; title: string; ports: BlockPort[] }[];
+  /** The project library's components and their generated symbols (LLD §17), looked up after the
+   * registry. A component's `symbol` is a registry path or a generated symbol's id. */
+  library?: LayoutRegistry;
 }
 
 /** One drawn symbol: a whole part, or one unit of a multi-unit part. */

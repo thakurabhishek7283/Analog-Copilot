@@ -11,6 +11,8 @@ export interface CoreSessionLike {
   apply(envelope: string): string;
   applyOps(ops: string, author: string): string;
   changes(patch: string): string;
+  /** `{PartId: AutoSymbol}`: the generated symbols of the circuit's library components. */
+  librarySymbols(): string;
   compile(opts: string): string;
   erc(ctx: string, scope?: string | null): string;
   snapshot(): string;

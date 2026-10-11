@@ -11,8 +11,11 @@ use crate::ir::{
     Analysis, BlockId, BlockPort, BlockRole, BlockStatus, LayoutHint, NetId, NetKind, Origin, PartId, PinRef,
     Placement, RefDes, SpecTarget,
 };
+use crate::library::ComponentDef;
+use crate::testplan::{Requirement, TestPlan};
 
-/// Current envelope version. The server accepts `v` and `v - 1`.
+/// Current envelope version. The server accepts `v` and `v - 1`. The component platform's ops
+/// (LLD §17) are additions, which LLD §4 allows within a version, so it stays 1.
 pub const PROTOCOL_VERSION: u16 = 1;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -106,6 +109,25 @@ pub enum Op {
     HintRemove(HintBody),
     #[serde(rename = "narrate")]
     Narrate(Narrate),
+    /// Add a component definition to the project library (LLD §17 D13).
+    #[serde(rename = "lib.add")]
+    LibAdd(LibAdd),
+    /// Replace a definition; its instances and the definitions that use it are checked again.
+    #[serde(rename = "lib.update")]
+    LibUpdate(LibUpdate),
+    /// Remove a definition nothing uses. Inverse of `lib.add`.
+    #[serde(rename = "lib.remove")]
+    LibRemove(LibRemove),
+    /// Replace an instance of a library component by its parts, as a block.
+    #[serde(rename = "instance.expand")]
+    InstanceExpand(InstanceExpand),
+    /// Replace a block's spec targets (a deliberate retune).
+    #[serde(rename = "block.set_spec")]
+    BlockSetSpec(BlockSetSpec),
+    #[serde(rename = "test.set")]
+    TestSet(TestSet),
+    #[serde(rename = "req.set")]
+    ReqSet(ReqSet),
 }
 
 impl Op {
@@ -128,10 +150,17 @@ impl Op {
             Op::HintAdd(_) => "hint.add",
             Op::HintRemove(_) => "hint.remove",
             Op::Narrate(_) => "narrate",
+            Op::LibAdd(_) => "lib.add",
+            Op::LibUpdate(_) => "lib.update",
+            Op::LibRemove(_) => "lib.remove",
+            Op::InstanceExpand(_) => "instance.expand",
+            Op::BlockSetSpec(_) => "block.set_spec",
+            Op::TestSet(_) => "test.set",
+            Op::ReqSet(_) => "req.set",
         }
     }
 
-    pub const NAMES: [&'static str; 17] = [
+    pub const NAMES: [&'static str; 24] = [
         "block.begin",
         "block.commit",
         "block.abort",
@@ -149,6 +178,13 @@ impl Op {
         "hint.add",
         "hint.remove",
         "narrate",
+        "lib.add",
+        "lib.update",
+        "lib.remove",
+        "instance.expand",
+        "block.set_spec",
+        "test.set",
+        "req.set",
     ];
 }
 
@@ -274,6 +310,54 @@ pub struct Narrate {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block: Option<BlockId>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LibAdd {
+    /// Boxed: a definition is large next to every other op body.
+    pub def: Box<ComponentDef>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LibUpdate {
+    pub id: PartId,
+    pub def: Box<ComponentDef>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LibRemove {
+    pub id: PartId,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct InstanceExpand {
+    pub refdes: RefDes,
+    /// Id of the block the parts form; default the lowest free `bN`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block: Option<BlockId>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct BlockSetSpec {
+    pub id: BlockId,
+    pub spec: BTreeMap<String, SpecTarget>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct TestSet {
+    pub tests: Vec<TestPlan>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ReqSet {
+    pub requirements: Vec<Requirement>,
 }
 
 /// Parse one envelope. An unknown op name is rejected as `unknown_op`, never ignored.

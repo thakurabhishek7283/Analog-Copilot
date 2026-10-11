@@ -120,6 +120,26 @@
           "type": "string",
           "const": "compile_failed",
           "description": "The compiler refused a circuit that `apply()` accepted (a generated block's bench)."
+        },
+        {
+          "type": "string",
+          "const": "component_invalid",
+          "description": "A library component definition is malformed (every problem listed in the message)."
+        },
+        {
+          "type": "string",
+          "const": "component_not_found",
+          "description": "No library component with this id in the circuit."
+        },
+        {
+          "type": "string",
+          "const": "component_in_use",
+          "description": "The library component is still used by a part or by another component."
+        },
+        {
+          "type": "string",
+          "const": "test_invalid",
+          "description": "A test plan or a requirement is malformed, or names something the circuit lacks."
         }
       ],
       "description": "Error codes returned by `apply()`. These go back to the LLM verbatim during repair and are\nshown to users as friendly text (LLD §4). Additive only within a protocol major version."

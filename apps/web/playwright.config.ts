@@ -18,7 +18,7 @@ const apiPreviewPort = 4174;
 const apiPort = Number(process.env.E2E_API_PORT ?? 8100);
 const withApi = process.env.E2E_API !== "0";
 const repo = join(import.meta.dirname, "../..");
-const API_SPECS = /(generate|ask)\.spec\.ts/;
+const API_SPECS = /(generate|ask|library)\.spec\.ts/;
 const python = join(repo, process.platform === "win32" ? ".venv/Scripts/python.exe" : ".venv/bin/python");
 
 const preview = (port: number, apiOrigin: string) => ({

@@ -214,7 +214,9 @@ pub fn context(
 fn mains_parts(c: &Circuit, reg: &Registry) -> Vec<RefDes> {
     c.sorted_refdes()
         .into_iter()
-        .filter(|r| reg.part(&c.parts[*r].part).is_some_and(|d| d.hazard == Some(Hazard::Mains)))
+        .filter(|r| {
+            crate::library::part_def(reg, c, &c.parts[*r].part).is_some_and(|d| d.hazard == Some(Hazard::Mains))
+        })
         .cloned()
         .collect()
 }
@@ -375,7 +377,7 @@ fn render(
     let pin_net = c.pin_index();
     for r in s.parts {
         let inst = &c.parts[r];
-        let def = reg.part(&inst.part);
+        let def = crate::library::part_def(reg, c, &inst.part);
         let mut row = format!("  {r} {}", inst.part);
         if let Some(d) = def {
             row.push_str(&format!(" \"{}\"", d.title));

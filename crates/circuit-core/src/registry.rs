@@ -34,7 +34,26 @@ pub enum Category {
     U,
     V,
     J,
+    /// A component from the project library (a sub-circuit): its behaviour comes from its pins'
+    /// semantics, not from a category rule, and it compiles to an `X` line.
+    X,
 }
+
+/// Refdes prefixes a part may declare beyond its category letter (LLD §17 D6). A primitive's SPICE
+/// line starts with `{refdes}`, whose first letter is the SPICE element type, so an extra prefix
+/// keeps its category's letter first (`RV` is still a resistor); library components compile to
+/// `X` lines and may take any prefix here.
+pub const EXTRA_PREFIXES: [(&str, Category); 9] = [
+    ("RV", Category::R),
+    ("RT", Category::R),
+    ("LED", Category::D),
+    ("TP", Category::J),
+    ("SW", Category::J),
+    ("BT", Category::V),
+    ("IC", Category::U),
+    ("XU", Category::X),
+    ("XA", Category::X),
+];
 
 impl Category {
     pub fn letter(self) -> char {
@@ -47,6 +66,7 @@ impl Category {
             Category::U => 'U',
             Category::V => 'V',
             Category::J => 'J',
+            Category::X => 'X',
         }
     }
 
@@ -60,6 +80,7 @@ impl Category {
             'U' => Category::U,
             'V' => Category::V,
             'J' => Category::J,
+            'X' => Category::X,
             _ => return None,
         })
     }
@@ -70,6 +91,9 @@ impl Category {
 pub struct PartDef {
     pub id: PartId,
     pub category: Category,
+    /// Refdes prefix when it is not the category letter (`RV`, `TP`); see [`EXTRA_PREFIXES`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
     pub title: String,
     #[serde(default)]
     pub role_tags: Vec<String>,
@@ -107,6 +131,12 @@ pub struct PinDef {
     pub kind: PinType,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+    /// For a library component: the pins joined by a DC path inside it share a group, and group 0
+    /// is a DC path to ground (ERC003 on the outside, LLD §17 D6). Computed by `apply()` from the
+    /// component's own netlist, never taken from a client; unused on registry parts, whose
+    /// category says which pins conduct.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dc_group: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -184,6 +214,11 @@ pub struct RegistryError {
 }
 
 impl PartDef {
+    /// The refdes prefix of this part's instances: its declared prefix, else its category letter.
+    pub fn refdes_prefix(&self) -> String {
+        self.prefix.clone().unwrap_or_else(|| self.category.letter().to_string())
+    }
+
     pub fn pin(&self, name: &str) -> Option<&PinDef> {
         self.pins.iter().find(|p| p.name == name)
     }
@@ -202,7 +237,7 @@ impl PartDef {
     }
 
     /// Pin anchors must match the symbol's exactly: none missing, none unknown.
-    fn check_symbol(&self, symbols: &BTreeMap<String, SymbolDef>) -> Vec<String> {
+    pub(crate) fn check_symbol(&self, symbols: &BTreeMap<String, SymbolDef>) -> Vec<String> {
         let Some(id) = symbol_id(&self.symbol) else {
             return vec![format!("symbol \"{}\" must be symbols/<id>.svg with a lowercase [a-z0-9_] id", self.symbol)];
         };
@@ -244,12 +279,33 @@ impl PartDef {
             .or_else(|| self.pins.iter().find(|p| p.unit.is_none() && p.name == base))
     }
 
+    /// A registry part: [`PartDef::validate_common`] plus the rules only registry parts follow.
     fn validate(&self) -> Vec<String> {
         let mut errs = Vec::new();
         let ident = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
         if !(ident(&self.id) && self.id.bytes().all(|b| !b.is_ascii_uppercase())) {
             errs.push(format!("id \"{}\" must be lowercase [a-z0-9_]", self.id));
         }
+        if self.category == Category::X {
+            errs.push("category X is for library components, not registry parts".into());
+        }
+        if let Some(p) = &self.prefix
+            && !EXTRA_PREFIXES.contains(&(p.as_str(), self.category))
+        {
+            errs.push(format!("prefix {p} is not allowed for a {:?} part", self.category));
+        }
+        if self.pins.iter().any(|p| p.dc_group.is_some()) {
+            errs.push("dc_group is computed for library components; registry parts leave it out".into());
+        }
+        errs.extend(self.validate_common());
+        errs
+    }
+
+    /// Pins, units, params and SPICE placeholders: the rules registry parts and library components
+    /// share.
+    pub(crate) fn validate_common(&self) -> Vec<String> {
+        let mut errs = Vec::new();
+        let ident = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
         if self.pins.is_empty() {
             errs.push("part has no pins".into());
         }

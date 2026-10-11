@@ -164,6 +164,230 @@ class Direction(StrEnum):
     down = "down"
 
 
+class Category1(StrEnum):
+    R = "R"
+    C = "C"
+    L = "L"
+    D = "D"
+    Q = "Q"
+    U = "U"
+    V = "V"
+    J = "J"
+
+
+class Category(RootModel[Category1 | Literal["X"]]):
+    root: Category1 | Literal["X"]
+
+
+class PinType1(StrEnum):
+    input = "input"
+    output = "output"
+    passive = "passive"
+    power_pos = "power_pos"
+    power_neg = "power_neg"
+
+
+class PinType(RootModel[PinType1 | Literal["nc"]]):
+    root: PinType1 | Literal["nc"]
+
+
+class ParamDef(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    unit: Unit
+    default: str
+    min: Annotated[
+        float | None,
+        Field(
+            description="In SI units. YAML sources may write a prefixed number such as `1p` or `100meg`."
+        ),
+    ] = None
+    max: float | None = None
+
+
+class SpiceDef(BaseModel):
+    """
+    SPICE emission template. `line` is for single-unit parts; `unit_line` is emitted once per
+    used unit of a multi-unit part. Placeholders: `{refdes}`, `{unit}`, pin names, param names.
+    In `unit_line`, a unit pin is named without its `_<unit>` suffix (`{OUT}` → `OUT_A`).
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    include: str | None = None
+    line: str | None = None
+    unit_line: str | None = None
+
+
+class Hazard(StrEnum):
+    mains = "mains"
+
+
+class CompositePart(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    part: str
+    params: Annotated[
+        dict[str, str] | None,
+        Field(
+            description='Values as written ("10k"); a missing param takes the part\'s default.'
+        ),
+    ] = {}
+
+
+class Composite(BaseModel):
+    """
+    A sub-circuit of registry parts and other library components.
+    """
+
+    parts: Annotated[
+        dict[str, CompositePart],
+        Field(
+            description="Local refdes (`R1`, `U1`, scoped to the definition) -> part."
+        ),
+    ]
+    nets: Annotated[
+        dict[str, list[PinRef]],
+        Field(
+            description="Net -> pins. A net named after one of the component's pins is that pin; `GND` is the\ncircuit's ground; every other net is internal."
+        ),
+    ]
+
+
+class Provenance1(BaseModel):
+    """
+    Who made a definition (LLD §17 D10: trust levels read it).
+    """
+
+    kind: Literal["user"]
+
+
+class Provenance2(BaseModel):
+    """
+    Who made a definition (LLD §17 D10: trust levels read it).
+    """
+
+    job_id: str
+    kind: Literal["llm"]
+
+
+class Provenance3(BaseModel):
+    """
+    Who made a definition (LLD §17 D10: trust levels read it).
+    """
+
+    source: str
+    licence: str
+    kind: Literal["import"]
+
+
+class Provenance(RootModel[Provenance1 | Provenance2 | Provenance3]):
+    root: Annotated[
+        Provenance1 | Provenance2 | Provenance3,
+        Field(description="Who made a definition (LLD §17 D10: trust levels read it)."),
+    ]
+
+
+class Scenario(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    set: Annotated[
+        dict[str, str] | None,
+        Field(
+            description='Param overrides as `REFDES.param` -> value as typed (`"V2.frequency": "1k"`), applied to a\nscratch copy, so each scenario has its own netlist and cache entry.'
+        ),
+    ] = {}
+    analyses: Annotated[
+        list[Analysis] | None,
+        Field(
+            description="The analyses this scenario runs; absent, the circuit's own."
+        ),
+    ] = None
+
+
+class Measure1(BaseModel):
+    """
+    Half the peak-to-peak over the transient's second half.
+    """
+
+    kind: Literal["amplitude"]
+
+
+class Measure2(BaseModel):
+    """
+    Average over the transient's second half (the DC level, bias included).
+    """
+
+    kind: Literal["dc"]
+
+
+class Measure3(BaseModel):
+    """
+    |V(net)| / |V(input)| in the AC sweep at `at_hz`.
+    """
+
+    in_: Annotated[str, Field(alias="in")]
+    at_hz: float
+    kind: Literal["ac_gain"]
+
+
+class Measure(RootModel[Measure1 | Measure2 | Measure3]):
+    root: Annotated[
+        Measure1 | Measure2 | Measure3,
+        Field(description="What a probe reads from its net in each scenario."),
+    ]
+
+
+class RequirementKind(StrEnum):
+    functional = "functional"
+    electrical = "electrical"
+    constraint = "constraint"
+    deliverable = "deliverable"
+    test = "test"
+
+
+class Evidence1(BaseModel):
+    """
+    A block's spec check (`b2.fc_hz`).
+    """
+
+    block: str
+    check: str
+    kind: Literal["check"]
+
+
+class Evidence2(BaseModel):
+    """
+    A probe of a test plan in one scenario, against a target.
+    """
+
+    test: str
+    scenario: str
+    probe: str
+    target: float
+    tol_pct: float
+    kind: Literal["probe"]
+
+
+class Evidence3(BaseModel):
+    """
+    A fact about the circuit itself ("every op-amp is an LM358"), checked by the core's
+    structure queries when they exist; until then it is unverifiable, never met.
+    """
+
+    claim: str
+    kind: Literal["structural"]
+
+
+class Evidence(RootModel[Evidence1 | Evidence2 | Evidence3]):
+    root: Evidence1 | Evidence2 | Evidence3
+
+
 class BlockRef(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -287,6 +511,34 @@ class Narrate(BaseModel):
     block: str | None = None
 
 
+class LibRemove(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: str
+
+
+class InstanceExpand(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    refdes: str
+    block: Annotated[
+        str | None,
+        Field(
+            description="Id of the block the parts form; default the lowest free `bN`."
+        ),
+    ] = None
+
+
+class BlockSetSpec(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: str
+    spec: dict[str, SpecTarget]
+
+
 class Author(StrEnum):
     llm = "llm"
     user = "user"
@@ -334,6 +586,10 @@ class ErrorCode(
         | Literal["target_out_of_range"]
         | Literal["port_invalid"]
         | Literal["compile_failed"]
+        | Literal["component_invalid"]
+        | Literal["component_not_found"]
+        | Literal["component_in_use"]
+        | Literal["test_invalid"]
     ]
 ):
     root: Annotated[
@@ -352,7 +608,11 @@ class ErrorCode(
         | Literal["template_not_found"]
         | Literal["target_out_of_range"]
         | Literal["port_invalid"]
-        | Literal["compile_failed"],
+        | Literal["compile_failed"]
+        | Literal["component_invalid"]
+        | Literal["component_not_found"]
+        | Literal["component_in_use"]
+        | Literal["test_invalid"],
         Field(
             description="Error codes returned by `apply()`. These go back to the LLM verbatim during repair and are\nshown to users as friendly text (LLD §4). Additive only within a protocol major version."
         ),
@@ -372,6 +632,16 @@ class Patch(BaseModel):
     blocks_removed: list[str]
     analyses_changed: bool
     hints_changed: bool
+    library_changed: bool | None = False
+    tests_changed: bool | None = False
+    requirements_changed: bool | None = False
+
+
+class Side(StrEnum):
+    left = "left"
+    right = "right"
+    top = "top"
+    bottom = "bottom"
 
 
 class ErcContext(StrEnum):
@@ -471,70 +741,6 @@ class CurrentTerm(BaseModel):
 class CompileError(BaseModel):
     refdes: str | None = None
     message: str
-
-
-class Category(StrEnum):
-    R = "R"
-    C = "C"
-    L = "L"
-    D = "D"
-    Q = "Q"
-    U = "U"
-    V = "V"
-    J = "J"
-
-
-class PinType1(StrEnum):
-    input = "input"
-    output = "output"
-    passive = "passive"
-    power_pos = "power_pos"
-    power_neg = "power_neg"
-
-
-class PinType(RootModel[PinType1 | Literal["nc"]]):
-    root: PinType1 | Literal["nc"]
-
-
-class ParamDef(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    unit: Unit
-    default: str
-    min: Annotated[
-        float | None,
-        Field(
-            description="In SI units. YAML sources may write a prefixed number such as `1p` or `100meg`."
-        ),
-    ] = None
-    max: float | None = None
-
-
-class SpiceDef(BaseModel):
-    """
-    SPICE emission template. `line` is for single-unit parts; `unit_line` is emitted once per
-    used unit of a multi-unit part. Placeholders: `{refdes}`, `{unit}`, pin names, param names.
-    In `unit_line`, a unit pin is named without its `_<unit>` suffix (`{OUT}` → `OUT_A`).
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    include: str | None = None
-    line: str | None = None
-    unit_line: str | None = None
-
-
-class Hazard(StrEnum):
-    mains = "mains"
-
-
-class Side(StrEnum):
-    left = "left"
-    right = "right"
-    top = "top"
-    bottom = "bottom"
 
 
 class Scale(StrEnum):
@@ -1045,6 +1251,78 @@ class LayoutHint(RootModel[LayoutHint1 | LayoutHint2 | LayoutHint3]):
     root: LayoutHint1 | LayoutHint2 | LayoutHint3
 
 
+class PinDef(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    num: Annotated[int, Field(ge=0, le=65535)]
+    type: PinType
+    unit: str | None = None
+    dc_group: Annotated[
+        int | None,
+        Field(
+            description="For a library component: the pins joined by a DC path inside it share a group, and group 0\nis a DC path to ground (ERC003 on the outside, LLD §17 D6). Computed by `apply()` from the\ncomponent's own netlist, never taken from a client; unused on registry parts, whose\ncategory says which pins conduct.",
+            ge=0,
+            le=65535,
+        ),
+    ] = None
+
+
+class Model1(BaseModel):
+    """
+    A sub-circuit of registry parts and other library components.
+    """
+
+    parts: Annotated[
+        dict[str, CompositePart],
+        Field(
+            description="Local refdes (`R1`, `U1`, scoped to the definition) -> part."
+        ),
+    ]
+    nets: Annotated[
+        dict[str, list[PinRef]],
+        Field(
+            description="Net -> pins. A net named after one of the component's pins is that pin; `GND` is the\ncircuit's ground; every other net is internal."
+        ),
+    ]
+    kind: Literal["composite"]
+
+
+class Model(RootModel[Model1]):
+    root: Annotated[
+        Model1,
+        Field(
+            description="What the component does inside. Behavioral laws and SPICE imports join in P5.2 (LLD §17 D3)."
+        ),
+    ]
+
+
+class Probe(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    net: str
+    measure: Measure
+
+
+class Requirement(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(description="`R1`, `R2`, ... as the brief numbers them.")]
+    text: str
+    kind: RequirementKind
+    evidence: Annotated[
+        list[Evidence] | None,
+        Field(
+            description="What will prove it; met, missing or unverifiable is decided from these after simulation.",
+            validate_default=True,
+        ),
+    ] = []
+
+
 class OpEnvelope2(BaseModel):
     op: Literal["block.commit"]
     body: BlockRef
@@ -1123,7 +1401,34 @@ class OpEnvelope17(BaseModel):
     body: Narrate
 
 
-class OpEnvelope18(BaseModel):
+class OpEnvelope20(BaseModel):
+    """
+    Remove a definition nothing uses. Inverse of `lib.add`.
+    """
+
+    op: Literal["lib.remove"]
+    body: LibRemove
+
+
+class OpEnvelope21(BaseModel):
+    """
+    Replace an instance of a library component by its parts, as a block.
+    """
+
+    op: Literal["instance.expand"]
+    body: InstanceExpand
+
+
+class OpEnvelope22(BaseModel):
+    """
+    Replace a block's spec targets (a deliberate retune).
+    """
+
+    op: Literal["block.set_spec"]
+    body: BlockSetSpec
+
+
+class OpEnvelope25(BaseModel):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
@@ -1136,85 +1441,103 @@ class OpEnvelope18(BaseModel):
     base_rev: Annotated[int, Field(ge=0)]
 
 
-class OpEnvelope20(OpEnvelope2, OpEnvelope18):
+class OpEnvelope27(OpEnvelope2, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope21(OpEnvelope3, OpEnvelope18):
+class OpEnvelope28(OpEnvelope3, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope22(OpEnvelope4, OpEnvelope18):
+class OpEnvelope29(OpEnvelope4, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope23(OpEnvelope5, OpEnvelope18):
+class OpEnvelope30(OpEnvelope5, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope24(OpEnvelope6, OpEnvelope18):
+class OpEnvelope31(OpEnvelope6, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope25(OpEnvelope7, OpEnvelope18):
+class OpEnvelope32(OpEnvelope7, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope26(OpEnvelope8, OpEnvelope18):
+class OpEnvelope33(OpEnvelope8, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope27(OpEnvelope9, OpEnvelope18):
+class OpEnvelope34(OpEnvelope9, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope28(OpEnvelope10, OpEnvelope18):
+class OpEnvelope35(OpEnvelope10, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope29(OpEnvelope11, OpEnvelope18):
+class OpEnvelope36(OpEnvelope11, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope30(OpEnvelope12, OpEnvelope18):
+class OpEnvelope37(OpEnvelope12, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope31(OpEnvelope13, OpEnvelope18):
+class OpEnvelope38(OpEnvelope13, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope32(OpEnvelope14, OpEnvelope18):
+class OpEnvelope39(OpEnvelope14, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope35(OpEnvelope17, OpEnvelope18):
+class OpEnvelope42(OpEnvelope17, OpEnvelope25):
+    """
+    One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
+    """
+
+
+class OpEnvelope45(OpEnvelope20, OpEnvelope25):
+    """
+    One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
+    """
+
+
+class OpEnvelope46(OpEnvelope21, OpEnvelope25):
+    """
+    One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
+    """
+
+
+class OpEnvelope47(OpEnvelope22, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
@@ -1298,6 +1621,33 @@ class Op17(BaseModel):
     body: Narrate
 
 
+class Op20(BaseModel):
+    """
+    Remove a definition nothing uses. Inverse of `lib.add`.
+    """
+
+    op: Literal["lib.remove"]
+    body: LibRemove
+
+
+class Op21(BaseModel):
+    """
+    Replace an instance of a library component by its parts, as a block.
+    """
+
+    op: Literal["instance.expand"]
+    body: InstanceExpand
+
+
+class Op22(BaseModel):
+    """
+    Replace a block's spec targets (a deliberate retune).
+    """
+
+    op: Literal["block.set_spec"]
+    body: BlockSetSpec
+
+
 class BlockBegin(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1317,6 +1667,13 @@ class HintBody(BaseModel):
     hint: LayoutHint
 
 
+class ReqSet(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    requirements: list[Requirement]
+
+
 class OpError(BaseModel):
     code: ErrorCode
     message: str
@@ -1333,6 +1690,20 @@ class Outcome2(BaseModel):
         extra="forbid",
     )
     err: OpError
+
+
+class Anchor(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    x: Annotated[int, Field(ge=0)]
+    y: Annotated[int, Field(ge=0)]
+    side: Annotated[
+        Side,
+        Field(
+            description="The edge the anchor sits on; wires leave the symbol in this direction."
+        ),
+    ]
 
 
 class ErcIssue(BaseModel):
@@ -1375,30 +1746,6 @@ class SpecCheckDef(BaseModel):
             description='Why the check could not be compiled into this netlist ("needs an AC analysis").'
         ),
     ] = None
-
-
-class PinDef(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    name: str
-    num: Annotated[int, Field(ge=0, le=65535)]
-    type: PinType
-    unit: str | None = None
-
-
-class Anchor(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    x: Annotated[int, Field(ge=0)]
-    y: Annotated[int, Field(ge=0)]
-    side: Annotated[
-        Side,
-        Field(
-            description="The edge the anchor sits on; wires leave the symbol in this direction."
-        ),
-    ]
 
 
 class TargetDef(BaseModel):
@@ -1749,6 +2096,68 @@ class Block(BaseModel):
     template: str | None = None
 
 
+class PartDef(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: str
+    category: Category
+    prefix: Annotated[
+        str | None,
+        Field(
+            description="Refdes prefix when it is not the category letter (`RV`, `TP`); see [`EXTRA_PREFIXES`]."
+        ),
+    ] = None
+    title: str
+    role_tags: list[str] | None = []
+    units: Annotated[
+        list[str] | None,
+        Field(
+            description="Units of a multi-unit IC (e.g. `[A, B]` for a dual op-amp). Empty for single-unit parts."
+        ),
+    ] = []
+    pins: list[PinDef]
+    params: Annotated[
+        dict[str, ParamDef] | None,
+        Field(
+            description="Every param must declare a default, so instances always carry a full param set.",
+            validate_default=True,
+        ),
+    ] = {}
+    limits: Annotated[
+        dict[str, float] | None,
+        Field(
+            description="Ratings used by ERC, e.g. `v_supply_max`, `i_max`, `p_max`."
+        ),
+    ] = {}
+    dc_param: Annotated[
+        str | None,
+        Field(
+            description="For voltage sources: the param holding V(P) − V(N) at DC (used by ERC007)."
+        ),
+    ] = None
+    spice: SpiceDef | None = None
+    symbol: Annotated[
+        str,
+        Field(
+            description="Schematic symbol, `symbols/<id>.svg`; its pin anchors are matched by pin name."
+        ),
+    ]
+    breadboard: str | None = None
+    teach: str | None = None
+    hazard: Hazard | None = None
+
+
+class TestPlan(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(description="`freq_compare`: lowercase [a-z0-9_].")]
+    title: str
+    scenarios: list[Scenario]
+    probes: list[Probe]
+
+
 class OpEnvelope1(BaseModel):
     op: Literal["block.begin"]
     body: BlockBegin
@@ -1768,71 +2177,33 @@ class OpEnvelope16(BaseModel):
     body: HintBody
 
 
-class OpEnvelope19(OpEnvelope1, OpEnvelope18):
+class OpEnvelope24(BaseModel):
+    op: Literal["req.set"]
+    body: ReqSet
+
+
+class OpEnvelope26(OpEnvelope1, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope33(OpEnvelope15, OpEnvelope18):
+class OpEnvelope40(OpEnvelope15, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope34(OpEnvelope16, OpEnvelope18):
+class OpEnvelope41(OpEnvelope16, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
 
 
-class OpEnvelope(
-    RootModel[
-        OpEnvelope19
-        | OpEnvelope20
-        | OpEnvelope21
-        | OpEnvelope22
-        | OpEnvelope23
-        | OpEnvelope24
-        | OpEnvelope25
-        | OpEnvelope26
-        | OpEnvelope27
-        | OpEnvelope28
-        | OpEnvelope29
-        | OpEnvelope30
-        | OpEnvelope31
-        | OpEnvelope32
-        | OpEnvelope33
-        | OpEnvelope34
-        | OpEnvelope35
-    ]
-):
+class OpEnvelope49(OpEnvelope24, OpEnvelope25):
     """
     One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
     """
-
-    root: Annotated[
-        OpEnvelope19
-        | OpEnvelope20
-        | OpEnvelope21
-        | OpEnvelope22
-        | OpEnvelope23
-        | OpEnvelope24
-        | OpEnvelope25
-        | OpEnvelope26
-        | OpEnvelope27
-        | OpEnvelope28
-        | OpEnvelope29
-        | OpEnvelope30
-        | OpEnvelope31
-        | OpEnvelope32
-        | OpEnvelope33
-        | OpEnvelope34
-        | OpEnvelope35,
-        Field(
-            description="One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`."
-        ),
-    ]
 
 
 class Op1(BaseModel):
@@ -1854,72 +2225,16 @@ class Op16(BaseModel):
     body: HintBody
 
 
-class Op(
-    RootModel[
-        Op1
-        | Op2
-        | Op3
-        | Op4
-        | Op5
-        | Op6
-        | Op7
-        | Op8
-        | Op9
-        | Op10
-        | Op11
-        | Op12
-        | Op13
-        | Op14
-        | Op15
-        | Op16
-        | Op17
-    ]
-):
-    root: (
-        Op1
-        | Op2
-        | Op3
-        | Op4
-        | Op5
-        | Op6
-        | Op7
-        | Op8
-        | Op9
-        | Op10
-        | Op11
-        | Op12
-        | Op13
-        | Op14
-        | Op15
-        | Op16
-        | Op17
-    )
+class Op24(BaseModel):
+    op: Literal["req.set"]
+    body: ReqSet
 
 
-class ApplyOk(BaseModel):
-    """
-    What a successful `apply` reports to the UI: only what changed (LLD §10).
-    """
-
-    rev: Annotated[int, Field(ge=0)]
-    patch: Patch
-    inverse: Annotated[
-        list[Op],
-        Field(
-            description="Ops that undo this change, in the order they must be applied."
-        ),
-    ]
-
-
-class Outcome1(BaseModel):
+class TestSet(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    ok: ApplyOk
-
-
-class Outcome(RootModel[Outcome1 | Outcome2]):
-    root: Outcome1 | Outcome2
+    tests: list[TestPlan]
 
 
 class PatchData(BaseModel):
@@ -1940,6 +2255,39 @@ class PatchData(BaseModel):
         list[LayoutHint] | None,
         Field(description="Present when `patch.hints_changed`."),
     ] = None
+    library: Annotated[
+        dict[str, Any] | None,
+        Field(description="The whole project library, when `patch.library_changed`."),
+    ] = None
+    symbols: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="The generated symbols of library components drawn with `symbol: auto`, with `library`."
+        ),
+    ] = None
+    tests: Annotated[
+        list[TestPlan] | None, Field(description="Present when `patch.tests_changed`.")
+    ] = None
+    requirements: Annotated[
+        list[Requirement] | None,
+        Field(description="Present when `patch.requirements_changed`."),
+    ] = None
+
+
+class SymbolDef(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    width: Annotated[
+        int, Field(description="Size in schematic units (multiples of [`GRID`]).", ge=0)
+    ]
+    height: Annotated[int, Field(ge=0)]
+    pins: Annotated[
+        dict[str, Anchor],
+        Field(
+            description="Pin anchors by pin name (base name for the unit pins of a multi-unit part)."
+        ),
+    ]
 
 
 class Netlist(BaseModel):
@@ -1983,68 +2331,13 @@ class Netlist(BaseModel):
             description="The analyses in the deck, in order (resolved from `CompileOpts`)."
         ),
     ]
-
-
-class PartDef(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    id: str
-    category: Category
-    title: str
-    role_tags: list[str] | None = []
-    units: Annotated[
-        list[str] | None,
+    leaf_devices: Annotated[
+        int | None,
         Field(
-            description="Units of a multi-unit IC (e.g. `[A, B]` for a dual op-amp). Empty for single-unit parts."
+            description="Primitive devices the deck simulates, library components flattened (LLD §17 D12: the\neditor runs live below a budget and asks for a Run above it).",
+            ge=0,
         ),
-    ] = []
-    pins: list[PinDef]
-    params: Annotated[
-        dict[str, ParamDef] | None,
-        Field(
-            description="Every param must declare a default, so instances always carry a full param set.",
-            validate_default=True,
-        ),
-    ] = {}
-    limits: Annotated[
-        dict[str, float] | None,
-        Field(
-            description="Ratings used by ERC, e.g. `v_supply_max`, `i_max`, `p_max`."
-        ),
-    ] = {}
-    dc_param: Annotated[
-        str | None,
-        Field(
-            description="For voltage sources: the param holding V(P) − V(N) at DC (used by ERC007)."
-        ),
-    ] = None
-    spice: SpiceDef | None = None
-    symbol: Annotated[
-        str,
-        Field(
-            description="Schematic symbol, `symbols/<id>.svg`; its pin anchors are matched by pin name."
-        ),
-    ]
-    breadboard: str | None = None
-    teach: str | None = None
-    hazard: Hazard | None = None
-
-
-class SymbolDef(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    width: Annotated[
-        int, Field(description="Size in schematic units (multiples of [`GRID`]).", ge=0)
-    ]
-    height: Annotated[int, Field(ge=0)]
-    pins: Annotated[
-        dict[str, Anchor],
-        Field(
-            description="Pin anchors by pin name (base name for the unit pins of a multi-unit part)."
-        ),
-    ]
+    ] = 0
 
 
 class TemplateDef(BaseModel):
@@ -2096,18 +2389,6 @@ class TemplateDef(BaseModel):
     ] = None
 
 
-class Inserted(BaseModel):
-    block: str
-    ops: Annotated[
-        list[Op],
-        Field(description="Apply as one batch (author `template`): one undo step."),
-    ]
-    refdes: Annotated[
-        dict[str, str], Field(description="Local refdes -> refdes in the circuit.")
-    ]
-    preview: Preview
-
-
 class BlockRequest2(BaseModel):
     """
     What to trial: a template at targets (the composer's `use_template`, or the fallback), or a
@@ -2127,6 +2408,469 @@ class BlockRequest(RootModel[BlockRequest1 | BlockRequest2]):
             description="What to trial: a template at targets (the composer's `use_template`, or the fallback), or a\ndraft."
         ),
     ]
+
+
+class JobEvent1(BaseModel):
+    """
+    One event on `GET /v1/jobs/{id}/events`. On the wire, `event` is the SSE event name, `data`
+    its JSON, and the event's sequence number its SSE `id`, which a reconnect resumes from.
+    """
+
+    event: Literal["job.state"]
+    data: JobStateData
+
+
+class JobEvent3(BaseModel):
+    """
+    A dashed placeholder for a planned block.
+    """
+
+    event: Literal["block.ghost"]
+    data: GhostData
+
+
+class JobEvent8(BaseModel):
+    """
+    The job finished: the editor unlocks.
+    """
+
+    event: Literal["done"]
+    data: DoneData
+
+
+class SimValues(BaseModel):
+    """
+    The learner's simulation of the circuit the question is about. The server never simulated an
+    edited circuit, so these come from the browser (LLD §5); the circuit itself does not.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    status: Annotated[
+        str | None,
+        Field(
+            description="The run's status (`ok`, `no_convergence`, `singular_matrix`, `timeout`, `error`); absent\nwhen nothing was simulated."
+        ),
+    ] = None
+    op_v: Annotated[
+        dict[str, float] | None, Field(description="Operating point: net -> volts.")
+    ] = {}
+    op_i: Annotated[
+        dict[str, float] | None,
+        Field(
+            description="Operating point: pin (`R3.1`) -> amps flowing into the pin."
+        ),
+    ] = {}
+    ac: Annotated[
+        AcValues | None, Field(description="AC response at the scope's frequency.")
+    ] = None
+    tran: Annotated[
+        TranValues | None,
+        Field(description="The transient's range on each net, after start-up."),
+    ] = None
+    checks: Annotated[
+        list[CheckResult] | None,
+        Field(
+            description="Spec checks as the browser measured them.",
+            validate_default=True,
+        ),
+    ] = []
+
+
+class ChangeRequest(BaseModel):
+    """
+    `POST /v1/projects/{id}/what-changed` ("What changed?", LLD §9): explain what the edits from
+    `from_rev` to `rev` did. The server reads its own circuits at both revs; the simulation values
+    before and after come from the browser, which ran them. The model gets their difference, not
+    the circuits.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    from_rev: Annotated[int, Field(ge=0)]
+    rev: Annotated[int, Field(ge=0)]
+    before: Annotated[
+        SimValues,
+        Field(description="The learner's simulation of the circuit at `from_rev`."),
+    ]
+    after: Annotated[
+        SimValues,
+        Field(description="The learner's simulation of the circuit at `rev`."),
+    ]
+    level: LearnerLevel | None = "beginner"
+    mode: TutorMode | None = "explain"
+    effort: ReasoningEffort | None = None
+
+
+class ComponentDef(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    part: Annotated[
+        PartDef,
+        Field(
+            description="The component as a part: id (`lib:<name>`), category `X`, title, refdes `prefix`, pins,\nlimits and symbol (`auto`, a box the editor draws from the pins, or a registry symbol whose\nanchors match the pins). It has no `spice` line and, for now, no params."
+        ),
+    ]
+    version: Annotated[int, Field(ge=0)]
+    model: Model
+    provenance: Provenance
+
+
+class OpEnvelope23(BaseModel):
+    op: Literal["test.set"]
+    body: TestSet
+
+
+class OpEnvelope48(OpEnvelope23, OpEnvelope25):
+    """
+    One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
+    """
+
+
+class Op23(BaseModel):
+    op: Literal["test.set"]
+    body: TestSet
+
+
+class LibAdd(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    def_: Annotated[
+        ComponentDef,
+        Field(
+            alias="def",
+            description="Boxed: a definition is large next to every other op body.",
+        ),
+    ]
+
+
+class LibUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: str
+    def_: Annotated[ComponentDef, Field(alias="def")]
+
+
+class AutoSymbol(BaseModel):
+    """
+    A library component's symbol when it has no registry symbol (`symbol: auto`, LLD §17): a box in
+    the registry's own style (the NE555's), inputs on the left, outputs on the right, positive
+    supplies on top, negative supplies and ground below; passive and `nc` pins fill the shorter
+    side. Built here, not in the editor, so geometry still comes only from the core.
+    """
+
+    id: Annotated[
+        str, Field(description="Symbol id in the sprite sheet: `lib_<name>`.")
+    ]
+    def_: Annotated[SymbolDef, Field(alias="def")]
+    body: Annotated[
+        str,
+        Field(
+            description="SVG markup for the inside of its `<symbol>` (plain shapes, `currentColor`, pin names as text)."
+        ),
+    ]
+
+
+class Registry(BaseModel):
+    version: str
+    parts: dict[str, PartDef]
+    symbols: Annotated[
+        dict[str, SymbolDef],
+        Field(
+            description="Schematic symbols by id (`symbols/<id>.svg`): geometry only; the drawings ship in the\nbundle's sprite sheet."
+        ),
+    ]
+    templates: Annotated[
+        dict[str, TemplateDef] | None,
+        Field(
+            description="Block templates by id (`templates/<id>.yaml`), each checked against the parts at load.",
+            validate_default=True,
+        ),
+    ] = {}
+
+
+class AskRequest(BaseModel):
+    """
+    `POST /v1/projects/{id}/ask`. The server reads its own circuit at `rev` (never a client
+    netlist) and takes the simulation values from the client, which ran them (LLD §5).
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    question: str
+    selection: Selection | None = None
+    rev: Annotated[int, Field(ge=0)]
+    level: LearnerLevel | None = "beginner"
+    mode: TutorMode | None = "explain"
+    sim: Annotated[SimValues | None, Field(validate_default=True)] = {
+        "op_v": {},
+        "op_i": {},
+        "checks": [],
+    }
+    effort: Annotated[
+        ReasoningEffort | None,
+        Field(
+            description="How hard a reasoning model thinks before it answers, the learner's choice; absent: the\nprovider's default. Models that do not reason ignore it."
+        ),
+    ] = None
+    history: Annotated[
+        list[str] | None,
+        Field(
+            description="The conversation so far: ids of the learner's earlier answers in this project (`ask_id`),\noldest first, at most 3. The server reads their questions and answers from `asks` and gives\nthem to the model with the new question; the context builder does not use them."
+        ),
+    ] = None
+
+
+class Circuit(BaseModel):
+    schema_version: Annotated[int, Field(ge=0, le=65535)]
+    registry_version: str
+    rev: Annotated[
+        int, Field(description="+1 per applied op (narration excluded).", ge=0)
+    ]
+    parts: dict[str, PartInstance]
+    nets: dict[str, Net]
+    blocks: dict[str, Block]
+    analyses: list[Analysis]
+    hints: Annotated[
+        list[LayoutHint],
+        Field(
+            description="Kept sorted and de-duplicated so the order never depends on edit history."
+        ),
+    ]
+    library: Annotated[
+        dict[str, ComponentDef] | None,
+        Field(
+            description="Component definitions the parts use (`lib:<name>`), embedded so the circuit is\nself-contained (LLD §17 D1). Changed only by `lib.*` ops."
+        ),
+    ] = None
+    tests: list[TestPlan] | None = None
+    requirements: list[Requirement] | None = None
+
+
+class OpEnvelope18(BaseModel):
+    """
+    Add a component definition to the project library (LLD §17 D13).
+    """
+
+    op: Literal["lib.add"]
+    body: LibAdd
+
+
+class OpEnvelope19(BaseModel):
+    """
+    Replace a definition; its instances and the definitions that use it are checked again.
+    """
+
+    op: Literal["lib.update"]
+    body: LibUpdate
+
+
+class OpEnvelope43(OpEnvelope18, OpEnvelope25):
+    """
+    One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
+    """
+
+
+class OpEnvelope44(OpEnvelope19, OpEnvelope25):
+    """
+    One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
+    """
+
+
+class OpEnvelope(
+    RootModel[
+        OpEnvelope26
+        | OpEnvelope27
+        | OpEnvelope28
+        | OpEnvelope29
+        | OpEnvelope30
+        | OpEnvelope31
+        | OpEnvelope32
+        | OpEnvelope33
+        | OpEnvelope34
+        | OpEnvelope35
+        | OpEnvelope36
+        | OpEnvelope37
+        | OpEnvelope38
+        | OpEnvelope39
+        | OpEnvelope40
+        | OpEnvelope41
+        | OpEnvelope42
+        | OpEnvelope43
+        | OpEnvelope44
+        | OpEnvelope45
+        | OpEnvelope46
+        | OpEnvelope47
+        | OpEnvelope48
+        | OpEnvelope49
+    ]
+):
+    """
+    One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
+    """
+
+    root: Annotated[
+        OpEnvelope26
+        | OpEnvelope27
+        | OpEnvelope28
+        | OpEnvelope29
+        | OpEnvelope30
+        | OpEnvelope31
+        | OpEnvelope32
+        | OpEnvelope33
+        | OpEnvelope34
+        | OpEnvelope35
+        | OpEnvelope36
+        | OpEnvelope37
+        | OpEnvelope38
+        | OpEnvelope39
+        | OpEnvelope40
+        | OpEnvelope41
+        | OpEnvelope42
+        | OpEnvelope43
+        | OpEnvelope44
+        | OpEnvelope45
+        | OpEnvelope46
+        | OpEnvelope47
+        | OpEnvelope48
+        | OpEnvelope49,
+        Field(
+            description="One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`."
+        ),
+    ]
+
+
+class Op18(BaseModel):
+    """
+    Add a component definition to the project library (LLD §17 D13).
+    """
+
+    op: Literal["lib.add"]
+    body: LibAdd
+
+
+class Op19(BaseModel):
+    """
+    Replace a definition; its instances and the definitions that use it are checked again.
+    """
+
+    op: Literal["lib.update"]
+    body: LibUpdate
+
+
+class Op(
+    RootModel[
+        Op1
+        | Op2
+        | Op3
+        | Op4
+        | Op5
+        | Op6
+        | Op7
+        | Op8
+        | Op9
+        | Op10
+        | Op11
+        | Op12
+        | Op13
+        | Op14
+        | Op15
+        | Op16
+        | Op17
+        | Op18
+        | Op19
+        | Op20
+        | Op21
+        | Op22
+        | Op23
+        | Op24
+    ]
+):
+    root: (
+        Op1
+        | Op2
+        | Op3
+        | Op4
+        | Op5
+        | Op6
+        | Op7
+        | Op8
+        | Op9
+        | Op10
+        | Op11
+        | Op12
+        | Op13
+        | Op14
+        | Op15
+        | Op16
+        | Op17
+        | Op18
+        | Op19
+        | Op20
+        | Op21
+        | Op22
+        | Op23
+        | Op24
+    )
+
+
+class ApplyOk(BaseModel):
+    """
+    What a successful `apply` reports to the UI: only what changed (LLD §10).
+    """
+
+    rev: Annotated[int, Field(ge=0)]
+    patch: Patch
+    inverse: Annotated[
+        list[Op],
+        Field(
+            description="Ops that undo this change, in the order they must be applied."
+        ),
+    ]
+
+
+class Outcome1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    ok: ApplyOk
+
+
+class Outcome(RootModel[Outcome1 | Outcome2]):
+    root: Outcome1 | Outcome2
+
+
+class Trial(BaseModel):
+    """
+    Outcome of a trial batch (the orchestrator's composer draft).
+    """
+
+    circuit: Circuit
+    errors: Annotated[
+        list[OpError],
+        Field(
+            description="Every rejected op, with `op_index` set. Rejected ops are skipped; the rest still apply,\nso the LLM gets all its mistakes back in one repair round."
+        ),
+    ]
+    inverse: Annotated[list[Op], Field(description="Undo for the ops that did apply.")]
+
+
+class Inserted(BaseModel):
+    block: str
+    ops: Annotated[
+        list[Op],
+        Field(description="Apply as one batch (author `template`): one undo step."),
+    ]
+    refdes: Annotated[
+        dict[str, str], Field(description="Local refdes -> refdes in the circuit.")
+    ]
+    preview: Preview
 
 
 class BlockTrial(BaseModel):
@@ -2172,25 +2916,6 @@ class BlockTrial(BaseModel):
     ] = None
 
 
-class JobEvent1(BaseModel):
-    """
-    One event on `GET /v1/jobs/{id}/events`. On the wire, `event` is the SSE event name, `data`
-    its JSON, and the event's sequence number its SSE `id`, which a reconnect resumes from.
-    """
-
-    event: Literal["job.state"]
-    data: JobStateData
-
-
-class JobEvent3(BaseModel):
-    """
-    A dashed placeholder for a planned block.
-    """
-
-    event: Literal["block.ghost"]
-    data: GhostData
-
-
 class JobEvent4(BaseModel):
     """
     One op of a verified block: validate locally, then animate.
@@ -2198,15 +2923,6 @@ class JobEvent4(BaseModel):
 
     event: Literal["op"]
     data: OpEnvelope
-
-
-class JobEvent8(BaseModel):
-    """
-    The job finished: the editor unlocks.
-    """
-
-    event: Literal["done"]
-    data: DoneData
 
 
 class JobEvent(
@@ -2238,152 +2954,6 @@ class JobEvent(
     ]
 
 
-class AppendOps(BaseModel):
-    """
-    `POST /v1/projects/{id}/ops`: user ops since `base_rev`, applied in order. A mismatched
-    `base_rev` is 409 `stale_rev`, and the client reloads the snapshot.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    base_rev: Annotated[int, Field(ge=0)]
-    ops: list[OpEnvelope]
-
-
-class SimValues(BaseModel):
-    """
-    The learner's simulation of the circuit the question is about. The server never simulated an
-    edited circuit, so these come from the browser (LLD §5); the circuit itself does not.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    status: Annotated[
-        str | None,
-        Field(
-            description="The run's status (`ok`, `no_convergence`, `singular_matrix`, `timeout`, `error`); absent\nwhen nothing was simulated."
-        ),
-    ] = None
-    op_v: Annotated[
-        dict[str, float] | None, Field(description="Operating point: net -> volts.")
-    ] = {}
-    op_i: Annotated[
-        dict[str, float] | None,
-        Field(
-            description="Operating point: pin (`R3.1`) -> amps flowing into the pin."
-        ),
-    ] = {}
-    ac: Annotated[
-        AcValues | None, Field(description="AC response at the scope's frequency.")
-    ] = None
-    tran: Annotated[
-        TranValues | None,
-        Field(description="The transient's range on each net, after start-up."),
-    ] = None
-    checks: Annotated[
-        list[CheckResult] | None,
-        Field(
-            description="Spec checks as the browser measured them.",
-            validate_default=True,
-        ),
-    ] = []
-
-
-class TrySuggestion(BaseModel):
-    """
-    An experiment the tutor suggests (LLD §9, rule 5): ops the learner can apply, and what the
-    tutor predicts will happen.
-    """
-
-    ops: list[Op]
-    predict: str
-    problems: Annotated[
-        list[OpError],
-        Field(
-            description="Why it cannot be applied (a malformed block, an op a learner cannot make, or what `apply`\nrejected). Empty when the ops apply to the circuit as one undoable step."
-        ),
-    ]
-
-
-class ChangeRequest(BaseModel):
-    """
-    `POST /v1/projects/{id}/what-changed` ("What changed?", LLD §9): explain what the edits from
-    `from_rev` to `rev` did. The server reads its own circuits at both revs; the simulation values
-    before and after come from the browser, which ran them. The model gets their difference, not
-    the circuits.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    from_rev: Annotated[int, Field(ge=0)]
-    rev: Annotated[int, Field(ge=0)]
-    before: Annotated[
-        SimValues,
-        Field(description="The learner's simulation of the circuit at `from_rev`."),
-    ]
-    after: Annotated[
-        SimValues,
-        Field(description="The learner's simulation of the circuit at `rev`."),
-    ]
-    level: LearnerLevel | None = "beginner"
-    mode: TutorMode | None = "explain"
-    effort: ReasoningEffort | None = None
-
-
-class Circuit(BaseModel):
-    schema_version: Annotated[int, Field(ge=0, le=65535)]
-    registry_version: str
-    rev: Annotated[
-        int, Field(description="+1 per applied op (narration excluded).", ge=0)
-    ]
-    parts: dict[str, PartInstance]
-    nets: dict[str, Net]
-    blocks: dict[str, Block]
-    analyses: list[Analysis]
-    hints: Annotated[
-        list[LayoutHint],
-        Field(
-            description="Kept sorted and de-duplicated so the order never depends on edit history."
-        ),
-    ]
-
-
-class Trial(BaseModel):
-    """
-    Outcome of a trial batch (the orchestrator's composer draft).
-    """
-
-    circuit: Circuit
-    errors: Annotated[
-        list[OpError],
-        Field(
-            description="Every rejected op, with `op_index` set. Rejected ops are skipped; the rest still apply,\nso the LLM gets all its mistakes back in one repair round."
-        ),
-    ]
-    inverse: Annotated[list[Op], Field(description="Undo for the ops that did apply.")]
-
-
-class Registry(BaseModel):
-    version: str
-    parts: dict[str, PartDef]
-    symbols: Annotated[
-        dict[str, SymbolDef],
-        Field(
-            description="Schematic symbols by id (`symbols/<id>.svg`): geometry only; the drawings ship in the\nbundle's sprite sheet."
-        ),
-    ]
-    templates: Annotated[
-        dict[str, TemplateDef] | None,
-        Field(
-            description="Block templates by id (`templates/<id>.yaml`), each checked against the parts at load.",
-            validate_default=True,
-        ),
-    ] = {}
-
-
 class ProjectSnapshot(BaseModel):
     """
     `GET /v1/projects/{id}`: everything an editor opens.
@@ -2400,37 +2970,33 @@ class ProjectSnapshot(BaseModel):
     ] = None
 
 
-class AskRequest(BaseModel):
+class AppendOps(BaseModel):
     """
-    `POST /v1/projects/{id}/ask`. The server reads its own circuit at `rev` (never a client
-    netlist) and takes the simulation values from the client, which ran them (LLD §5).
+    `POST /v1/projects/{id}/ops`: user ops since `base_rev`, applied in order. A mismatched
+    `base_rev` is 409 `stale_rev`, and the client reloads the snapshot.
     """
 
     model_config = ConfigDict(
         extra="forbid",
     )
-    question: str
-    selection: Selection | None = None
-    rev: Annotated[int, Field(ge=0)]
-    level: LearnerLevel | None = "beginner"
-    mode: TutorMode | None = "explain"
-    sim: Annotated[SimValues | None, Field(validate_default=True)] = {
-        "op_v": {},
-        "op_i": {},
-        "checks": [],
-    }
-    effort: Annotated[
-        ReasoningEffort | None,
+    base_rev: Annotated[int, Field(ge=0)]
+    ops: list[OpEnvelope]
+
+
+class TrySuggestion(BaseModel):
+    """
+    An experiment the tutor suggests (LLD §9, rule 5): ops the learner can apply, and what the
+    tutor predicts will happen.
+    """
+
+    ops: list[Op]
+    predict: str
+    problems: Annotated[
+        list[OpError],
         Field(
-            description="How hard a reasoning model thinks before it answers, the learner's choice; absent: the\nprovider's default. Models that do not reason ignore it."
+            description="Why it cannot be applied (a malformed block, an op a learner cannot make, or what `apply`\nrejected). Empty when the ops apply to the circuit as one undoable step."
         ),
-    ] = None
-    history: Annotated[
-        list[str] | None,
-        Field(
-            description="The conversation so far: ids of the learner's earlier answers in this project (`ask_id`),\noldest first, at most 3. The server reads their questions and answers from `asks` and gives\nthem to the model with the new question; the context builder does not use them."
-        ),
-    ] = None
+    ]
 
 
 class Answer(BaseModel):

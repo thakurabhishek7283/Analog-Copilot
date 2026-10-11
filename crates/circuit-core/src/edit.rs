@@ -21,12 +21,12 @@ pub enum WireEnd {
     Rail { net: NetId, kind: NetKind },
 }
 
-/// The refdes for a new instance of `part`: its category letter and the lowest free number, so
-/// deleting R2 and placing a resistor gives R2 again.
+/// The refdes for a new instance of `part`: its prefix and the lowest free number, so deleting R2
+/// and placing a resistor gives R2 again.
 pub fn next_refdes(c: &Circuit, reg: &Registry, part: &str) -> Result<RefDes, OpError> {
-    let def =
-        reg.part(part).ok_or_else(|| OpError::new(E::PartNotInRegistry, format!("{part} is not in the registry")))?;
-    let letter = def.category.letter();
+    let def = crate::library::part_def(reg, c, part)
+        .ok_or_else(|| OpError::new(E::PartNotInRegistry, format!("{part} is not in the registry")))?;
+    let letter = def.refdes_prefix();
     (1..=9999)
         .map(|n| format!("{letter}{n}"))
         .find(|r| !c.parts.contains_key(r))

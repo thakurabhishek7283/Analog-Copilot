@@ -5,7 +5,7 @@ import { ApiClient, ApiFailure, isOffline, localTokenStore } from "../api/client
 import { API_URL } from "../config.ts";
 import type { Circuit, ProjectSnapshot } from "../gen/contract.ts";
 import { indexedDbPendingStore } from "../store/pending.ts";
-import { SymbolDefs } from "../views/schematic/Schematic.tsx";
+import { LibrarySymbolDefs, SymbolDefs } from "../views/schematic/Schematic.tsx";
 import { bindShortcuts } from "./commands.ts";
 import { type Editor, openEditor } from "./editor.ts";
 import { EditorContext, type EditorContextValue, useCircuit, useEditor, useGen, useProject, useUi } from "./editorContext.ts";
@@ -160,6 +160,7 @@ export function App() {
   return (
     <EditorContext.Provider value={ctx}>
       <SymbolDefs sprite={opened.editor.sprite} />
+      <LibrarySymbols />
       <div className="app">
         <Toolbar demo={route.kind === "demo"} onRetryServer={() => setVisit((v) => v + 1)} />
         {notice && (
@@ -294,4 +295,10 @@ function Toolbar({ demo, onRetryServer }: { demo: boolean; onRetryServer: () => 
       </span>
     </header>
   );
+}
+
+/** The project library's generated symbols, redrawn when the library changes (LLD §17). */
+function LibrarySymbols() {
+  const symbols = useCircuit((s) => s.librarySymbols);
+  return <LibrarySymbolDefs symbols={symbols} />;
 }

@@ -86,6 +86,13 @@ impl CoreSession {
         api::changes(&self.inner, patch)
     }
 
+    /// The generated symbols of the circuit's library components (LLD §17) → `{PartId: AutoSymbol}`;
+    /// later changes come with `changes()` whenever the library changed.
+    #[wasm_bindgen(js_name = librarySymbols)]
+    pub fn library_symbols(&self) -> String {
+        api::library_symbols(&self.inner)
+    }
+
     /// The refdes a new instance of registry part `part` gets (lowest free number)
     /// → `{"ok": RefDes} | {"err": OpError}`.
     #[wasm_bindgen(js_name = nextRefdes)]

@@ -2,6 +2,7 @@
 //! facades are thin wrappers around [`json_api`], so both runtimes share one implementation of
 //! every boundary detail (parsing, error shapes, result shapes) and cannot drift apart.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
@@ -12,11 +13,14 @@ use crate::apply::{Patch, apply, apply_ops, validate};
 use crate::edit::{self, WireEnd};
 use crate::erc::{ErcContext, ErcIssue, erc};
 use crate::error::{ErrorCode, OpError};
-use crate::ir::{Analysis, Block, BlockId, Circuit, LayoutHint, Net, NetId, PartInstance, PinRef, RefDes};
+use crate::ir::{Analysis, Block, BlockId, Circuit, LayoutHint, Net, NetId, PartId, PartInstance, PinRef, RefDes};
+use crate::library::ComponentDef;
 use crate::ops::{Author, Op, OpEnvelope};
 use crate::registry::Registry;
 use crate::spice::{CompileError, CompileOpts, Netlist, compile};
+use crate::symbol::AutoSymbol;
 use crate::template::{self, BlockRequest, BlockTrial, InsertBlock, Inserted, Preview};
+use crate::testplan::{Requirement, TestPlan};
 use crate::tutor::{self, Answer, ChangeContext, TutorContext};
 use crate::wire::{AskRequest, ChangeRequest};
 
@@ -43,6 +47,18 @@ pub struct PatchData {
     /// Present when `patch.hints_changed`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hints: Option<Vec<LayoutHint>>,
+    /// The whole project library, when `patch.library_changed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub library: Option<IndexMap<PartId, ComponentDef>>,
+    /// The generated symbols of library components drawn with `symbol: auto`, with `library`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbols: Option<BTreeMap<PartId, AutoSymbol>>,
+    /// Present when `patch.tests_changed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tests: Option<Vec<TestPlan>>,
+    /// Present when `patch.requirements_changed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirements: Option<Vec<Requirement>>,
 }
 
 /// The authoritative circuit for one editor (browser) or one job (server).
@@ -55,7 +71,7 @@ pub struct Session {
 impl Session {
     /// Start empty, or from a snapshot, which must pass every structural invariant.
     pub fn new(reg: Arc<Registry>, snapshot: Option<Circuit>) -> Result<Session, Vec<OpError>> {
-        let circuit = snapshot.unwrap_or_else(|| Circuit::new(reg.version.clone()));
+        let circuit = snapshot.map(crate::ir::migrate).unwrap_or_else(|| Circuit::new(reg.version.clone()));
         let errs = validate(&circuit, &reg);
         if errs.is_empty() { Ok(Session { reg, circuit }) } else { Err(errs) }
     }
@@ -95,7 +111,21 @@ impl Session {
             blocks: pick(&c.blocks, &patch.blocks_upserted),
             analyses: patch.analyses_changed.then(|| c.analyses.clone()),
             hints: patch.hints_changed.then(|| c.hints.clone()),
+            library: patch.library_changed.then(|| c.library.clone()),
+            symbols: patch.library_changed.then(|| self.library_symbols()),
+            tests: patch.tests_changed.then(|| c.tests.clone()),
+            requirements: patch.requirements_changed.then(|| c.requirements.clone()),
         }
+    }
+
+    /// The generated symbol of every library component drawn with `symbol: auto` (LLD §17).
+    pub fn library_symbols(&self) -> BTreeMap<PartId, AutoSymbol> {
+        self.circuit
+            .library
+            .values()
+            .filter(|d| d.part.symbol == crate::library::AUTO_SYMBOL)
+            .map(|d| (d.part.id.clone(), crate::symbol::auto_symbol(&d.part)))
+            .collect()
     }
 
     /// A scratch copy sharing the registry (scrubbing, trial edits).
@@ -357,6 +387,11 @@ pub mod json_api {
     /// `patch_json` is a `Patch` (from an `ApplyOk`) → `Outcome<PatchData, OpError>`.
     pub fn changes(s: &Session, patch_json: &str) -> String {
         outcome(parse::<Patch>("patch", patch_json).map(|p| s.changes(&p)))
+    }
+
+    /// `BTreeMap<PartId, AutoSymbol>`: what a freshly loaded editor needs to draw library parts.
+    pub fn library_symbols(s: &Session) -> String {
+        to_json(&s.library_symbols())
     }
 
     /// For value fields in the editor: `unit` is e.g. `"ohm"` → `Outcome<Quantity, String>`.

@@ -51,6 +51,25 @@
             "$ref": "#/$defs/LayoutHint"
           },
           "description": "Kept sorted and de-duplicated so the order never depends on edit history."
+        },
+        "library": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ComponentDef"
+          },
+          "description": "Component definitions the parts use (`lib:<name>`), embedded so the circuit is\nself-contained (LLD §17 D1). Changed only by `lib.*` ops."
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TestPlan"
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Requirement"
+          }
         }
       },
       "required": [
@@ -574,6 +593,653 @@
         "down"
       ]
     },
+    "ComponentDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "part": {
+          "$ref": "#/$defs/PartDef",
+          "description": "The component as a part: id (`lib:<name>`), category `X`, title, refdes `prefix`, pins,\nlimits and symbol (`auto`, a box the editor draws from the pins, or a registry symbol whose\nanchors match the pins). It has no `spice` line and, for now, no params."
+        },
+        "version": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "model": {
+          "$ref": "#/$defs/Model"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        }
+      },
+      "required": [
+        "part",
+        "version",
+        "model",
+        "provenance"
+      ]
+    },
+    "PartDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/Category"
+        },
+        "prefix": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Refdes prefix when it is not the category letter (`RV`, `TP`); see [`EXTRA_PREFIXES`]."
+        },
+        "title": {
+          "type": "string"
+        },
+        "role_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Units of a multi-unit IC (e.g. `[A, B]` for a dual op-amp). Empty for single-unit parts.",
+          "default": []
+        },
+        "pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PinDef"
+          }
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ParamDef"
+          },
+          "description": "Every param must declare a default, so instances always carry a full param set.",
+          "default": {}
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          },
+          "description": "Ratings used by ERC, e.g. `v_supply_max`, `i_max`, `p_max`.",
+          "default": {}
+        },
+        "dc_param": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "For voltage sources: the param holding V(P) − V(N) at DC (used by ERC007)."
+        },
+        "spice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpiceDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "symbol": {
+          "type": "string",
+          "description": "Schematic symbol, `symbols/<id>.svg`; its pin anchors are matched by pin name."
+        },
+        "breadboard": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "teach": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hazard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Hazard"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "title",
+        "pins",
+        "symbol"
+      ]
+    },
+    "Category": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "R",
+            "C",
+            "L",
+            "D",
+            "Q",
+            "U",
+            "V",
+            "J"
+          ]
+        },
+        {
+          "type": "string",
+          "const": "X",
+          "description": "A component from the project library (a sub-circuit): its behaviour comes from its pins'\nsemantics, not from a category rule, and it compiles to an `X` line."
+        }
+      ]
+    },
+    "PinDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "num": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "type": {
+          "$ref": "#/$defs/PinType"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dc_group": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "For a library component: the pins joined by a DC path inside it share a group, and group 0\nis a DC path to ground (ERC003 on the outside, LLD §17 D6). Computed by `apply()` from the\ncomponent's own netlist, never taken from a client; unused on registry parts, whose\ncategory says which pins conduct."
+        }
+      },
+      "required": [
+        "name",
+        "num",
+        "type"
+      ]
+    },
+    "PinType": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "input",
+            "output",
+            "passive",
+            "power_pos",
+            "power_neg"
+          ]
+        },
+        {
+          "type": "string",
+          "const": "nc",
+          "description": "Not connected internally; exempt from ERC001."
+        }
+      ]
+    },
+    "ParamDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit": {
+          "$ref": "#/$defs/Unit"
+        },
+        "default": {
+          "type": "string"
+        },
+        "min": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double",
+          "description": "In SI units. YAML sources may write a prefixed number such as `1p` or `100meg`."
+        },
+        "max": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "required": [
+        "unit",
+        "default"
+      ]
+    },
+    "SpiceDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unit_line": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "description": "SPICE emission template. `line` is for single-unit parts; `unit_line` is emitted once per\nused unit of a multi-unit part. Placeholders: `{refdes}`, `{unit}`, pin names, param names.\nIn `unit_line`, a unit pin is named without its `_<unit>` suffix (`{OUT}` → `OUT_A`)."
+    },
+    "Hazard": {
+      "type": "string",
+      "enum": [
+        "mains"
+      ]
+    },
+    "Model": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Composite",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "composite"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        }
+      ],
+      "description": "What the component does inside. Behavioral laws and SPICE imports join in P5.2 (LLD §17 D3)."
+    },
+    "CompositePart": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "part": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Values as written (\"10k\"); a missing param takes the part's default.",
+          "default": {}
+        }
+      },
+      "required": [
+        "part"
+      ]
+    },
+    "Composite": {
+      "type": "object",
+      "properties": {
+        "parts": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/CompositePart"
+          },
+          "description": "Local refdes (`R1`, `U1`, scoped to the definition) -> part."
+        },
+        "nets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/PinRef"
+            }
+          },
+          "description": "Net -> pins. A net named after one of the component's pins is that pin; `GND` is the\ncircuit's ground; every other net is internal."
+        }
+      },
+      "required": [
+        "parts",
+        "nets"
+      ],
+      "description": "A sub-circuit of registry parts and other library components."
+    },
+    "Provenance": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "user"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "llm"
+            }
+          },
+          "required": [
+            "kind",
+            "job_id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "licence": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "import"
+            }
+          },
+          "required": [
+            "kind",
+            "source",
+            "licence"
+          ]
+        }
+      ],
+      "description": "Who made a definition (LLD §17 D10: trust levels read it)."
+    },
+    "TestPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "`freq_compare`: lowercase [a-z0-9_]."
+        },
+        "title": {
+          "type": "string"
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Scenario"
+          }
+        },
+        "probes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Probe"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "scenarios",
+        "probes"
+      ]
+    },
+    "Scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "set": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Param overrides as `REFDES.param` -> value as typed (`\"V2.frequency\": \"1k\"`), applied to a\nscratch copy, so each scenario has its own netlist and cache entry.",
+          "default": {}
+        },
+        "analyses": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Analysis"
+          },
+          "description": "The analyses this scenario runs; absent, the circuit's own."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "Probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "net": {
+          "type": "string"
+        },
+        "measure": {
+          "$ref": "#/$defs/Measure"
+        }
+      },
+      "required": [
+        "name",
+        "net",
+        "measure"
+      ]
+    },
+    "Measure": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "amplitude"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "Half the peak-to-peak over the transient's second half."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "dc"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "Average over the transient's second half (the DC level, bias included)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "in": {
+              "type": "string"
+            },
+            "at_hz": {
+              "type": "number",
+              "format": "double"
+            },
+            "kind": {
+              "type": "string",
+              "const": "ac_gain"
+            }
+          },
+          "required": [
+            "kind",
+            "in",
+            "at_hz"
+          ],
+          "description": "|V(net)| / |V(input)| in the AC sweep at `at_hz`."
+        }
+      ],
+      "description": "What a probe reads from its net in each scenario."
+    },
+    "Requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "`R1`, `R2`, ... as the brief numbers them."
+        },
+        "text": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RequirementKind"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "description": "What will prove it; met, missing or unverifiable is decided from these after simulation.",
+          "default": []
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "kind"
+      ]
+    },
+    "RequirementKind": {
+      "type": "string",
+      "enum": [
+        "functional",
+        "electrical",
+        "constraint",
+        "deliverable",
+        "test"
+      ]
+    },
+    "Evidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "block": {
+              "type": "string"
+            },
+            "check": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "check"
+            }
+          },
+          "required": [
+            "kind",
+            "block",
+            "check"
+          ],
+          "description": "A block's spec check (`b2.fc_hz`)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "test": {
+              "type": "string"
+            },
+            "scenario": {
+              "type": "string"
+            },
+            "probe": {
+              "type": "string"
+            },
+            "target": {
+              "type": "number",
+              "format": "double"
+            },
+            "tol_pct": {
+              "type": "number",
+              "format": "double"
+            },
+            "kind": {
+              "type": "string",
+              "const": "probe"
+            }
+          },
+          "required": [
+            "kind",
+            "test",
+            "scenario",
+            "probe",
+            "target",
+            "tol_pct"
+          ],
+          "description": "A probe of a test plan in one scenario, against a target."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "claim": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "structural"
+            }
+          },
+          "required": [
+            "kind",
+            "claim"
+          ],
+          "description": "A fact about the circuit itself (\"every op-amp is an LM358\"), checked by the core's\nstructure queries when they exist; until then it is unverifiable, never met."
+        }
+      ]
+    },
     "OpEnvelope": {
       "description": "One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.",
       "allOf": [
@@ -894,6 +1560,123 @@
             },
             "body": {
               "$ref": "#/$defs/Narrate"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "lib.add"
+            },
+            "body": {
+              "$ref": "#/$defs/LibAdd"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ],
+          "description": "Add a component definition to the project library (LLD §17 D13)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "lib.update"
+            },
+            "body": {
+              "$ref": "#/$defs/LibUpdate"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ],
+          "description": "Replace a definition; its instances and the definitions that use it are checked again."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "lib.remove"
+            },
+            "body": {
+              "$ref": "#/$defs/LibRemove"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ],
+          "description": "Remove a definition nothing uses. Inverse of `lib.add`."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "instance.expand"
+            },
+            "body": {
+              "$ref": "#/$defs/InstanceExpand"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ],
+          "description": "Replace an instance of a library component by its parts, as a block."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "block.set_spec"
+            },
+            "body": {
+              "$ref": "#/$defs/BlockSetSpec"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ],
+          "description": "Replace a block's spec targets (a deliberate retune)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "test.set"
+            },
+            "body": {
+              "$ref": "#/$defs/TestSet"
+            }
+          },
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "req.set"
+            },
+            "body": {
+              "$ref": "#/$defs/ReqSet"
             }
           },
           "required": [
@@ -1221,6 +2004,115 @@
         "text"
       ]
     },
+    "LibAdd": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "def": {
+          "$ref": "#/$defs/ComponentDef",
+          "description": "Boxed: a definition is large next to every other op body."
+        }
+      },
+      "required": [
+        "def"
+      ]
+    },
+    "LibUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "def": {
+          "$ref": "#/$defs/ComponentDef"
+        }
+      },
+      "required": [
+        "id",
+        "def"
+      ]
+    },
+    "LibRemove": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "InstanceExpand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "refdes": {
+          "type": "string"
+        },
+        "block": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Id of the block the parts form; default the lowest free `bN`."
+        }
+      },
+      "required": [
+        "refdes"
+      ]
+    },
+    "BlockSetSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "spec": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SpecTarget"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "spec"
+      ]
+    },
+    "TestSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TestPlan"
+          }
+        }
+      },
+      "required": [
+        "tests"
+      ]
+    },
+    "ReqSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Requirement"
+          }
+        }
+      },
+      "required": [
+        "requirements"
+      ]
+    },
     "Author": {
       "type": "string",
       "enum": [
@@ -1349,6 +2241,26 @@
           "type": "string",
           "const": "compile_failed",
           "description": "The compiler refused a circuit that `apply()` accepted (a generated block's bench)."
+        },
+        {
+          "type": "string",
+          "const": "component_invalid",
+          "description": "A library component definition is malformed (every problem listed in the message)."
+        },
+        {
+          "type": "string",
+          "const": "component_not_found",
+          "description": "No library component with this id in the circuit."
+        },
+        {
+          "type": "string",
+          "const": "component_in_use",
+          "description": "The library component is still used by a part or by another component."
+        },
+        {
+          "type": "string",
+          "const": "test_invalid",
+          "description": "A test plan or a requirement is malformed, or names something the circuit lacks."
         }
       ],
       "description": "Error codes returned by `apply()`. These go back to the LLM verbatim during repair and are\nshown to users as friendly text (LLD §4). Additive only within a protocol major version."
@@ -1397,6 +2309,18 @@
         },
         "hints_changed": {
           "type": "boolean"
+        },
+        "library_changed": {
+          "type": "boolean",
+          "default": false
+        },
+        "tests_changed": {
+          "type": "boolean",
+          "default": false
+        },
+        "requirements_changed": {
+          "type": "boolean",
+          "default": false
         }
       },
       "required": [
@@ -1510,6 +2434,46 @@
             "$ref": "#/$defs/LayoutHint"
           },
           "description": "Present when `patch.hints_changed`."
+        },
+        "library": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/ComponentDef"
+          },
+          "description": "The whole project library, when `patch.library_changed`."
+        },
+        "symbols": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/AutoSymbol"
+          },
+          "description": "The generated symbols of library components drawn with `symbol: auto`, with `library`."
+        },
+        "tests": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/TestPlan"
+          },
+          "description": "Present when `patch.tests_changed`."
+        },
+        "requirements": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Requirement"
+          },
+          "description": "Present when `patch.requirements_changed`."
         }
       },
       "required": [
@@ -1519,6 +2483,91 @@
         "blocks"
       ],
       "description": "The current state of everything a [`Patch`] names, so a UI mirror can update itself without\nreading the whole circuit (LLD §10). Removed ids are in the patch itself."
+    },
+    "AutoSymbol": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Symbol id in the sprite sheet: `lib_<name>`."
+        },
+        "def": {
+          "$ref": "#/$defs/SymbolDef"
+        },
+        "body": {
+          "type": "string",
+          "description": "SVG markup for the inside of its `<symbol>` (plain shapes, `currentColor`, pin names as text)."
+        }
+      },
+      "required": [
+        "id",
+        "def",
+        "body"
+      ],
+      "description": "A library component's symbol when it has no registry symbol (`symbol: auto`, LLD §17): a box in\nthe registry's own style (the NE555's), inputs on the left, outputs on the right, positive\nsupplies on top, negative supplies and ground below; passive and `nc` pins fill the shorter\nside. Built here, not in the editor, so geometry still comes only from the core."
+    },
+    "SymbolDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Size in schematic units (multiples of [`GRID`])."
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "pins": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Anchor"
+          },
+          "description": "Pin anchors by pin name (base name for the unit pins of a multi-unit part)."
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "pins"
+      ]
+    },
+    "Anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "y": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "side": {
+          "$ref": "#/$defs/Side",
+          "description": "The edge the anchor sits on; wires leave the symbol in this direction."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "side"
+      ]
+    },
+    "Side": {
+      "type": "string",
+      "enum": [
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ]
     },
     "Trial": {
       "type": "object",
@@ -1714,6 +2763,13 @@
             "$ref": "#/$defs/Analysis"
           },
           "description": "The analyses in the deck, in order (resolved from `CompileOpts`)."
+        },
+        "leaf_devices": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "Primitive devices the deck simulates, library components flattened (LLD §17 D12: the\neditor runs live below a budget and asks for a Run above it).",
+          "default": 0
         }
       },
       "required": [
@@ -1939,295 +2995,6 @@
         "version",
         "parts",
         "symbols"
-      ]
-    },
-    "PartDef": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "category": {
-          "$ref": "#/$defs/Category"
-        },
-        "title": {
-          "type": "string"
-        },
-        "role_tags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": []
-        },
-        "units": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Units of a multi-unit IC (e.g. `[A, B]` for a dual op-amp). Empty for single-unit parts.",
-          "default": []
-        },
-        "pins": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/PinDef"
-          }
-        },
-        "params": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/ParamDef"
-          },
-          "description": "Every param must declare a default, so instances always carry a full param set.",
-          "default": {}
-        },
-        "limits": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "number",
-            "format": "double"
-          },
-          "description": "Ratings used by ERC, e.g. `v_supply_max`, `i_max`, `p_max`.",
-          "default": {}
-        },
-        "dc_param": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "For voltage sources: the param holding V(P) − V(N) at DC (used by ERC007)."
-        },
-        "spice": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SpiceDef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "symbol": {
-          "type": "string",
-          "description": "Schematic symbol, `symbols/<id>.svg`; its pin anchors are matched by pin name."
-        },
-        "breadboard": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "teach": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "hazard": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Hazard"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "id",
-        "category",
-        "title",
-        "pins",
-        "symbol"
-      ]
-    },
-    "Category": {
-      "type": "string",
-      "enum": [
-        "R",
-        "C",
-        "L",
-        "D",
-        "Q",
-        "U",
-        "V",
-        "J"
-      ]
-    },
-    "PinDef": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "num": {
-          "type": "integer",
-          "format": "uint16",
-          "minimum": 0,
-          "maximum": 65535
-        },
-        "type": {
-          "$ref": "#/$defs/PinType"
-        },
-        "unit": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "name",
-        "num",
-        "type"
-      ]
-    },
-    "PinType": {
-      "oneOf": [
-        {
-          "type": "string",
-          "enum": [
-            "input",
-            "output",
-            "passive",
-            "power_pos",
-            "power_neg"
-          ]
-        },
-        {
-          "type": "string",
-          "const": "nc",
-          "description": "Not connected internally; exempt from ERC001."
-        }
-      ]
-    },
-    "ParamDef": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "unit": {
-          "$ref": "#/$defs/Unit"
-        },
-        "default": {
-          "type": "string"
-        },
-        "min": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "format": "double",
-          "description": "In SI units. YAML sources may write a prefixed number such as `1p` or `100meg`."
-        },
-        "max": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "format": "double"
-        }
-      },
-      "required": [
-        "unit",
-        "default"
-      ]
-    },
-    "SpiceDef": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "include": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "line": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "unit_line": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "description": "SPICE emission template. `line` is for single-unit parts; `unit_line` is emitted once per\nused unit of a multi-unit part. Placeholders: `{refdes}`, `{unit}`, pin names, param names.\nIn `unit_line`, a unit pin is named without its `_<unit>` suffix (`{OUT}` → `OUT_A`)."
-    },
-    "Hazard": {
-      "type": "string",
-      "enum": [
-        "mains"
-      ]
-    },
-    "SymbolDef": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "width": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0,
-          "description": "Size in schematic units (multiples of [`GRID`])."
-        },
-        "height": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "pins": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/Anchor"
-          },
-          "description": "Pin anchors by pin name (base name for the unit pins of a multi-unit part)."
-        }
-      },
-      "required": [
-        "width",
-        "height",
-        "pins"
-      ]
-    },
-    "Anchor": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "x": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "y": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "side": {
-          "$ref": "#/$defs/Side",
-          "description": "The edge the anchor sits on; wires leave the symbol in this direction."
-        }
-      },
-      "required": [
-        "x",
-        "y",
-        "side"
-      ]
-    },
-    "Side": {
-      "type": "string",
-      "enum": [
-        "left",
-        "right",
-        "top",
-        "bottom"
       ]
     },
     "TemplateDef": {

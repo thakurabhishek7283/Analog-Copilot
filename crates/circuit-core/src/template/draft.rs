@@ -24,7 +24,7 @@ use super::{
     renumber, template,
 };
 use crate::Registry;
-use crate::apply::{apply_all, apply_ops, refdes_category};
+use crate::apply::{apply_all, apply_ops, refdes_prefix};
 use crate::erc::{ErcCode, ErcContext, ErcIssue, Severity, erc};
 use crate::error::{ErrorCode as E, OpError};
 use crate::ir::*;
@@ -409,8 +409,8 @@ fn check_draft(reg: &Registry, t: &TemplateDef, d: &DraftBlock) -> Checked {
                 format!("{} is used twice: give each part its own ref", p.local),
                 &at,
             ));
-        } else if refdes_category(&p.local) != Some(def.category) {
-            let l = def.category.letter();
+        } else if refdes_prefix(&p.local) != Some(def.refdes_prefix()) {
+            let l = def.refdes_prefix();
             problems.push(Problem::new(
                 E::RefdesInvalid,
                 format!("{} is a {:?} part: its ref is {l} and a number, such as {l}1", p.part, def.category),

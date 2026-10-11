@@ -58,6 +58,57 @@ const PARTS: &[(&str, &[&str], &[&str])] = &[
 const BAD_VALUES: &[&str] = &["bad", "1e12", "-1", "10uF", "", "4k7k"];
 const NET_NAMES: &[&str] = &["GND", "VCC", "VEE", "N_IN", "N_OUT", "N_A", "N_B", "n_a", "gnd", "nc_x"];
 const BLOCKS: &[&str] = &["b1", "b2", "b3"];
+/// Library components (LLD §17): a passive RC, an op-amp buffer, and a stage that nests both.
+const LIB_IDS: &[&str] = &["lib:rc_lp", "lib:buf", "lib:stage"];
+
+fn lib_def(id: &str, variant: usize) -> Value {
+    let pin = |name: &str, num: u16, kind: &str| json!({"name": name, "num": num, "type": kind});
+    let (title, prefix, pins, parts, nets) = match id {
+        "lib:rc_lp" => (
+            "RC low-pass",
+            "X",
+            vec![pin("IN", 1, "input"), pin("OUT", 2, "output"), pin("COM", 3, "passive")],
+            json!({"R1": {"part": "resistor_th", "params": {"resistance": (["10k", "4k7", "1meg"][variant % 3])}},
+                   "C1": {"part": "cap_film", "params": {"capacitance": "100n"}}}),
+            json!({"IN": ["R1.1"], "OUT": ["R1.2", "C1.1"], "COM": ["C1.2"]}),
+        ),
+        "lib:buf" => (
+            "Buffer",
+            "U",
+            vec![
+                pin("IN", 1, "input"),
+                pin("OUT", 2, "output"),
+                pin("VCC", 3, "power_pos"),
+                pin("VEE", 4, "power_neg"),
+            ],
+            json!({"U1": {"part": (["opamp_tl072", "opamp_lm358"][variant % 2])}}),
+            json!({"IN": ["U1.INP_A"], "OUT": ["U1.OUT_A", "U1.INM_A"], "VCC": ["U1.VCC"], "VEE": ["U1.VEE"]}),
+        ),
+        _ => (
+            "Filtered buffer",
+            "XU",
+            vec![
+                pin("IN", 1, "input"),
+                pin("OUT", 2, "output"),
+                pin("VCC", 3, "power_pos"),
+                pin("VEE", 4, "power_neg"),
+            ],
+            json!({"X1": {"part": "lib:rc_lp"}, "U1": {"part": "lib:buf"}}),
+            json!({"IN": ["X1.IN"], "N_M": ["X1.OUT", "U1.IN"], "OUT": ["U1.OUT"], "VCC": ["U1.VCC"],
+                   "VEE": ["U1.VEE"], "GND": ["X1.COM"]}),
+        ),
+    };
+    let mut def = json!({
+        "part": {"id": id, "category": "X", "prefix": prefix, "title": title, "pins": pins, "symbol": "auto"},
+        "version": 1 + variant as u32,
+        "model": {"kind": "composite", "parts": parts, "nets": nets},
+        "provenance": {"kind": "user"},
+    });
+    if variant == 3 {
+        def["model"]["nets"]["IN"] = json!(["R9.1"]); // names no part: refused
+    }
+    def
+}
 const ROLES: &[&str] = &["supply", "source", "amplifier", "filter"];
 
 struct Gen<'a> {
@@ -73,27 +124,25 @@ impl Gen<'_> {
 
     fn pin_of(&mut self, s: &Session, refdes: &str) -> String {
         let part = &s.circuit().parts[refdes].part;
-        let pins = &self.reg.parts[part].pins;
+        let pins = &circuit_core::library::part_def(self.reg, s.circuit(), part).expect("parts have defs").pins;
         format!("{refdes}.{}", self.rng.pick(pins).name)
     }
 
     fn body(&mut self, s: &Session) -> (&'static str, Value) {
         let c = s.circuit();
-        let r = self.rng.below(100);
+        let r = self.rng.below(112);
         match r {
             0..=21 => {
-                let (part, keys, good) = *self.rng.pick(PARTS);
-                let letter = match self.reg.parts[part].category {
-                    circuit_core::registry::Category::R => "R",
-                    circuit_core::registry::Category::C => "C",
-                    circuit_core::registry::Category::L => "L",
-                    circuit_core::registry::Category::D => "D",
-                    circuit_core::registry::Category::Q => "Q",
-                    circuit_core::registry::Category::U => "U",
-                    circuit_core::registry::Category::V => "V",
-                    circuit_core::registry::Category::J => "J",
+                let (part, keys, good) = if self.rng.chance(35) {
+                    (*self.rng.pick(LIB_IDS), &[][..], &[][..])
+                } else {
+                    *self.rng.pick(PARTS)
                 };
-                let letter = if self.rng.chance(5) { "R" } else { letter }; // sometimes mismatched
+                let prefix = match circuit_core::library::part_def(self.reg, c, part) {
+                    Some(d) => d.refdes_prefix(),
+                    None => "X".to_string(), // a library component not added yet: refused
+                };
+                let letter = if self.rng.chance(5) { "R" } else { prefix.as_str() }; // sometimes mismatched
                 let mut body = json!({"refdes": format!("{letter}{}", 1 + self.rng.below(12)), "part": part});
                 if !keys.is_empty() && self.rng.chance(60) {
                     let v = if self.rng.chance(15) { *self.rng.pick(BAD_VALUES) } else { *self.rng.pick(good) };
@@ -138,7 +187,7 @@ impl Gen<'_> {
             58..=63 => {
                 let Some(r) = self.existing_part(s) else { return ("narrate", json!({"refs": [], "text": "x"})) };
                 let part = c.parts[&r].part.clone();
-                let (_, keys, good) = *PARTS.iter().find(|p| p.0 == part).unwrap();
+                let (_, keys, good) = *PARTS.iter().find(|p| p.0 == part).unwrap_or(&("", &[], &[]));
                 let key = if keys.is_empty() { "nope" } else { *self.rng.pick(keys) };
                 let v = if good.is_empty() || self.rng.chance(15) {
                     *self.rng.pick(BAD_VALUES)
@@ -197,6 +246,58 @@ impl Gen<'_> {
                     _ => json!({"kind": "group", "block": self.rng.pick(BLOCKS)}),
                 };
                 (if self.rng.chance(75) { "hint.add" } else { "hint.remove" }, json!({"hint": hint}))
+            }
+            92..=95 => {
+                let id = *self.rng.pick(LIB_IDS);
+                ("lib.add", json!({"def": lib_def(id, self.rng.below(4))}))
+            }
+            96..=97 => {
+                let id = *self.rng.pick(LIB_IDS);
+                ("lib.update", json!({"id": id, "def": lib_def(id, self.rng.below(4))}))
+            }
+            98 => ("lib.remove", json!({"id": self.rng.pick(LIB_IDS)})),
+            99..=101 => {
+                let lib_part = c.parts.values().find(|p| p.part.starts_with("lib:")).map(|p| p.refdes.clone());
+                let r = lib_part.or_else(|| self.existing_part(s)).unwrap_or("X1".into());
+                let mut body = json!({"refdes": r});
+                if self.rng.chance(30) {
+                    body["block"] = json!(self.rng.pick(BLOCKS));
+                }
+                ("instance.expand", body)
+            }
+            102..=103 => {
+                let target = if self.rng.chance(10) { f64::NAN } else { 500.0 * (1 + self.rng.below(4)) as f64 };
+                let spec = if target.is_nan() {
+                    json!({"fc_hz": {"target": "nan", "tol_pct": 10.0}})
+                } else {
+                    json!({"fc_hz": {"target": target, "tol_pct": 10.0}})
+                };
+                ("block.set_spec", json!({"id": self.rng.pick(BLOCKS), "spec": spec}))
+            }
+            104..=106 => {
+                let v = c.parts.keys().find(|r| r.starts_with('V')).cloned().unwrap_or("V1".into());
+                let net = c.nets.keys().next().cloned().unwrap_or("N_A".into());
+                let freq = *self.rng.pick(&["100", "1k", "5k", "bad"]);
+                (
+                    "test.set",
+                    json!({"tests": [{"id": "freq_compare", "title": "Three frequencies",
+                        "scenarios": [{"name": "low", "set": {format!("{v}.frequency"): freq}},
+                                      {"name": "mid", "set": {format!("{v}.frequency"): "1k"}}],
+                        "probes": [{"name": "out", "net": net, "measure": {"kind": "amplitude"}}]}]}),
+                )
+            }
+            107..=108 => {
+                let evidence = match self.rng.below(3) {
+                    0 => json!([{"kind": "check", "block": self.rng.pick(BLOCKS), "check": "fc_hz"}]),
+                    1 => json!([{"kind": "probe", "test": "freq_compare", "scenario": "low", "probe": "out",
+                                 "target": 0.5, "tol_pct": 10.0}]),
+                    _ => json!([{"kind": "structural", "claim": "every op-amp is an LM358"}]),
+                };
+                let kind = if self.rng.chance(80) { "electrical" } else { "filter_typo" };
+                (
+                    "req.set",
+                    json!({"requirements": [{"id": "R1", "text": "Low-pass near 200 Hz", "kind": kind, "evidence": evidence}]}),
+                )
             }
             _ => ("narrate", json!({"refs": ["R1"], "text": "Now the feedback network — 10 kΩ sets the gain."})),
         }

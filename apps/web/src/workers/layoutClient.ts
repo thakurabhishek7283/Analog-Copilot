@@ -1,7 +1,7 @@
 // Main-thread side of the layout worker. Latest wins: while a layout runs, newer requests replace
 // each other and only the newest runs next; superseded requests resolve with null.
 import * as Comlink from "comlink";
-import type { Circuit, Registry } from "../gen/contract.ts";
+import type { AutoSymbol, Circuit, ComponentDef, Registry } from "../gen/contract.ts";
 import type { Layout, LayoutApi, LayoutInput, LayoutRegistry } from "./layout.types.ts";
 
 export interface LayoutWorkerHandle {
@@ -26,13 +26,39 @@ export function layoutRegistry(reg: Registry): LayoutRegistry {
   return { parts, symbols };
 }
 
+/** The layout's view of the project library: each component as a part, with its symbol. */
+export function layoutLibrary(
+  library: Record<string, ComponentDef | undefined>,
+  symbols: Record<string, AutoSymbol | undefined>,
+): LayoutRegistry {
+  const out: LayoutRegistry = { parts: {}, symbols: {} };
+  for (const [id, d] of Object.entries(library)) {
+    if (!d) continue;
+    const auto = symbols[id];
+    out.parts[id] = {
+      symbol: auto ? auto.id : d.part.symbol,
+      units: d.part.units ?? [],
+      pins: d.part.pins.map(({ name, unit, type }) => ({ name, unit, type })),
+    };
+    if (auto) out.symbols[auto.id] = auto.def;
+  }
+  return out;
+}
+
 /**
  * The layout's view of a circuit: topology and pinned placements only. Nets are sorted by id, so
  * the result never depends on the order nets were created or renamed in.
  */
-export function toLayoutInput(c: Pick<Circuit, "parts" | "nets" | "blocks">): LayoutInput {
+export function toLayoutInput(
+  c: Pick<Circuit, "parts" | "nets" | "blocks"> & {
+    library?: Record<string, ComponentDef | undefined>;
+    librarySymbols?: Record<string, AutoSymbol | undefined>;
+  },
+): LayoutInput {
   const values = <T>(r: Record<string, T | undefined>) => Object.values(r).filter((v): v is T => v !== undefined);
+  const library = c.library && Object.keys(c.library).length ? layoutLibrary(c.library, c.librarySymbols ?? {}) : undefined;
   return {
+    ...(library ? { library } : {}),
     // A learner wires a placed op-amp's second unit, so every unit of a user's part is drawn.
     parts: values(c.parts).map(({ refdes, part, block, pinned, origin }) =>
       origin.kind === "user" ? { refdes, part, block, pinned, allUnits: true } : { refdes, part, block, pinned },

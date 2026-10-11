@@ -42,6 +42,18 @@
     },
     "hints_changed": {
       "type": "boolean"
+    },
+    "library_changed": {
+      "type": "boolean",
+      "default": false
+    },
+    "tests_changed": {
+      "type": "boolean",
+      "default": false
+    },
+    "requirements_changed": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

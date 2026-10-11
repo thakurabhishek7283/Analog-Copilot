@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::ir::*;
+use crate::library::{conducting, part_def};
 use crate::registry::{Category, PartDef, PinType, Registry};
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -169,7 +170,7 @@ pub fn implicit_supplies(c: &Circuit, reg: &Registry) -> Vec<(NetId, f64)> {
     let driven = |p: &PinRef| {
         c.parts
             .get(&p.refdes)
-            .and_then(|i| reg.part(&i.part))
+            .and_then(|i| part_def(reg, c, &i.part))
             .is_some_and(|d| d.category == Category::V || d.pin(&p.pin).is_some_and(|pd| pd.kind == PinType::Output))
     };
     let mut out: Vec<(NetId, f64)> = c
@@ -209,7 +210,7 @@ impl<'a> Graph<'a> {
             .into_iter()
             .filter_map(|r| {
                 let inst = &c.parts[r];
-                reg.part(&inst.part).map(|d| (inst, d))
+                part_def(reg, c, &inst.part).map(|d| (inst, d))
             })
             .collect();
         Graph { c, reg, parts, pin_net: c.pin_index() }
@@ -311,25 +312,26 @@ fn dangling_nets(g: &Graph, f: &mut Vec<Finding>) {
     }
 }
 
-/// Pins of a part that conduct DC between each other.
-fn dc_pins<'a>(g: &Graph<'a>, inst: &'a PartInstance, def: &'a PartDef) -> Vec<&'a NetId> {
-    let conducts = |t: PinType| match def.category {
-        Category::R | Category::L | Category::V | Category::D | Category::Q => t != PinType::Nc,
-        Category::U => !matches!(t, PinType::Input | PinType::Nc),
-        Category::C | Category::J => false,
-    };
-    def.pins.iter().filter(|p| conducts(p.kind)).filter_map(|p| g.net_of(&inst.refdes, &p.name)).collect()
-}
-
 fn no_dc_path(g: &Graph, f: &mut Vec<Finding>) {
     let mut dsu = Dsu::new(g.c.nets.keys().map(String::as_str));
+    let has_gnd = g.c.nets.contains_key(GND);
     for (inst, def) in &g.parts {
-        let nets = dc_pins(g, inst, def);
-        for w in nets.windows(2) {
-            dsu.union(w[0], w[1]);
+        // Each group of pins that conduct inside the part; a library component's group 0 also
+        // reaches ground inside it.
+        for (pins, to_ground) in conducting(def) {
+            let nets: Vec<&NetId> = pins.iter().filter_map(|p| g.net_of(&inst.refdes, p)).collect();
+            for w in nets.windows(2) {
+                dsu.union(w[0], w[1]);
+            }
+            if to_ground
+                && has_gnd
+                && let Some(first) = nets.first()
+            {
+                dsu.union(first, GND);
+            }
         }
     }
-    if g.c.nets.contains_key(GND) {
+    if has_gnd {
         let rails: BTreeSet<NetId> = implicit_supplies(g.c, g.reg).into_iter().map(|(n, _)| n).collect();
         for id in g.c.nets.keys().filter(|id| rails.contains(*id)) {
             dsu.union(id, GND);
@@ -384,7 +386,7 @@ fn vsource_loops(g: &Graph, f: &mut Vec<Finding>) {
 }
 
 fn unpowered_ics(g: &Graph, f: &mut Vec<Finding>) {
-    for (inst, def) in g.parts.iter().filter(|(_, d)| d.category == Category::U) {
+    for (inst, def) in g.parts.iter().filter(|(_, d)| matches!(d.category, Category::U | Category::X)) {
         for p in &def.pins {
             let kind = g.net_of(&inst.refdes, &p.name).and_then(|n| g.c.nets.get(n)).map(|n| n.kind);
             let ok = match p.kind {
@@ -480,7 +482,7 @@ fn supply_shorts(g: &Graph, f: &mut Vec<Finding>) {
 }
 
 fn over_voltage(g: &Graph, f: &mut Vec<Finding>) {
-    for (inst, def) in g.parts.iter().filter(|(_, d)| d.category == Category::U) {
+    for (inst, def) in g.parts.iter().filter(|(_, d)| matches!(d.category, Category::U | Category::X)) {
         let Some(max) = def.limits.get("v_supply_max") else { continue };
         let rail = |t: PinType| {
             def.pins

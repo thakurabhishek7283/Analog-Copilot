@@ -7,9 +7,11 @@ import { immer } from "zustand/middleware/immer";
 import type {
   Analysis,
   ApplyOk,
+  AutoSymbol,
   Block,
   CheckResult,
   Circuit,
+  ComponentDef,
   ErcIssue,
   LayoutHint,
   Net,
@@ -19,6 +21,8 @@ import type {
   PartInstance,
   Patch,
   PatchData,
+  Requirement,
+  TestPlan,
 } from "../gen/contract.ts";
 import { type CoreSessionLike, expectOk, outcome, type Outcome } from "../core/types.ts";
 import type { SimResult, SimStatus } from "../workers/sim.types.ts";
@@ -76,6 +80,12 @@ export interface CircuitData {
   blocks: Record<string, Block>;
   analyses: Analysis[];
   hints: LayoutHint[];
+  /** The project library (LLD §17): component definitions the parts use, by id. */
+  library: Record<string, ComponentDef>;
+  /** Generated symbols of the library components drawn with `symbol: auto`, by component id. */
+  librarySymbols: Record<string, AutoSymbol>;
+  tests: TestPlan[];
+  requirements: Requirement[];
 }
 
 export interface CircuitState extends CircuitData {
@@ -147,6 +157,10 @@ export function createCircuitStore(core: CoreSessionLike): CircuitStore {
           Object.assign(s.blocks, data.blocks);
           if (data.analyses) s.analyses = data.analyses;
           if (data.hints) s.hints = data.hints;
+          if (data.library) s.library = data.library as Record<string, ComponentDef>;
+          if (data.symbols) s.librarySymbols = data.symbols as Record<string, AutoSymbol>;
+          if (data.tests) s.tests = data.tests;
+          if (data.requirements) s.requirements = data.requirements;
           s.rev = data.rev;
           s.lastError = null;
           s.erc = erc();
@@ -215,6 +229,10 @@ export function createCircuitStore(core: CoreSessionLike): CircuitStore {
         blocks: initial.blocks as Record<string, Block>,
         analyses: initial.analyses,
         hints: initial.hints,
+        library: (initial.library ?? {}) as Record<string, ComponentDef>,
+        librarySymbols: JSON.parse(core.librarySymbols()) as Record<string, AutoSymbol>,
+        tests: initial.tests ?? [],
+        requirements: initial.requirements ?? [],
         layout: null,
         layoutRev: -1,
         sim: { hash: null, status: "idle", voltages: {} },

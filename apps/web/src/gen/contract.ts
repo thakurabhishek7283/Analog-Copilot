@@ -118,6 +118,92 @@ export type LayoutHint =
  */
 export type Direction = "right" | "down";
 /**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Category".
+ */
+export type Category = ("R" | "C" | "L" | "D" | "Q" | "U" | "V" | "J") | "X";
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "PinType".
+ */
+export type PinType = ("input" | "output" | "passive" | "power_pos" | "power_neg") | "nc";
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Hazard".
+ */
+export type Hazard = "mains";
+/**
+ * What the component does inside. Behavioral laws and SPICE imports join in P5.2 (LLD §17 D3).
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Model".
+ */
+export type Model = Composite;
+/**
+ * Who made a definition (LLD §17 D10: trust levels read it).
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Provenance".
+ */
+export type Provenance =
+  | {
+      kind: "user";
+    }
+  | {
+      job_id: string;
+      kind: "llm";
+    }
+  | {
+      source: string;
+      licence: string;
+      kind: "import";
+    };
+/**
+ * What a probe reads from its net in each scenario.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Measure".
+ */
+export type Measure =
+  | {
+      kind: "amplitude";
+    }
+  | {
+      kind: "dc";
+    }
+  | {
+      in: string;
+      at_hz: number;
+      kind: "ac_gain";
+    };
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "RequirementKind".
+ */
+export type RequirementKind = "functional" | "electrical" | "constraint" | "deliverable" | "test";
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Evidence".
+ */
+export type Evidence =
+  | {
+      block: string;
+      check: string;
+      kind: "check";
+    }
+  | {
+      test: string;
+      scenario: string;
+      probe: string;
+      target: number;
+      tol_pct: number;
+      kind: "probe";
+    }
+  | {
+      claim: string;
+      kind: "structural";
+    };
+/**
  * One op in its envelope (LLD §4): `{v, seq, op, author, job?, block?, base_rev, body}`.
  *
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -203,6 +289,34 @@ export type Op =
   | {
       op: "narrate";
       body: Narrate;
+    }
+  | {
+      op: "lib.add";
+      body: LibAdd;
+    }
+  | {
+      op: "lib.update";
+      body: LibUpdate;
+    }
+  | {
+      op: "lib.remove";
+      body: LibRemove;
+    }
+  | {
+      op: "instance.expand";
+      body: InstanceExpand;
+    }
+  | {
+      op: "block.set_spec";
+      body: BlockSetSpec;
+    }
+  | {
+      op: "test.set";
+      body: TestSet;
+    }
+  | {
+      op: "req.set";
+      body: ReqSet;
     };
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -248,7 +362,11 @@ export type ErrorCode =
   | "template_not_found"
   | "target_out_of_range"
   | "port_invalid"
-  | "compile_failed";
+  | "compile_failed"
+  | "component_invalid"
+  | "component_not_found"
+  | "component_in_use"
+  | "test_invalid";
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Outcome".
@@ -260,6 +378,11 @@ export type Outcome =
   | {
       err: OpError;
     };
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Side".
+ */
+export type Side = "left" | "right" | "top" | "bottom";
 /**
  * Who the check is for: LLM blocks must be clean; learners may build broken circuits.
  *
@@ -312,29 +435,9 @@ export type CheckKind =
 export type Edge = "rise" | "fall";
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "Category".
- */
-export type Category = "R" | "C" | "L" | "D" | "Q" | "U" | "V" | "J";
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "PinType".
- */
-export type PinType = ("input" | "output" | "passive" | "power_pos" | "power_neg") | "nc";
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "Hazard".
- */
-export type Hazard = "mains";
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Pass".
  */
 export type Pass = "low" | "high";
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "Side".
- */
-export type Side = "left" | "right" | "top" | "bottom";
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Scale".
@@ -557,6 +660,15 @@ export interface Circuit {
    * Kept sorted and de-duplicated so the order never depends on edit history.
    */
   hints: LayoutHint[];
+  /**
+   * Component definitions the parts use (`lib:<name>`), embedded so the circuit is
+   * self-contained (LLD §17 D1). Changed only by `lib.*` ops.
+   */
+  library?: {
+    [k: string]: ComponentDef | undefined;
+  };
+  tests?: TestPlan[];
+  requirements?: Requirement[];
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -642,6 +754,242 @@ export interface BlockPort {
   name: string;
   direction: PortDirection;
   net: string;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "ComponentDef".
+ */
+export interface ComponentDef {
+  part: PartDef;
+  version: number;
+  model: Model;
+  provenance: Provenance;
+}
+/**
+ * The component as a part: id (`lib:<name>`), category `X`, title, refdes `prefix`, pins,
+ * limits and symbol (`auto`, a box the editor draws from the pins, or a registry symbol whose
+ * anchors match the pins). It has no `spice` line and, for now, no params.
+ */
+export interface PartDef {
+  id: string;
+  category: Category;
+  /**
+   * Refdes prefix when it is not the category letter (`RV`, `TP`); see [`EXTRA_PREFIXES`].
+   */
+  prefix?: string | null;
+  title: string;
+  role_tags?: string[];
+  /**
+   * Units of a multi-unit IC (e.g. `[A, B]` for a dual op-amp). Empty for single-unit parts.
+   */
+  units?: string[];
+  pins: PinDef[];
+  /**
+   * Every param must declare a default, so instances always carry a full param set.
+   */
+  params?: {
+    [k: string]: ParamDef | undefined;
+  };
+  /**
+   * Ratings used by ERC, e.g. `v_supply_max`, `i_max`, `p_max`.
+   */
+  limits?: {
+    [k: string]: number | undefined;
+  };
+  /**
+   * For voltage sources: the param holding V(P) − V(N) at DC (used by ERC007).
+   */
+  dc_param?: string | null;
+  spice?: SpiceDef | null;
+  /**
+   * Schematic symbol, `symbols/<id>.svg`; its pin anchors are matched by pin name.
+   */
+  symbol: string;
+  breadboard?: string | null;
+  teach?: string | null;
+  hazard?: Hazard | null;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "PinDef".
+ */
+export interface PinDef {
+  name: string;
+  num: number;
+  type: PinType;
+  unit?: string | null;
+  /**
+   * For a library component: the pins joined by a DC path inside it share a group, and group 0
+   * is a DC path to ground (ERC003 on the outside, LLD §17 D6). Computed by `apply()` from the
+   * component's own netlist, never taken from a client; unused on registry parts, whose
+   * category says which pins conduct.
+   */
+  dc_group?: number | null;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "ParamDef".
+ */
+export interface ParamDef {
+  unit: Unit;
+  default: string;
+  /**
+   * In SI units. YAML sources may write a prefixed number such as `1p` or `100meg`.
+   */
+  min?: number | null;
+  max?: number | null;
+}
+/**
+ * SPICE emission template. `line` is for single-unit parts; `unit_line` is emitted once per
+ * used unit of a multi-unit part. Placeholders: `{refdes}`, `{unit}`, pin names, param names.
+ * In `unit_line`, a unit pin is named without its `_<unit>` suffix (`{OUT}` → `OUT_A`).
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "SpiceDef".
+ */
+export interface SpiceDef {
+  include?: string | null;
+  line?: string | null;
+  unit_line?: string | null;
+}
+/**
+ * A sub-circuit of registry parts and other library components.
+ */
+export interface Composite {
+  kind: "composite";
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "TestPlan".
+ */
+export interface TestPlan {
+  /**
+   * `freq_compare`: lowercase [a-z0-9_].
+   */
+  id: string;
+  title: string;
+  scenarios: Scenario[];
+  probes: Probe[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Scenario".
+ */
+export interface Scenario {
+  name: string;
+  /**
+   * Param overrides as `REFDES.param` -> value as typed (`"V2.frequency": "1k"`), applied to a
+   * scratch copy, so each scenario has its own netlist and cache entry.
+   */
+  set?: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * The analyses this scenario runs; absent, the circuit's own.
+   */
+  analyses?: Analysis[] | null;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Probe".
+ */
+export interface Probe {
+  name: string;
+  net: string;
+  measure: Measure;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Requirement".
+ */
+export interface Requirement {
+  /**
+   * `R1`, `R2`, ... as the brief numbers them.
+   */
+  id: string;
+  text: string;
+  kind: RequirementKind;
+  /**
+   * What will prove it; met, missing or unverifiable is decided from these after simulation.
+   */
+  evidence?: Evidence[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "PartDef".
+ */
+export interface PartDef1 {
+  id: string;
+  category: Category;
+  /**
+   * Refdes prefix when it is not the category letter (`RV`, `TP`); see [`EXTRA_PREFIXES`].
+   */
+  prefix?: string | null;
+  title: string;
+  role_tags?: string[];
+  /**
+   * Units of a multi-unit IC (e.g. `[A, B]` for a dual op-amp). Empty for single-unit parts.
+   */
+  units?: string[];
+  pins: PinDef[];
+  /**
+   * Every param must declare a default, so instances always carry a full param set.
+   */
+  params?: {
+    [k: string]: ParamDef | undefined;
+  };
+  /**
+   * Ratings used by ERC, e.g. `v_supply_max`, `i_max`, `p_max`.
+   */
+  limits?: {
+    [k: string]: number | undefined;
+  };
+  /**
+   * For voltage sources: the param holding V(P) − V(N) at DC (used by ERC007).
+   */
+  dc_param?: string | null;
+  spice?: SpiceDef | null;
+  /**
+   * Schematic symbol, `symbols/<id>.svg`; its pin anchors are matched by pin name.
+   */
+  symbol: string;
+  breadboard?: string | null;
+  teach?: string | null;
+  hazard?: Hazard | null;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "CompositePart".
+ */
+export interface CompositePart {
+  part: string;
+  /**
+   * Values as written ("10k"); a missing param takes the part's default.
+   */
+  params?: {
+    [k: string]: string | undefined;
+  };
+}
+/**
+ * A sub-circuit of registry parts and other library components.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Composite".
+ */
+export interface Composite1 {
+  /**
+   * Local refdes (`R1`, `U1`, scoped to the definition) -> part.
+   */
+  parts: {
+    [k: string]: CompositePart | undefined;
+  };
+  /**
+   * Net -> pins. A net named after one of the component's pins is that pin; `GND` is the
+   * circuit's ground; every other net is internal.
+   */
+  nets: {
+    [k: string]: PinRef[] | undefined;
+  };
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -785,6 +1133,72 @@ export interface Narrate {
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "LibAdd".
+ */
+export interface LibAdd {
+  def: ComponentDef1;
+}
+/**
+ * Boxed: a definition is large next to every other op body.
+ */
+export interface ComponentDef1 {
+  part: PartDef;
+  version: number;
+  model: Model;
+  provenance: Provenance;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "LibUpdate".
+ */
+export interface LibUpdate {
+  id: string;
+  def: ComponentDef;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "LibRemove".
+ */
+export interface LibRemove {
+  id: string;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "InstanceExpand".
+ */
+export interface InstanceExpand {
+  refdes: string;
+  /**
+   * Id of the block the parts form; default the lowest free `bN`.
+   */
+  block?: string | null;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "BlockSetSpec".
+ */
+export interface BlockSetSpec {
+  id: string;
+  spec: {
+    [k: string]: SpecTarget | undefined;
+  };
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "TestSet".
+ */
+export interface TestSet {
+  tests: TestPlan[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "ReqSet".
+ */
+export interface ReqSet {
+  requirements: Requirement[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "OpError".
  */
 export interface OpError {
@@ -810,6 +1224,9 @@ export interface Patch {
   blocks_removed: string[];
   analyses_changed: boolean;
   hints_changed: boolean;
+  library_changed?: boolean;
+  tests_changed?: boolean;
+  requirements_changed?: boolean;
 }
 /**
  * What a successful `apply` reports to the UI: only what changed (LLD §10).
@@ -851,6 +1268,75 @@ export interface PatchData {
    * Present when `patch.hints_changed`.
    */
   hints?: LayoutHint[] | null;
+  /**
+   * The whole project library, when `patch.library_changed`.
+   */
+  library?: {
+    [k: string]: ComponentDef | undefined;
+  } | null;
+  /**
+   * The generated symbols of library components drawn with `symbol: auto`, with `library`.
+   */
+  symbols?: {
+    [k: string]: AutoSymbol | undefined;
+  } | null;
+  /**
+   * Present when `patch.tests_changed`.
+   */
+  tests?: TestPlan[] | null;
+  /**
+   * Present when `patch.requirements_changed`.
+   */
+  requirements?: Requirement[] | null;
+}
+/**
+ * A library component's symbol when it has no registry symbol (`symbol: auto`, LLD §17): a box in
+ * the registry's own style (the NE555's), inputs on the left, outputs on the right, positive
+ * supplies on top, negative supplies and ground below; passive and `nc` pins fill the shorter
+ * side. Built here, not in the editor, so geometry still comes only from the core.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "AutoSymbol".
+ */
+export interface AutoSymbol {
+  /**
+   * Symbol id in the sprite sheet: `lib_<name>`.
+   */
+  id: string;
+  def: SymbolDef;
+  /**
+   * SVG markup for the inside of its `<symbol>` (plain shapes, `currentColor`, pin names as text).
+   */
+  body: string;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "SymbolDef".
+ */
+export interface SymbolDef {
+  /**
+   * Size in schematic units (multiples of [`GRID`]).
+   */
+  width: number;
+  height: number;
+  /**
+   * Pin anchors by pin name (base name for the unit pins of a multi-unit part).
+   */
+  pins: {
+    [k: string]: Anchor | undefined;
+  };
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Anchor".
+ */
+export interface Anchor {
+  x: number;
+  y: number;
+  /**
+   * The edge the anchor sits on; wires leave the symbol in this direction.
+   */
+  side: "left" | "right" | "top" | "bottom";
 }
 /**
  * Outcome of a trial batch (the orchestrator's composer draft).
@@ -949,6 +1435,11 @@ export interface Netlist {
    * The analyses in the deck, in order (resolved from `CompileOpts`).
    */
   analyses: Analysis[];
+  /**
+   * Primitive devices the deck simulates, library components flattened (LLD §17 D12: the
+   * editor runs live below a budget and asks for a Run above it).
+   */
+  leaf_devices?: number;
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -1014,7 +1505,7 @@ export interface CompileError {
 export interface Registry {
   version: string;
   parts: {
-    [k: string]: PartDef | undefined;
+    [k: string]: PartDef1 | undefined;
   };
   /**
    * Schematic symbols by id (`symbols/<id>.svg`): geometry only; the drawings ship in the
@@ -1029,110 +1520,6 @@ export interface Registry {
   templates?: {
     [k: string]: TemplateDef | undefined;
   };
-}
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "PartDef".
- */
-export interface PartDef {
-  id: string;
-  category: Category;
-  title: string;
-  role_tags?: string[];
-  /**
-   * Units of a multi-unit IC (e.g. `[A, B]` for a dual op-amp). Empty for single-unit parts.
-   */
-  units?: string[];
-  pins: PinDef[];
-  /**
-   * Every param must declare a default, so instances always carry a full param set.
-   */
-  params?: {
-    [k: string]: ParamDef | undefined;
-  };
-  /**
-   * Ratings used by ERC, e.g. `v_supply_max`, `i_max`, `p_max`.
-   */
-  limits?: {
-    [k: string]: number | undefined;
-  };
-  /**
-   * For voltage sources: the param holding V(P) − V(N) at DC (used by ERC007).
-   */
-  dc_param?: string | null;
-  spice?: SpiceDef | null;
-  /**
-   * Schematic symbol, `symbols/<id>.svg`; its pin anchors are matched by pin name.
-   */
-  symbol: string;
-  breadboard?: string | null;
-  teach?: string | null;
-  hazard?: Hazard | null;
-}
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "PinDef".
- */
-export interface PinDef {
-  name: string;
-  num: number;
-  type: PinType;
-  unit?: string | null;
-}
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "ParamDef".
- */
-export interface ParamDef {
-  unit: Unit;
-  default: string;
-  /**
-   * In SI units. YAML sources may write a prefixed number such as `1p` or `100meg`.
-   */
-  min?: number | null;
-  max?: number | null;
-}
-/**
- * SPICE emission template. `line` is for single-unit parts; `unit_line` is emitted once per
- * used unit of a multi-unit part. Placeholders: `{refdes}`, `{unit}`, pin names, param names.
- * In `unit_line`, a unit pin is named without its `_<unit>` suffix (`{OUT}` → `OUT_A`).
- *
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "SpiceDef".
- */
-export interface SpiceDef {
-  include?: string | null;
-  line?: string | null;
-  unit_line?: string | null;
-}
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "SymbolDef".
- */
-export interface SymbolDef {
-  /**
-   * Size in schematic units (multiples of [`GRID`]).
-   */
-  width: number;
-  height: number;
-  /**
-   * Pin anchors by pin name (base name for the unit pins of a multi-unit part).
-   */
-  pins: {
-    [k: string]: Anchor | undefined;
-  };
-}
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "Anchor".
- */
-export interface Anchor {
-  x: number;
-  y: number;
-  /**
-   * The edge the anchor sits on; wires leave the symbol in this direction.
-   */
-  side: "left" | "right" | "top" | "bottom";
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -1711,6 +2098,15 @@ export interface Circuit1 {
    * Kept sorted and de-duplicated so the order never depends on edit history.
    */
   hints: LayoutHint[];
+  /**
+   * Component definitions the parts use (`lib:<name>`), embedded so the circuit is
+   * self-contained (LLD §17 D1). Changed only by `lib.*` ops.
+   */
+  library?: {
+    [k: string]: ComponentDef | undefined;
+  };
+  tests?: TestPlan[];
+  requirements?: Requirement[];
 }
 /**
  * One line of a project's lesson track: narration and notes, replayable with their blocks.

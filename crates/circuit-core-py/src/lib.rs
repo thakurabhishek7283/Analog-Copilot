@@ -131,6 +131,11 @@ impl Session {
         api::changes(&self.inner, patch)
     }
 
+    /// The generated symbols of the circuit's library components → `{PartId: AutoSymbol}`.
+    fn library_symbols(&self) -> String {
+        api::library_symbols(&self.inner)
+    }
+
     /// The refdes a new instance of registry part `part` gets → `{"ok": str} | {"err": OpError}`.
     fn next_refdes(&self, part: &str) -> String {
         api::next_refdes(&self.inner, part)

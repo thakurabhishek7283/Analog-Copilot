@@ -181,7 +181,7 @@ fn part_row(c: &Circuit, reg: &Registry, r: &RefDes, pin_net: &BTreeMap<&PinRef,
     for (k, q) in &inst.params {
         row.push_str(&format!(" {k}={}", q.display));
     }
-    for p in reg.part(&inst.part).map(|d| d.pins.as_slice()).unwrap_or_default() {
+    for p in crate::library::part_def(reg, c, &inst.part).map(|d| d.pins.as_slice()).unwrap_or_default() {
         let net = pin_net.get(&PinRef::new(r, &p.name)).map(|n| n.as_str()).unwrap_or("-");
         row.push_str(&format!(" {}:{net}", p.name));
     }
@@ -257,8 +257,9 @@ fn edit(b: &Circuit, a: &Circuit, reg: &Registry) -> Edit {
                     }
                 }
                 let mut names: IndexSet<&str> = IndexSet::new();
-                for part in [&pb.part, &pa.part] {
-                    names.extend(reg.part(part).into_iter().flat_map(|d| d.pins.iter().map(|p| p.name.as_str())));
+                for (part, circuit) in [(&pb.part, b), (&pa.part, a)] {
+                    let def = crate::library::part_def(reg, circuit, part);
+                    names.extend(def.into_iter().flat_map(|d| d.pins.iter().map(|p| p.name.as_str())));
                 }
                 for p in names {
                     let pin = PinRef::new(r, p);
@@ -491,7 +492,10 @@ fn currents(parts: &[RefDes], b: &Circuit, a: &Circuit, reg: &Registry, sb: &Sim
     let opt = |x: Option<f64>| x.map_or("-".to_string(), |x| format_sig(x, Unit::Ampere));
     let mut lines = Vec::new();
     for r in parts {
-        let Some(def) = a.parts.get(r).or_else(|| b.parts.get(r)).and_then(|p| reg.part(&p.part)) else { continue };
+        let found = a.parts.get(r).map(|p| (p, a)).or_else(|| b.parts.get(r).map(|p| (p, b)));
+        let Some(def) = found.and_then(|(p, circuit)| crate::library::part_def(reg, circuit, &p.part)) else {
+            continue;
+        };
         let mut items = Vec::new();
         for p in &def.pins {
             let key = format!("{r}.{}", p.name);

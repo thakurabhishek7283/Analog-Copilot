@@ -53,6 +53,14 @@ pub enum ErrorCode {
     PortInvalid,
     /// The compiler refused a circuit that `apply()` accepted (a generated block's bench).
     CompileFailed,
+    /// A library component definition is malformed (every problem listed in the message).
+    ComponentInvalid,
+    /// No library component with this id in the circuit.
+    ComponentNotFound,
+    /// The library component is still used by a part or by another component.
+    ComponentInUse,
+    /// A test plan or a requirement is malformed, or names something the circuit lacks.
+    TestInvalid,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq, thiserror::Error)]
