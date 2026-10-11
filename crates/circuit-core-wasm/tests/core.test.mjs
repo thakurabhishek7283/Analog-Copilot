@@ -83,7 +83,7 @@ test("block templates: preview, insert, verify points, spec checks", () => {
   const src = JSON.parse(s.insertBlock(JSON.stringify({ template: "sine_source", ports: { out: { net: "B1_IN" } } }))).ok;
   JSON.parse(s.applyOps(JSON.stringify(src.ops), "template")).ok;
   netlist = JSON.parse(s.compile('{"interactive": true}')).ok;
-  assert.deepEqual(netlist.checks.map((c) => c.name), ["fc_hz", "q", "amplitude_v"]);
+  assert.deepEqual(netlist.checks.map((c) => c.name), ["fc_hz", "q", "amplitude_v", "freq_hz"]);
   const meas = { b1_fc_hz_ref: 0, b1_fc_hz_x: 2050 };
   const results = JSON.parse(core.evaluateChecks(JSON.stringify(netlist.checks), JSON.stringify(meas))).ok;
   assert.equal(results[0].pass, true);
