@@ -148,6 +148,19 @@ impl CoreSession {
         api::read_answer(&self.inner, text)
     }
 
+    /// Bench netlists that characterise library component `id` → `{"ok": BenchRun[]} | {"err": OpError}`.
+    #[wasm_bindgen(js_name = characteriseBenches)]
+    pub fn characterise_benches(&self, id: &str) -> String {
+        api::characterise_benches(&self.inner, id)
+    }
+
+    /// A characterisation report from `runs` (`BenchRun[]`) and one `SimOutcome` per run
+    /// → `{"ok": Characterisation} | {"err": OpError}`.
+    #[wasm_bindgen(js_name = characteriseReport)]
+    pub fn characterise_report(&self, id: &str, ngspice: &str, runs: &str, outcomes: &str) -> String {
+        api::characterise_report(&self.inner, id, ngspice, runs, outcomes)
+    }
+
     /// The full `Circuit` JSON.
     pub fn snapshot(&self) -> String {
         api::snapshot(&self.inner)
@@ -182,6 +195,13 @@ pub fn parse_quantity(text: &str, unit: &str) -> String {
 #[wasm_bindgen(js_name = evaluateChecks)]
 pub fn evaluate_checks(checks: &str, meas: &str) -> String {
     api::evaluate_checks(checks, meas)
+}
+
+/// Behavioral `require`s from a netlist's `envelope` and a simulation's `meas`
+/// → `{"ok": EnvelopeResult[]} | {"err": OpError}`.
+#[wasm_bindgen(js_name = evaluateEnvelope)]
+pub fn evaluate_envelope(defs: &str, meas: &str) -> String {
+    api::evaluate_envelope(defs, meas)
 }
 
 /// circuit-core version, for the `X-Min-Client` skew check (LLD §14).

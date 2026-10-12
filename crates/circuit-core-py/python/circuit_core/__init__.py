@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ._native import Registry, Session, core_version, evaluate_checks, parse_quantity
+from ._native import Registry, Session, core_version, evaluate_checks, evaluate_envelope, parse_quantity
 
 __all__ = [
     "Registry",
@@ -19,6 +19,7 @@ __all__ = [
     "OpRejected",
     "core_version",
     "evaluate_checks",
+    "evaluate_envelope",
     "parse_quantity",
     "load_registry_dir",
     "unwrap",

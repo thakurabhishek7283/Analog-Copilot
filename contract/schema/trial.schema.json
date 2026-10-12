@@ -173,17 +173,26 @@
       "description": "A parsed physical value. `display` is canonical and round-trips exactly through [`parse_quantity`]."
     },
     "Unit": {
-      "type": "string",
-      "enum": [
-        "ohm",
-        "farad",
-        "henry",
-        "volt",
-        "ampere",
-        "hertz",
-        "second",
-        "watt",
-        "unitless"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "ohm",
+            "farad",
+            "henry",
+            "volt",
+            "ampere",
+            "hertz",
+            "second",
+            "watt",
+            "unitless"
+          ]
+        },
+        {
+          "type": "string",
+          "const": "decibel",
+          "description": "A ratio in decibels (`ac_db_at` checks)."
+        }
       ]
     },
     "Origin": {
@@ -624,7 +633,7 @@
       "properties": {
         "part": {
           "$ref": "#/$defs/PartDef",
-          "description": "The component as a part: id (`lib:<name>`), category `X`, title, refdes `prefix`, pins,\nlimits and symbol (`auto`, a box the editor draws from the pins, or a registry symbol whose\nanchors match the pins). It has no `spice` line and, for now, no params."
+          "description": "The component as a part: id (`lib:<name>`), category `X`, title, refdes `prefix`, pins,\nparams (each with a unit, a default and a range), limits and symbol (`auto`, a box the\neditor draws from the pins, or a registry symbol whose anchors match the pins). It has no\n`spice` line: its model is."
         },
         "version": {
           "type": "integer",
@@ -636,6 +645,28 @@
         },
         "provenance": {
           "$ref": "#/$defs/Provenance"
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRules"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A composite's part values from its params (LLD §17 D5), searched over the E-series."
+        },
+        "contract": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Contract"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the component promises and the bench that tests it (D10): characterisation runs it."
         }
       },
       "required": [
@@ -911,9 +942,61 @@
           "required": [
             "kind"
           ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "laws": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "One law per entry, as written."
+            },
+            "kind": {
+              "type": "string",
+              "const": "behavioral"
+            }
+          },
+          "required": [
+            "kind",
+            "laws"
+          ],
+          "description": "Laws compiled to B-sources, R, C and I ([`crate::behavioral`])."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "subckt": {
+              "type": "string"
+            },
+            "pins": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Component pin -> port of the `.subckt`; every port is mapped once."
+            },
+            "kind": {
+              "type": "string",
+              "const": "spice"
+            }
+          },
+          "required": [
+            "kind",
+            "text",
+            "subckt",
+            "pins"
+          ],
+          "description": "A vendor `.subckt`, parsed by an allow-list and re-emitted ([`crate::spice_import`])."
         }
       ],
-      "description": "What the component does inside. Behavioral laws and SPICE imports join in P5.2 (LLD §17 D3)."
+      "description": "What the component does inside (LLD §17 D3)."
     },
     "CompositePart": {
       "type": "object",
@@ -927,7 +1010,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Values as written (\"10k\"); a missing param takes the part's default.",
+          "description": "Values as written (\"10k\"), or, in a component with params, expressions of them\n(\"10k*gain\"); a missing param takes the part's default, unless the rules set it.",
           "default": {}
         }
       },
@@ -1014,6 +1097,355 @@
         }
       ],
       "description": "Who made a definition (LLD §17 D10: trust levels read it)."
+    },
+    "ValueRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "funcs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "User functions, `\"name(a, b)\" -> body`; a function may call those before it."
+        },
+        "solve": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Steps in order. A part's local refdes (`R1`, or `R1.resistance` for a part with several\nparams) sets that part value; any other name (lowercase) is an intermediate value."
+        },
+        "estimates": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Forward estimates, each scored against the target or step of the same name."
+        },
+        "prefer": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Steps to keep near a nominal value when the estimates tie."
+        },
+        "spec": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Spec targets derived from the inputs and the chosen values (a follower's gain of 1)."
+        }
+      },
+      "required": [
+        "solve"
+      ]
+    },
+    "Contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bench": {
+          "$ref": "#/$defs/Bench"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckDef"
+          },
+          "description": "Checks on the bench's nets, each with a `target` expression of the component's params."
+        }
+      },
+      "required": [
+        "bench",
+        "checks"
+      ]
+    },
+    "Bench": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parts": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/CompositePart"
+          },
+          "description": "Registry parts around the component: sources, loads, feedback. Values may be expressions\nof the component's params.",
+          "default": {}
+        },
+        "nets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/PinRef"
+            }
+          },
+          "description": "Net -> pins; `DUT.<pin>` is the component's pin, `GND` is ground."
+        },
+        "analyses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Analysis"
+          },
+          "description": "Analyses the checks do not imply (a DC sweep for `dc_transfer`)."
+        }
+      },
+      "required": [
+        "nets"
+      ]
+    },
+    "CheckDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string",
+          "description": "A few characters for badges on the drawing: `fc`, `Q`, `Vth+`."
+        },
+        "kind": {
+          "$ref": "#/$defs/CheckKind"
+        },
+        "out": {
+          "type": "string",
+          "description": "Output port measured."
+        },
+        "in": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Input port (gain reference, threshold input)."
+        },
+        "pass": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pass"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which side of a corner is the pass band (corner and Q checks)."
+        },
+        "edge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Edge"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Output edge whose input level is the threshold (threshold checks)."
+        },
+        "at_hz": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double",
+          "description": "Frequency a gain is measured at; default 1 kHz."
+        },
+        "tran": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TranWindow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The transient a time-domain check needs. Regenerative circuits (a Schmitt trigger) switch\nlate in simulation unless the steps are near the op-amp's own speed: with coarse steps the\nintegrator follows the unstable balance point until it hits a rail."
+        },
+        "tol_pct": {
+          "type": "number",
+          "format": "double"
+        },
+        "supply": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Supply ports a headroom check measures against: the positive one, then optionally the\nnegative one (ground without it)."
+        },
+        "at_v": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double",
+          "description": "Input level a `dc_transfer` check reads the output at, volts."
+        },
+        "compare": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Compare"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How the measurement passes; each kind has a default (headroom: at least the target)."
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "A component contract's target, as an expression of the component's params (`gain`,\n`1/(2*pi*r*c)`). Template checks take theirs from the block's spec instead."
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "symbol",
+        "kind",
+        "out",
+        "tol_pct"
+      ],
+      "description": "One spec check: what to measure (a closed set of kinds, so a template can never inject SPICE)\non which ports. Its target is the block's `spec[name]`."
+    },
+    "CheckKind": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "ac_corner",
+          "description": "−3 dB frequency below the pass-band gain (AC)."
+        },
+        {
+          "type": "string",
+          "const": "ac_q",
+          "description": "Q of a 2nd-order low/high-pass: |H(f0)| / pass-band gain, f0 at the ∓90° phase point (AC).\nAssumes the input port is driven with flat phase (a source or a buffer)."
+        },
+        {
+          "type": "string",
+          "const": "ac_gain",
+          "description": "|V(out)| / |V(in)| at `at_hz` (AC)."
+        },
+        {
+          "type": "string",
+          "const": "ac_center",
+          "description": "Band-pass centre, √(f_lo·f_hi) of the −3 dB points around the peak (AC)."
+        },
+        {
+          "type": "string",
+          "const": "ac_band_q",
+          "description": "Band-pass Q, centre / (f_hi − f_lo) (AC)."
+        },
+        {
+          "type": "string",
+          "const": "tran_freq",
+          "description": "Frequency of a periodic output: two periods between rising crossings of mid-level, in the\nsecond half of the transient (tran)."
+        },
+        {
+          "type": "string",
+          "const": "tran_duty",
+          "description": "Share of a period the output is high, from its average over two periods (tran)."
+        },
+        {
+          "type": "string",
+          "const": "tran_amplitude",
+          "description": "Half the peak-to-peak output (tran)."
+        },
+        {
+          "type": "string",
+          "const": "dc_level",
+          "description": "Average output over the transient: the DC level (ngspice `.meas` has no OP mode)."
+        },
+        {
+          "type": "string",
+          "const": "tran_threshold",
+          "description": "Input level at the 2nd rising/falling output edge: a comparator threshold (tran)."
+        },
+        {
+          "type": "string",
+          "const": "tran_headroom",
+          "description": "How far the output stays inside its supply over the second half of the run: the smaller of\nV(supply+) - max V(out) and min V(out) - V(supply-) (ground without a second supply\nport). Passes at least the target by default: \"avoid clipping\", measured (LLD §17 D7)."
+        },
+        {
+          "type": "string",
+          "const": "ac_db_at",
+          "description": "Gain in dB at `at_hz` (default 1 kHz): 20·log10 |V(out)/V(in)|, or |V(out)| re 1 V\nwithout `in` (AC)."
+        },
+        {
+          "type": "string",
+          "const": "tran_rms",
+          "description": "RMS of the output around its average over the second half of the run (tran): a signal\nlevel that ignores the bias of a single-supply stage."
+        },
+        {
+          "type": "string",
+          "const": "dc_transfer",
+          "description": "Output level at the input level `at_v`, from a DC sweep of the source driving `in`."
+        },
+        {
+          "type": "string",
+          "const": "tran_rise",
+          "description": "10-90% rise time of the output's first rising edge in the second half of the run, levels\nfrom its own minimum and maximum there (tran)."
+        }
+      ],
+      "description": "LLD §7 spec checks. Each is a few primitive ngspice `.meas` results combined by\n[`evaluate_checks`] (ngspice cannot measure an expression such as `vdb(out)-vdb(in)`)."
+    },
+    "Pass": {
+      "type": "string",
+      "enum": [
+        "low",
+        "high"
+      ]
+    },
+    "Edge": {
+      "type": "string",
+      "enum": [
+        "rise",
+        "fall"
+      ]
+    },
+    "TranWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stop": {
+          "type": "number",
+          "format": "double",
+          "description": "Run length, seconds."
+        },
+        "step": {
+          "type": "number",
+          "format": "double",
+          "description": "Largest step, seconds."
+        }
+      },
+      "required": [
+        "stop",
+        "step"
+      ]
+    },
+    "Compare": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "within",
+          "description": "Within ±tol of the target."
+        },
+        {
+          "type": "string",
+          "const": "at_least",
+          "description": "At least the target, less tol."
+        },
+        {
+          "type": "string",
+          "const": "at_most",
+          "description": "At most the target, plus tol."
+        }
+      ],
+      "description": "How a measurement passes against its target and tolerance."
     },
     "TestPlan": {
       "type": "object",

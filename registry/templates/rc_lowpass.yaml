@@ -13,7 +13,13 @@ nets:
   in: [R1.1]
   out: [R1.2, C1.1]
   gnd: [C1.2]
-solver: rc_first_order
+rules:
+  solve:
+    tau: "1/(2*pi*fc_hz)"
+    C1: "search(E12, 100p, 10u)"
+    R1: "nearest(E24, tau/C1, 1k, 100k)"
+  estimates: {tau: "R1*C1"}
+  prefer: {R1: 10k}
 checks:
   - {name: fc_hz, label: Cutoff (−3 dB), symbol: "fc", kind: ac_corner, out: out, pass: low, tol_pct: 10}
 verify:

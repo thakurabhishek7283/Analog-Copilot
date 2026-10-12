@@ -20,7 +20,13 @@ nets:
   gnd: [R1.2]
   vcc: [U1.VCC]
   vee: [U1.VEE]
-solver: noninverting_amp
+rules:
+  solve:
+    ratio: "gain - 1"
+    R1: "search(E24, 1k, 100k)"
+    R2: "nearest(E24, R1*ratio, 100, 1meg)"
+  estimates: {ratio: "R2/R1"}
+  prefer: {R1: 10k}
 checks:
   - {name: gain, label: Gain at 1 kHz, symbol: "gain", kind: ac_gain, in: in, out: out, tol_pct: 5}
 verify:

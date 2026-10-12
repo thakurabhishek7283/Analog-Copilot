@@ -21,6 +21,7 @@ use crate::error::{ErrorCode as E, OpError, err};
 use crate::ir::*;
 use crate::ops::{Author, BlockBegin, BlockRef, NetConnect, Op, PartAdd};
 use crate::registry::{PartDef, PinType};
+use crate::rules::{Rules, ValueRules};
 use crate::units::{Quantity, Unit, parse_quantity};
 use crate::{Registry, edit};
 
@@ -48,8 +49,12 @@ pub struct TemplateDef {
     pub parts: IndexMap<String, TemplatePart>,
     /// Port or internal net name -> pins (`R1.2`, `U1.OUT_A`). Every port has one.
     pub nets: IndexMap<String, Vec<PinRef>>,
-    /// A solver in [`solvers`], by name.
-    pub solver: String,
+    /// A solver in [`solvers`], by name; or `rules`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solver: Option<String>,
+    /// Value rules as data (LLD §17 D5): the targets and rails (volts, by power port) are the inputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules: Option<ValueRules>,
     pub checks: Vec<CheckDef>,
     /// The test bench CI simulates the template in (LLD §12 step 2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -136,6 +141,76 @@ pub struct CheckDef {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tran: Option<TranWindow>,
     pub tol_pct: f64,
+    /// Supply ports a headroom check measures against: the positive one, then optionally the
+    /// negative one (ground without it).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supply: Vec<String>,
+    /// Input level a `dc_transfer` check reads the output at, volts.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "eng_opt")]
+    pub at_v: Option<f64>,
+    /// How the measurement passes; each kind has a default (headroom: at least the target).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare: Option<Compare>,
+    /// A component contract's target, as an expression of the component's params (`gain`,
+    /// `1/(2*pi*r*c)`). Template checks take theirs from the block's spec instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+}
+
+impl CheckDef {
+    pub fn compare(&self) -> Compare {
+        self.compare.unwrap_or(self.kind.default_compare())
+    }
+
+    /// Problems with the check's shape, given a test for its port (or bench net) names.
+    pub fn problems(&self, has_port: &dyn Fn(&str) -> bool) -> Vec<String> {
+        let mut errs = Vec::new();
+        let ch = self;
+        if ch.symbol.is_empty() || ch.symbol.chars().count() > 6 {
+            errs.push(format!("check {}: symbol must be 1 to 6 characters", ch.name));
+        }
+        for port in std::iter::once(&ch.out).chain(&ch.input).chain(&ch.supply) {
+            if !has_port(port) {
+                errs.push(format!("check {}: no port {port}", ch.name));
+            }
+        }
+        let needs_in = match ch.kind {
+            CheckKind::AcGain | CheckKind::TranThreshold | CheckKind::DcTransfer => Some(true),
+            CheckKind::AcDbAt => None,
+            _ => Some(false),
+        };
+        if let Some(needs_in) = needs_in
+            && needs_in != ch.input.is_some()
+        {
+            errs.push(format!("check {}: `in` is {}", ch.name, if needs_in { "required" } else { "not used" }));
+        }
+        let needs_pass = matches!(ch.kind, CheckKind::AcCorner | CheckKind::AcQ);
+        if needs_pass != ch.pass.is_some() {
+            errs.push(format!("check {}: `pass` is {}", ch.name, if needs_pass { "required" } else { "not used" }));
+        }
+        if (ch.kind == CheckKind::TranThreshold) != ch.edge.is_some() {
+            errs.push(format!("check {}: `edge` is only, and always, for tran_threshold", ch.name));
+        }
+        let at_hz = matches!(ch.kind, CheckKind::AcGain | CheckKind::AcDbAt);
+        if ch.at_hz.is_some() && !at_hz || ch.at_hz.is_some_and(|f| f.is_nan() || f <= 0.0) {
+            errs.push(format!("check {}: `at_hz` is a positive frequency for ac_gain and ac_db_at", ch.name));
+        }
+        if (ch.kind == CheckKind::DcTransfer) != ch.at_v.is_some_and(f64::is_finite) {
+            errs.push(format!("check {}: `at_v` is only, and always, for dc_transfer", ch.name));
+        }
+        if (ch.kind == CheckKind::TranHeadroom) != (1..=2).contains(&ch.supply.len()) {
+            errs.push(format!("check {}: `supply` (one or two ports) is only, and always, for tran_headroom", ch.name));
+        }
+        if let Some(w) = ch.tran
+            && (ch.kind.domain() != Domain::Tran || !(w.step > 0.0 && w.stop > w.step))
+        {
+            errs.push(format!("check {}: `tran` needs 0 < step < stop and a time-domain kind", ch.name));
+        }
+        if !(ch.tol_pct > 0.0 && ch.tol_pct < 100.0) {
+            errs.push(format!("check {}: tol_pct must be in (0, 100)", ch.name));
+        }
+        errs
+    }
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq)]
@@ -176,6 +251,57 @@ pub enum CheckKind {
     DcLevel,
     /// Input level at the 2nd rising/falling output edge: a comparator threshold (tran).
     TranThreshold,
+    /// How far the output stays inside its supply over the second half of the run: the smaller of
+    /// V(supply+) - max V(out) and min V(out) - V(supply-) (ground without a second supply
+    /// port). Passes at least the target by default: "avoid clipping", measured (LLD §17 D7).
+    TranHeadroom,
+    /// Gain in dB at `at_hz` (default 1 kHz): 20·log10 |V(out)/V(in)|, or |V(out)| re 1 V
+    /// without `in` (AC).
+    AcDbAt,
+    /// RMS of the output around its average over the second half of the run (tran): a signal
+    /// level that ignores the bias of a single-supply stage.
+    TranRms,
+    /// Output level at the input level `at_v`, from a DC sweep of the source driving `in`.
+    DcTransfer,
+    /// 10-90% rise time of the output's first rising edge in the second half of the run, levels
+    /// from its own minimum and maximum there (tran).
+    TranRise,
+}
+
+/// Which analysis a check reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Domain {
+    Ac,
+    Tran,
+    Dc,
+}
+
+/// How a measurement passes against its target and tolerance.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum Compare {
+    /// Within ±tol of the target.
+    #[default]
+    Within,
+    /// At least the target, less tol.
+    AtLeast,
+    /// At most the target, plus tol.
+    AtMost,
+}
+
+impl Compare {
+    pub fn is_within(&self) -> bool {
+        *self == Compare::Within
+    }
+
+    pub fn passes(self, measured: f64, target: f64, tol_pct: f64) -> bool {
+        let tol = tol_pct / 100.0 * target.abs() * (1.0 + 1e-9);
+        match self {
+            Compare::Within => (measured - target).abs() <= tol,
+            Compare::AtLeast => measured >= target - tol,
+            Compare::AtMost => measured <= target + tol,
+        }
+    }
 }
 
 impl CheckKind {
@@ -183,20 +309,45 @@ impl CheckKind {
         match self {
             CheckKind::AcCorner | CheckKind::AcCenter | CheckKind::TranFreq => Unit::Hertz,
             CheckKind::AcQ | CheckKind::AcBandQ | CheckKind::AcGain | CheckKind::TranDuty => Unit::Unitless,
-            CheckKind::TranAmplitude | CheckKind::DcLevel | CheckKind::TranThreshold => Unit::Volt,
+            CheckKind::TranAmplitude
+            | CheckKind::DcLevel
+            | CheckKind::TranThreshold
+            | CheckKind::TranHeadroom
+            | CheckKind::TranRms
+            | CheckKind::DcTransfer => Unit::Volt,
+            CheckKind::AcDbAt => Unit::Decibel,
+            CheckKind::TranRise => Unit::Second,
         }
     }
 
     /// A response to an input signal (an oscillator's or a supply's output needs none).
     pub fn needs_signal(self) -> bool {
-        self.is_ac() || self == CheckKind::TranThreshold
+        self.is_ac() || matches!(self, CheckKind::TranThreshold | CheckKind::TranRms)
     }
 
     pub fn is_ac(self) -> bool {
-        matches!(
-            self,
-            CheckKind::AcCorner | CheckKind::AcQ | CheckKind::AcGain | CheckKind::AcCenter | CheckKind::AcBandQ
-        )
+        self.domain() == Domain::Ac
+    }
+
+    pub fn domain(self) -> Domain {
+        match self {
+            CheckKind::AcCorner
+            | CheckKind::AcQ
+            | CheckKind::AcGain
+            | CheckKind::AcCenter
+            | CheckKind::AcBandQ
+            | CheckKind::AcDbAt => Domain::Ac,
+            CheckKind::DcTransfer => Domain::Dc,
+            _ => Domain::Tran,
+        }
+    }
+
+    /// How the kind passes unless a check says otherwise.
+    pub fn default_compare(self) -> Compare {
+        match self {
+            CheckKind::TranHeadroom => Compare::AtLeast,
+            _ => Compare::Within,
+        }
     }
 }
 
@@ -380,43 +531,25 @@ impl TemplateDef {
             }
         }
 
-        if solvers::solver(&self.solver).is_none() {
-            errs.push(format!("unknown solver \"{}\" (known: {})", self.solver, solvers::NAMES.join(", ")));
+        match (&self.solver, &self.rules) {
+            (Some(name), None) if solvers::solver(name).is_none() => {
+                errs.push(format!("unknown solver \"{name}\" (known: {})", solvers::NAMES.join(", ")))
+            }
+            (Some(_), None) => {}
+            (None, Some(rules)) => match self.compile_rules(rules, parts) {
+                Ok(_) => {}
+                Err(e) => errs.extend(e.into_iter().map(|m| format!("rules: {m}"))),
+            },
+            _ => errs.push("a template has a solver or rules, not both".into()),
         }
         let mut names = BTreeSet::new();
         for ch in &self.checks {
             if !ident(&ch.name) || !names.insert(&ch.name) {
                 errs.push(format!("check \"{}\": names must be unique lowercase [a-z0-9_]", ch.name));
             }
-            if ch.symbol.is_empty() || ch.symbol.chars().count() > 6 {
-                errs.push(format!("check {}: symbol must be 1 to 6 characters", ch.name));
-            }
-            for port in std::iter::once(&ch.out).chain(&ch.input) {
-                if !self.ports.contains_key(port) {
-                    errs.push(format!("check {}: no port {port}", ch.name));
-                }
-            }
-            let needs_in = matches!(ch.kind, CheckKind::AcGain | CheckKind::TranThreshold);
-            if needs_in != ch.input.is_some() {
-                errs.push(format!("check {}: `in` is {}", ch.name, if needs_in { "required" } else { "not used" }));
-            }
-            let needs_pass = matches!(ch.kind, CheckKind::AcCorner | CheckKind::AcQ);
-            if needs_pass != ch.pass.is_some() {
-                errs.push(format!("check {}: `pass` is {}", ch.name, if needs_pass { "required" } else { "not used" }));
-            }
-            if (ch.kind == CheckKind::TranThreshold) != ch.edge.is_some() {
-                errs.push(format!("check {}: `edge` is only, and always, for tran_threshold", ch.name));
-            }
-            if ch.at_hz.is_some() && ch.kind != CheckKind::AcGain || ch.at_hz.is_some_and(|f| f.is_nan() || f <= 0.0) {
-                errs.push(format!("check {}: `at_hz` is a positive frequency for ac_gain", ch.name));
-            }
-            if let Some(w) = ch.tran
-                && (ch.kind.is_ac() || !(w.step > 0.0 && w.stop > w.step))
-            {
-                errs.push(format!("check {}: `tran` needs 0 < step < stop and a time-domain kind", ch.name));
-            }
-            if !(ch.tol_pct > 0.0 && ch.tol_pct < 100.0) {
-                errs.push(format!("check {}: tol_pct must be in (0, 100)", ch.name));
+            errs.extend(ch.problems(&|p| self.ports.contains_key(p)));
+            if ch.target.is_some() {
+                errs.push(format!("check {}: a template check's target comes from the block's spec", ch.name));
             }
             if let Some(t) = self.targets.get(&ch.name)
                 && t.unit != ch.kind.unit()
@@ -462,9 +595,35 @@ impl TemplateDef {
                     }
                 }
             }
-            Err(e) => errs.push(format!("solver {} at the centre of the ranges: {e}", self.solver)),
+            Err(e) => errs.push(format!("{} at the centre of the ranges: {e}", self.solver_name())),
         }
         errs
+    }
+
+    /// `solver <name>` or `rules`, for messages.
+    pub fn solver_name(&self) -> String {
+        match &self.solver {
+            Some(n) => format!("solver {n}"),
+            None => "rules".into(),
+        }
+    }
+
+    /// The rules checked against this template's targets, rails and parts.
+    pub fn compile_rules(&self, rules: &ValueRules, parts: &IndexMap<PartId, PartDef>) -> Result<Rules, Vec<String>> {
+        let mut inputs: BTreeMap<String, Unit> = self.targets.iter().map(|(k, t)| (k.clone(), t.unit)).collect();
+        for k in self.rails.keys() {
+            if inputs.insert(k.clone(), Unit::Volt).is_some() {
+                return Err(vec![format!("rail {k} has a target's name")]);
+            }
+        }
+        let mut local = BTreeMap::new();
+        for (l, tp) in &self.parts {
+            let def = parts.get(&tp.part).ok_or_else(|| vec![format!("{} is not in the registry", tp.part)])?;
+            if !def.params.is_empty() {
+                local.insert(l.clone(), def);
+            }
+        }
+        rules.compile(&inputs, &local, true)
     }
 
     /// Run the solver and check its output: a value for every param of every part that has
@@ -475,8 +634,20 @@ impl TemplateDef {
         targets: &BTreeMap<String, f64>,
         rails: &BTreeMap<String, f64>,
     ) -> Result<Solution, String> {
-        let f = solvers::solver(&self.solver).ok_or_else(|| format!("unknown solver {}", self.solver))?;
-        let out = f(&solvers::Input { targets, rails })?;
+        let out = match (&self.solver, &self.rules) {
+            (Some(name), _) => {
+                let f = solvers::solver(name).ok_or_else(|| format!("unknown solver {name}"))?;
+                f(&solvers::Input { targets, rails })?
+            }
+            (None, Some(rules)) => {
+                let compiled = self.compile_rules(rules, parts).map_err(|e| e.join("; "))?;
+                let mut inputs = targets.clone();
+                inputs.extend(rails.iter().map(|(k, v)| (k.clone(), *v)));
+                let s = compiled.solve(&inputs)?;
+                solvers::Output { values: s.values, spec: s.spec }
+            }
+            (None, None) => return Err(format!("{} has no solver or rules", self.id)),
+        };
         let mut values = BTreeMap::new();
         for (local, tp) in &self.parts {
             let def = parts.get(&tp.part).ok_or_else(|| format!("{} is not in the registry", tp.part))?;

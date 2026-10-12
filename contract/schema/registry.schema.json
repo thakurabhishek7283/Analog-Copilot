@@ -256,17 +256,26 @@
       ]
     },
     "Unit": {
-      "type": "string",
-      "enum": [
-        "ohm",
-        "farad",
-        "henry",
-        "volt",
-        "ampere",
-        "hertz",
-        "second",
-        "watt",
-        "unitless"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "ohm",
+            "farad",
+            "henry",
+            "volt",
+            "ampere",
+            "hertz",
+            "second",
+            "watt",
+            "unitless"
+          ]
+        },
+        {
+          "type": "string",
+          "const": "decibel",
+          "description": "A ratio in decibels (`ac_db_at` checks)."
+        }
       ]
     },
     "SpiceDef": {
@@ -428,8 +437,22 @@
           "description": "Port or internal net name -> pins (`R1.2`, `U1.OUT_A`). Every port has one."
         },
         "solver": {
-          "type": "string",
-          "description": "A solver in [`solvers`], by name."
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "A solver in [`solvers`], by name; or `rules`."
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueRules"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Value rules as data (LLD §17 D5): the targets and rails (volts, by power port) are the inputs."
         },
         "checks": {
           "type": "array",
@@ -457,7 +480,6 @@
         "ports",
         "parts",
         "nets",
-        "solver",
         "checks"
       ]
     },
@@ -581,6 +603,50 @@
       "pattern": "^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$",
       "description": "Part pin as REFDES.PIN, e.g. \"R3.1\" or \"U1.OUT_A\"."
     },
+    "ValueRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "funcs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "User functions, `\"name(a, b)\" -> body`; a function may call those before it."
+        },
+        "solve": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Steps in order. A part's local refdes (`R1`, or `R1.resistance` for a part with several\nparams) sets that part value; any other name (lowercase) is an intermediate value."
+        },
+        "estimates": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Forward estimates, each scored against the target or step of the same name."
+        },
+        "prefer": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Steps to keep near a nominal value when the estimates tie."
+        },
+        "spec": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Spec targets derived from the inputs and the chosen values (a follower's gain of 1)."
+        }
+      },
+      "required": [
+        "solve"
+      ]
+    },
     "CheckDef": {
       "type": "object",
       "additionalProperties": false,
@@ -653,6 +719,39 @@
         "tol_pct": {
           "type": "number",
           "format": "double"
+        },
+        "supply": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Supply ports a headroom check measures against: the positive one, then optionally the\nnegative one (ground without it)."
+        },
+        "at_v": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double",
+          "description": "Input level a `dc_transfer` check reads the output at, volts."
+        },
+        "compare": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Compare"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How the measurement passes; each kind has a default (headroom: at least the target)."
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "A component contract's target, as an expression of the component's params (`gain`,\n`1/(2*pi*r*c)`). Template checks take theirs from the block's spec instead."
         }
       },
       "required": [
@@ -716,6 +815,31 @@
           "type": "string",
           "const": "tran_threshold",
           "description": "Input level at the 2nd rising/falling output edge: a comparator threshold (tran)."
+        },
+        {
+          "type": "string",
+          "const": "tran_headroom",
+          "description": "How far the output stays inside its supply over the second half of the run: the smaller of\nV(supply+) - max V(out) and min V(out) - V(supply-) (ground without a second supply\nport). Passes at least the target by default: \"avoid clipping\", measured (LLD §17 D7)."
+        },
+        {
+          "type": "string",
+          "const": "ac_db_at",
+          "description": "Gain in dB at `at_hz` (default 1 kHz): 20·log10 |V(out)/V(in)|, or |V(out)| re 1 V\nwithout `in` (AC)."
+        },
+        {
+          "type": "string",
+          "const": "tran_rms",
+          "description": "RMS of the output around its average over the second half of the run (tran): a signal\nlevel that ignores the bias of a single-supply stage."
+        },
+        {
+          "type": "string",
+          "const": "dc_transfer",
+          "description": "Output level at the input level `at_v`, from a DC sweep of the source driving `in`."
+        },
+        {
+          "type": "string",
+          "const": "tran_rise",
+          "description": "10-90% rise time of the output's first rising edge in the second half of the run, levels\nfrom its own minimum and maximum there (tran)."
         }
       ],
       "description": "LLD §7 spec checks. Each is a few primitive ngspice `.meas` results combined by\n[`evaluate_checks`] (ngspice cannot measure an expression such as `vdb(out)-vdb(in)`)."
@@ -753,6 +877,26 @@
         "stop",
         "step"
       ]
+    },
+    "Compare": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "within",
+          "description": "Within ±tol of the target."
+        },
+        {
+          "type": "string",
+          "const": "at_least",
+          "description": "At least the target, less tol."
+        },
+        {
+          "type": "string",
+          "const": "at_most",
+          "description": "At most the target, plus tol."
+        }
+      ],
+      "description": "How a measurement passes against its target and tolerance."
     },
     "VerifyBench": {
       "type": "object",

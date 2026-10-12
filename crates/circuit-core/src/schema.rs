@@ -73,6 +73,10 @@ pub fn contract_schema() -> Value {
     add::<Inserted>(&mut generator);
     add::<CheckResult>(&mut generator);
     add::<VerifyPoint>(&mut generator);
+    add::<crate::characterise::BenchRun>(&mut generator);
+    add::<crate::characterise::SimOutcome>(&mut generator);
+    add::<crate::characterise::Characterisation>(&mut generator);
+    add::<crate::spice::EnvelopeResult>(&mut generator);
     add::<BlockRequest>(&mut generator);
     add::<BlockTrial>(&mut generator);
     add::<JobEvent>(&mut generator);

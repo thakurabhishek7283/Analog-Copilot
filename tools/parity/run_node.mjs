@@ -20,6 +20,7 @@ const digests = logs.map((log) => {
   out.push(s.erc("user_edit", undefined));
   out.push(s.erc("llm_block", "b1"));
   out.push(s.circuitText());
+  out.push(s.characteriseBenches("lib:vca"));
   const fresh = new core.CoreSession(registry);
   out.push(fresh.applyAll(`[${log.filter((e) => e.endsWith("}")).join(",")}]`));
   s.free();

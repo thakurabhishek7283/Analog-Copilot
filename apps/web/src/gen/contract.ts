@@ -4,7 +4,8 @@
  * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Unit".
  */
-export type Unit = "ohm" | "farad" | "henry" | "volt" | "ampere" | "hertz" | "second" | "watt" | "unitless";
+export type Unit =
+  ("ohm" | "farad" | "henry" | "volt" | "ampere" | "hertz" | "second" | "watt" | "unitless") | "decibel";
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Origin".
@@ -133,12 +134,31 @@ export type PinType = ("input" | "output" | "passive" | "power_pos" | "power_neg
  */
 export type Hazard = "mains";
 /**
- * What the component does inside. Behavioral laws and SPICE imports join in P5.2 (LLD §17 D3).
+ * What the component does inside (LLD §17 D3).
  *
  * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Model".
  */
-export type Model = Composite;
+export type Model =
+  | Composite
+  | {
+      /**
+       * One law per entry, as written.
+       */
+      laws: string[];
+      kind: "behavioral";
+    }
+  | {
+      text: string;
+      subckt: string;
+      /**
+       * Component pin -> port of the `.subckt`; every port is mapped once.
+       */
+      pins: {
+        [k: string]: string | undefined;
+      };
+      kind: "spice";
+    };
 /**
  * Who made a definition (LLD §17 D10: trust levels read it).
  *
@@ -158,6 +178,46 @@ export type Provenance =
       licence: string;
       kind: "import";
     };
+/**
+ * LLD §7 spec checks. Each is a few primitive ngspice `.meas` results combined by
+ * [`evaluate_checks`] (ngspice cannot measure an expression such as `vdb(out)-vdb(in)`).
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "CheckKind".
+ */
+export type CheckKind =
+  | "ac_corner"
+  | "ac_q"
+  | "ac_gain"
+  | "ac_center"
+  | "ac_band_q"
+  | "tran_freq"
+  | "tran_duty"
+  | "tran_amplitude"
+  | "dc_level"
+  | "tran_threshold"
+  | "tran_headroom"
+  | "ac_db_at"
+  | "tran_rms"
+  | "dc_transfer"
+  | "tran_rise";
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Pass".
+ */
+export type Pass = "low" | "high";
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Edge".
+ */
+export type Edge = "rise" | "fall";
+/**
+ * How a measurement passes against its target and tolerance.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Compare".
+ */
+export type Compare = "within" | "at_least" | "at_most";
 /**
  * What a probe reads from its net in each scenario.
  *
@@ -411,34 +471,6 @@ export type ErcCode =
  */
 export type Severity = ("warning" | "info") | "error";
 /**
- * LLD §7 spec checks. Each is a few primitive ngspice `.meas` results combined by
- * [`evaluate_checks`] (ngspice cannot measure an expression such as `vdb(out)-vdb(in)`).
- *
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "CheckKind".
- */
-export type CheckKind =
-  | "ac_corner"
-  | "ac_q"
-  | "ac_gain"
-  | "ac_center"
-  | "ac_band_q"
-  | "tran_freq"
-  | "tran_duty"
-  | "tran_amplitude"
-  | "dc_level"
-  | "tran_threshold";
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "Edge".
- */
-export type Edge = "rise" | "fall";
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "Pass".
- */
-export type Pass = "low" | "high";
-/**
  * This interface was referenced by `Contract`'s JSON-Schema
  * via the `definition` "Scale".
  */
@@ -478,6 +510,11 @@ export type PortBinding =
         volts: number;
       };
     };
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Trust".
+ */
+export type Trust = "characterised" | "draft";
 /**
  * What to trial: a template at targets (the composer's `use_template`, or the fallback), or a
  * draft.
@@ -764,11 +801,20 @@ export interface ComponentDef {
   version: number;
   model: Model;
   provenance: Provenance;
+  /**
+   * A composite's part values from its params (LLD §17 D5), searched over the E-series.
+   */
+  rules?: ValueRules | null;
+  /**
+   * What the component promises and the bench that tests it (D10): characterisation runs it.
+   */
+  contract?: Contract1 | null;
 }
 /**
  * The component as a part: id (`lib:<name>`), category `X`, title, refdes `prefix`, pins,
- * limits and symbol (`auto`, a box the editor draws from the pins, or a registry symbol whose
- * anchors match the pins). It has no `spice` line and, for now, no params.
+ * params (each with a unit, a default and a range), limits and symbol (`auto`, a box the
+ * editor draws from the pins, or a registry symbol whose anchors match the pins). It has no
+ * `spice` line: its model is.
  */
 export interface PartDef {
   id: string;
@@ -857,6 +903,166 @@ export interface SpiceDef {
  */
 export interface Composite {
   kind: "composite";
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "ValueRules".
+ */
+export interface ValueRules {
+  /**
+   * User functions, `"name(a, b)" -> body`; a function may call those before it.
+   */
+  funcs?: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * Steps in order. A part's local refdes (`R1`, or `R1.resistance` for a part with several
+   * params) sets that part value; any other name (lowercase) is an intermediate value.
+   */
+  solve: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * Forward estimates, each scored against the target or step of the same name.
+   */
+  estimates?: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * Steps to keep near a nominal value when the estimates tie.
+   */
+  prefer?: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * Spec targets derived from the inputs and the chosen values (a follower's gain of 1).
+   */
+  spec?: {
+    [k: string]: string | undefined;
+  };
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Contract".
+ */
+export interface Contract1 {
+  bench: Bench;
+  /**
+   * Checks on the bench's nets, each with a `target` expression of the component's params.
+   */
+  checks: CheckDef[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Bench".
+ */
+export interface Bench {
+  /**
+   * Registry parts around the component: sources, loads, feedback. Values may be expressions
+   * of the component's params.
+   */
+  parts?: {
+    [k: string]: CompositePart | undefined;
+  };
+  /**
+   * Net -> pins; `DUT.<pin>` is the component's pin, `GND` is ground.
+   */
+  nets: {
+    [k: string]: PinRef[] | undefined;
+  };
+  /**
+   * Analyses the checks do not imply (a DC sweep for `dc_transfer`).
+   */
+  analyses?: Analysis[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "CompositePart".
+ */
+export interface CompositePart {
+  part: string;
+  /**
+   * Values as written ("10k"), or, in a component with params, expressions of them
+   * ("10k*gain"); a missing param takes the part's default, unless the rules set it.
+   */
+  params?: {
+    [k: string]: string | undefined;
+  };
+}
+/**
+ * One spec check: what to measure (a closed set of kinds, so a template can never inject SPICE)
+ * on which ports. Its target is the block's `spec[name]`.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "CheckDef".
+ */
+export interface CheckDef {
+  name: string;
+  label: string;
+  /**
+   * A few characters for badges on the drawing: `fc`, `Q`, `Vth+`.
+   */
+  symbol: string;
+  kind: CheckKind;
+  /**
+   * Output port measured.
+   */
+  out: string;
+  /**
+   * Input port (gain reference, threshold input).
+   */
+  in?: string | null;
+  /**
+   * Which side of a corner is the pass band (corner and Q checks).
+   */
+  pass?: Pass | null;
+  /**
+   * Output edge whose input level is the threshold (threshold checks).
+   */
+  edge?: Edge | null;
+  /**
+   * Frequency a gain is measured at; default 1 kHz.
+   */
+  at_hz?: number | null;
+  /**
+   * The transient a time-domain check needs. Regenerative circuits (a Schmitt trigger) switch
+   * late in simulation unless the steps are near the op-amp's own speed: with coarse steps the
+   * integrator follows the unstable balance point until it hits a rail.
+   */
+  tran?: TranWindow | null;
+  tol_pct: number;
+  /**
+   * Supply ports a headroom check measures against: the positive one, then optionally the
+   * negative one (ground without it).
+   */
+  supply?: string[];
+  /**
+   * Input level a `dc_transfer` check reads the output at, volts.
+   */
+  at_v?: number | null;
+  /**
+   * How the measurement passes; each kind has a default (headroom: at least the target).
+   */
+  compare?: Compare | null;
+  /**
+   * A component contract's target, as an expression of the component's params (`gain`,
+   * `1/(2*pi*r*c)`). Template checks take theirs from the block's spec instead.
+   */
+  target?: string | null;
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "TranWindow".
+ */
+export interface TranWindow {
+  /**
+   * Run length, seconds.
+   */
+  stop: number;
+  /**
+   * Largest step, seconds.
+   */
+  step: number;
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -956,19 +1162,6 @@ export interface PartDef1 {
   breadboard?: string | null;
   teach?: string | null;
   hazard?: Hazard | null;
-}
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "CompositePart".
- */
-export interface CompositePart {
-  part: string;
-  /**
-   * Values as written ("10k"); a missing param takes the part's default.
-   */
-  params?: {
-    [k: string]: string | undefined;
-  };
 }
 /**
  * A sub-circuit of registry parts and other library components.
@@ -1146,6 +1339,14 @@ export interface ComponentDef1 {
   version: number;
   model: Model;
   provenance: Provenance;
+  /**
+   * A composite's part values from its params (LLD §17 D5), searched over the E-series.
+   */
+  rules?: ValueRules | null;
+  /**
+   * What the component promises and the bench that tests it (D10): characterisation runs it.
+   */
+  contract?: Contract1 | null;
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -1440,6 +1641,11 @@ export interface Netlist {
    * editor runs live below a budget and asks for a Run above it).
    */
   leaf_devices?: number;
+  /**
+   * The `require` laws of behavioral components, measured over the transient
+   * ([`evaluate_envelope`]).
+   */
+  envelope?: EnvelopeDef[];
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -1473,6 +1679,10 @@ export interface SpecCheckDef {
    */
   edge?: Edge | null;
   /**
+   * How a measurement passes against its target and tolerance.
+   */
+  compare?: "within" | "at_least" | "at_most";
+  /**
    * Why the check could not be compiled into this netlist ("needs an AC analysis").
    */
   missing?: string | null;
@@ -1489,6 +1699,34 @@ export interface CurrentTerm {
    */
   vector: string;
   coeff: number;
+}
+/**
+ * A behavioral component's `require` as compiled into one netlist (LLD §17 D3, the envelope).
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "EnvelopeDef".
+ */
+export interface EnvelopeDef {
+  /**
+   * The instance.
+   */
+  part: string;
+  /**
+   * The law's number in its definition (1-based).
+   */
+  law: number;
+  /**
+   * The law as written.
+   */
+  text: string;
+  unit: Unit;
+  lo?: number | null;
+  hi?: number | null;
+  /**
+   * `.meas` names of the largest and smallest value; empty when `missing` is set.
+   */
+  meas: string[];
+  missing?: string | null;
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -1562,9 +1800,13 @@ export interface TemplateDef {
     [k: string]: PinRef[] | undefined;
   };
   /**
-   * A solver in [`solvers`], by name.
+   * A solver in [`solvers`], by name; or `rules`.
    */
-  solver: string;
+  solver?: string | null;
+  /**
+   * Value rules as data (LLD §17 D5): the targets and rails (volts, by power port) are the inputs.
+   */
+  rules?: ValueRules | null;
   checks: CheckDef[];
   /**
    * The test bench CI simulates the template in (LLD §12 step 2).
@@ -1614,63 +1856,6 @@ export interface RailDef {
  */
 export interface TemplatePart {
   part: string;
-}
-/**
- * One spec check: what to measure (a closed set of kinds, so a template can never inject SPICE)
- * on which ports. Its target is the block's `spec[name]`.
- *
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "CheckDef".
- */
-export interface CheckDef {
-  name: string;
-  label: string;
-  /**
-   * A few characters for badges on the drawing: `fc`, `Q`, `Vth+`.
-   */
-  symbol: string;
-  kind: CheckKind;
-  /**
-   * Output port measured.
-   */
-  out: string;
-  /**
-   * Input port (gain reference, threshold input).
-   */
-  in?: string | null;
-  /**
-   * Which side of a corner is the pass band (corner and Q checks).
-   */
-  pass?: Pass | null;
-  /**
-   * Output edge whose input level is the threshold (threshold checks).
-   */
-  edge?: Edge | null;
-  /**
-   * Frequency a gain is measured at; default 1 kHz.
-   */
-  at_hz?: number | null;
-  /**
-   * The transient a time-domain check needs. Regenerative circuits (a Schmitt trigger) switch
-   * late in simulation unless the steps are near the op-amp's own speed: with coarse steps the
-   * integrator follows the unstable balance point until it hits a rail.
-   */
-  tran?: TranWindow | null;
-  tol_pct: number;
-}
-/**
- * This interface was referenced by `Contract`'s JSON-Schema
- * via the `definition` "TranWindow".
- */
-export interface TranWindow {
-  /**
-   * Run length, seconds.
-   */
-  stop: number;
-  /**
-   * Largest step, seconds.
-   */
-  step: number;
 }
 /**
  * This interface was referenced by `Contract`'s JSON-Schema
@@ -1820,6 +2005,84 @@ export interface VerifyPoint {
   rails: {
     [k: string]: number | undefined;
   };
+}
+/**
+ * One characterisation point: its params and the bench netlist, or why it cannot be built.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "BenchRun".
+ */
+export interface BenchRun {
+  /**
+   * Param values as text, for reading (`10kΩ`).
+   */
+  params: {
+    [k: string]: string | undefined;
+  };
+  netlist?: Netlist | null;
+  error?: string | null;
+}
+/**
+ * What a simulator returned for one bench: its `.meas` values, or the failure.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "SimOutcome".
+ */
+export interface SimOutcome {
+  meas?: {
+    [k: string]: number | undefined;
+  };
+  error?: string | null;
+}
+/**
+ * A characterisation report (LLD §17 D10), derived and keyed by what it depends on.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "Characterisation".
+ */
+export interface Characterisation {
+  component: string;
+  /**
+   * [`library::def_hash`] of the component and everything it uses.
+   */
+  def_hash: string;
+  registry_version: string;
+  ngspice: string;
+  trust: Trust;
+  points: PointReport[];
+}
+/**
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "PointReport".
+ */
+export interface PointReport {
+  params: {
+    [k: string]: string | undefined;
+  };
+  netlist_hash?: string | null;
+  checks: CheckResult[];
+  envelope?: EnvelopeResult[];
+  error?: string | null;
+  pass: boolean;
+}
+/**
+ * Whether a `require` held over the run.
+ *
+ * This interface was referenced by `Contract`'s JSON-Schema
+ * via the `definition` "EnvelopeResult".
+ */
+export interface EnvelopeResult {
+  part: string;
+  law: number;
+  text: string;
+  unit: Unit;
+  max?: number | null;
+  min?: number | null;
+  pass: boolean;
+  /**
+   * In words: the range seen, or why nothing was measured.
+   */
+  note: string;
 }
 /**
  * A block drafted part by part, in the shape of a template's `parts` and `nets`. Refs are the

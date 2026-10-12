@@ -10,6 +10,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::apply::{Patch, apply, apply_ops, validate};
+use crate::characterise::{self, BenchRun, Characterisation, SimOutcome};
 use crate::edit::{self, WireEnd};
 use crate::erc::{ErcContext, ErcIssue, erc};
 use crate::error::{ErrorCode, OpError};
@@ -135,6 +136,22 @@ impl Session {
 
     pub fn erc(&self, ctx: ErcContext, scope: Option<&str>) -> Vec<ErcIssue> {
         erc(&self.circuit, &self.reg, ctx, scope)
+    }
+
+    /// The bench netlists that characterise library component `id`, one per point (LLD §17 D10).
+    pub fn characterise_benches(&self, id: &str) -> Result<Vec<BenchRun>, OpError> {
+        characterise::benches(&self.reg, &self.circuit.library, id)
+    }
+
+    /// A characterisation report from the benches and what simulating each returned.
+    pub fn characterise_report(
+        &self,
+        id: &str,
+        ngspice: &str,
+        runs: &[BenchRun],
+        outcomes: &[SimOutcome],
+    ) -> Result<Characterisation, OpError> {
+        characterise::report(&self.reg, &self.circuit.library, id, ngspice, runs, outcomes)
     }
 
     pub fn compile(&self, opts: &CompileOpts) -> Result<Netlist, CompileError> {
@@ -341,6 +358,30 @@ pub mod json_api {
     /// `block` is a template block's id → `Outcome<[Op], OpError>`; apply as author `user`.
     pub fn bench_ops(s: &Session, block: &str) -> String {
         outcome(s.bench_ops(block))
+    }
+
+    /// `defs_json` is `Netlist.envelope`, `meas_json` the result's `meas` → `Outcome<[EnvelopeResult], OpError>`.
+    pub fn evaluate_envelope(defs_json: &str, meas_json: &str) -> String {
+        let r = parse::<Vec<crate::spice::EnvelopeDef>>("envelope", defs_json).and_then(|defs| {
+            let meas: std::collections::BTreeMap<String, f64> = parse("meas", meas_json)?;
+            Ok(crate::spice::evaluate_envelope(&defs, &meas))
+        });
+        outcome(r)
+    }
+
+    /// Library component `id` → `Outcome<[BenchRun], OpError>`: simulate each run's netlist.
+    pub fn characterise_benches(s: &Session, id: &str) -> String {
+        outcome(s.characterise_benches(id))
+    }
+
+    /// `runs_json` from [`characterise_benches`], `outcomes_json` one `SimOutcome` per run
+    /// → `Outcome<Characterisation, OpError>`.
+    pub fn characterise_report(s: &Session, id: &str, ngspice: &str, runs_json: &str, outcomes_json: &str) -> String {
+        let r = parse::<Vec<BenchRun>>("runs", runs_json).and_then(|runs| {
+            let outcomes: Vec<SimOutcome> = parse("outcomes", outcomes_json)?;
+            s.characterise_report(id, ngspice, &runs, &outcomes)
+        });
+        outcome(r)
     }
 
     /// `checks_json` is `Netlist.checks`, `meas_json` the result's `meas` (name -> value)

@@ -161,24 +161,30 @@ fn envelope(c: &Circuit, author: &str, o: &Value) -> circuit_core::OpEnvelope {
     envelope_from_value(v).expect("strategy produces schema-valid ops")
 }
 
+/// Loaded once: loading solves every template at the centre of its ranges.
+fn shared_registry() -> &'static circuit_core::Registry {
+    static REG: std::sync::OnceLock<circuit_core::Registry> = std::sync::OnceLock::new();
+    REG.get_or_init(registry)
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: 512, ..ProptestConfig::default() })]
 
     #[test]
     fn apply_then_inverse_is_identity(ops in ops_strategy()) {
-        let reg = registry();
+        let reg = shared_registry();
         let mut cur = Circuit::new(reg.version.clone());
         for (o, by_llm) in &ops {
             let author = if *by_llm { "llm" } else { "user" };
-            let Ok(a) = apply(&cur, &reg, &envelope(&cur, author, o)) else { continue };
-            let problems = validate(&a.circuit, &reg);
+            let Ok(a) = apply(&cur, reg, &envelope(&cur, author, o)) else { continue };
+            let problems = validate(&a.circuit, reg);
             prop_assert!(problems.is_empty(), "after {o}: {problems:#?}");
 
-            let (back, redo) = apply_ops(&a.circuit, &reg, &a.inverse, Author::User, None)
+            let (back, redo) = apply_ops(&a.circuit, reg, &a.inverse, Author::User, None)
                 .map_err(|e| TestCaseError::fail(format!("inverse of {o} failed: {e}")))?;
             prop_assert!(same_ir(&back, &cur), "undo of {o} did not restore the circuit");
 
-            let (again, _) = apply_ops(&back, &reg, &redo, Author::User, None)
+            let (again, _) = apply_ops(&back, reg, &redo, Author::User, None)
                 .map_err(|e| TestCaseError::fail(format!("redo of {o} failed: {e}")))?;
             prop_assert!(same_ir(&again, &a.circuit), "redo of {o} differs");
             cur = a.circuit;

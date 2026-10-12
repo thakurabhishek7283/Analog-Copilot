@@ -1,0 +1,447 @@
+# The 12 reference black boxes (LLD §17, P5.2): library components whose behaviour is written as
+# laws (and one imported SPICE model), each with a contract: a bench around the component (DUT)
+# and checks whose targets are expressions of its params. Characterised at up to 5 points over
+# the params' ranges, they must give the same report on every engine (tools/sim/test_blackboxes.py)
+# and their benches must compile in the core (crates/circuit-core/tests/components.rs).
+#
+# `text: "@<path>"` in a SPICE model reads that file (relative to the repository) when loaded.
+
+ideal_opamp:
+  part:
+    id: "lib:ideal_opamp"
+    category: X
+    prefix: U
+    title: Ideal op-amp (single pole)
+    symbol: auto
+    pins:
+      - {name: INP, num: 1, type: input}
+      - {name: INM, num: 2, type: input}
+      - {name: OUT, num: 3, type: output}
+    params:
+      aol: {unit: unitless, default: 100k, min: 10k, max: 1meg}
+      gbw: {unit: hertz, default: 1meg, min: 100k, max: 10meg}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      - "V(OUT) = tf(aol*(V(INP) - V(INM)), [1], [aol/(2*pi*gbw), 1])"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        V1: {part: vsource_sine, params: {amplitude: "0.1", frequency: 1k}}
+      nets:
+        IN: [V1.P, DUT.INP]
+        OUT: [DUT.OUT, DUT.INM]
+        GND: [V1.N]
+    checks:
+      - {name: gain, label: Follower gain, symbol: G, kind: ac_gain, in: IN, out: OUT, tol_pct: 1, target: "aol/(1 + aol)"}
+      - {name: bw, label: Follower bandwidth, symbol: fc, kind: ac_corner, out: OUT, pass: low, tol_pct: 5, target: "gbw"}
+
+lm358_law:
+  part:
+    id: "lib:lm358_law"
+    category: X
+    prefix: U
+    title: LM358-like op-amp (laws)
+    symbol: auto
+    pins:
+      - {name: INP, num: 1, type: input}
+      - {name: INM, num: 2, type: input}
+      - {name: VCC, num: 3, type: power_pos}
+      - {name: VEE, num: 4, type: power_neg}
+      - {name: OUT, num: 5, type: output}
+    params:
+      aol: {unit: unitless, default: 100k, min: 20k, max: 200k}
+      gbw: {unit: hertz, default: 1meg, min: 500k, max: 2meg}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      - "V(OUT) = clamp(tf(aol*(V(INP) - V(INM)), [1], [aol/(2*pi*gbw), 1]), V(VEE) + 0.02, V(VCC) - 1.5)"
+      - "R(INP, INM) = 1T"
+      - "Rout(OUT) = 50"
+      - "I(VCC, VEE) = 0.7m"
+      - "require V(VCC) - V(VEE) in [3, 32]"
+  provenance: {kind: user}
+  contract:
+    # The P5.0 single-supply Schmitt trigger: thresholds (5 + 3.5)/3 and (5 + 0.02)/3.
+    bench:
+      parts:
+        V1: {part: vsource_dc, params: {voltage: "5"}}
+        V2: {part: vsource_sine, params: {offset: "2.5", amplitude: "2", frequency: "200"}}
+        R1: {part: resistor_th, params: {resistance: 10k}}
+        R2: {part: resistor_th, params: {resistance: 10k}}
+        R3: {part: resistor_th, params: {resistance: 10k}}
+      nets:
+        VCC: [V1.P, R1.1, DUT.VCC]
+        IN: [V2.P, DUT.INM]
+        NP: [R1.2, R2.1, R3.1, DUT.INP]
+        OUT: [R3.2, DUT.OUT]
+        GND: [V1.N, V2.N, R2.2, DUT.VEE]
+    checks:
+      - {name: vth_hi, label: Upper threshold, symbol: "Vth+", kind: tran_threshold, in: IN, out: OUT, edge: fall, tol_pct: 2, target: "(5 + 5 - 1.5)/3", tran: {stop: 15m, step: 2u}}
+      - {name: vth_lo, label: Lower threshold, symbol: "Vth-", kind: tran_threshold, in: IN, out: OUT, edge: rise, tol_pct: 2, target: "(5 + 0.02)/3", tran: {stop: 15m, step: 2u}}
+      - {name: swing, label: Output swing, symbol: Vpk, kind: tran_amplitude, out: OUT, tol_pct: 2, target: "(5 - 1.5 - 0.02)/2"}
+
+comparator:
+  part:
+    id: "lib:comparator"
+    category: X
+    prefix: U
+    title: Comparator (laws)
+    symbol: auto
+    pins:
+      - {name: INP, num: 1, type: input}
+      - {name: INM, num: 2, type: input}
+      - {name: VCC, num: 3, type: power_pos}
+      - {name: COM, num: 4, type: power_neg}
+      - {name: OUT, num: 5, type: output}
+    params:
+      gain: {unit: unitless, default: 10k, min: 1k, max: 100k}
+      vdrop: {unit: volt, default: "1", min: "0.2", max: "1.5"}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      - "V(OUT, COM) = clamp(gain*(V(INP) - V(INM)), 0.05, V(VCC, COM) - vdrop)"
+      - "R(INP, INM) = 10Meg"
+      - "Rout(OUT) = 100"
+      - "R(VCC, COM) = 10k"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        V1: {part: vsource_dc, params: {voltage: "5"}}
+        V2: {part: vsource_dc, params: {voltage: "2.5"}}
+        V3: {part: vsource_sine, params: {offset: "2.5", amplitude: "1", frequency: 1k}}
+      nets:
+        VCC: [V1.P, DUT.VCC]
+        REF: [V2.P, DUT.INM]
+        IN: [V3.P, DUT.INP]
+        OUT: [DUT.OUT]
+        GND: [V1.N, V2.N, V3.N, DUT.COM]
+    checks:
+      - {name: vth, label: Threshold, symbol: Vth, kind: tran_threshold, in: IN, out: OUT, edge: rise, tol_pct: 2, target: "2.5", tran: {stop: 5m, step: 1u}}
+      - {name: swing, label: Output swing, symbol: Vpk, kind: tran_amplitude, out: OUT, tol_pct: 2, target: "(5 - vdrop - 0.05)/2"}
+      - {name: room, label: Headroom, symbol: Vhr, kind: tran_headroom, out: OUT, supply: [VCC], tol_pct: 5, target: "0.05"}
+
+vca:
+  part:
+    id: "lib:vca"
+    category: X
+    prefix: U
+    title: Voltage-controlled amplifier (laws)
+    symbol: auto
+    pins:
+      - {name: IN, num: 1, type: input}
+      - {name: CTL, num: 2, type: input}
+      - {name: REF, num: 3, type: passive}
+      - {name: OUT, num: 4, type: output}
+    params:
+      k: {unit: unitless, default: "2", min: "0.5", max: "4"}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      # k is per volt of control: V(CTL)/1V keeps the units right.
+      - "V(OUT) = V(REF) + k*(V(CTL)/1V)*(V(IN) - V(REF))"
+      - "R(IN, REF) = 1Meg"
+      - "R(CTL) = 1Meg"
+      - "Rout(OUT) = 50"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        V1: {part: vsource_dc, params: {voltage: "2.5"}}
+        V2: {part: vsource_dc, params: {voltage: "1"}}
+        V3: {part: vsource_sine, params: {offset: "2.5", amplitude: "0.1", frequency: 1k}}
+      nets:
+        REF: [V1.P, DUT.REF]
+        CTL: [V2.P, DUT.CTL]
+        IN: [V3.P, DUT.IN]
+        OUT: [DUT.OUT]
+        GND: [V1.N, V2.N, V3.N]
+    checks:
+      - {name: gain, label: Gain at 1 V control, symbol: G, kind: ac_gain, in: IN, out: OUT, tol_pct: 1, target: "k"}
+      - {name: level, label: Output level, symbol: Vpk, kind: tran_amplitude, out: OUT, tol_pct: 2, target: "0.1V*k"}
+      # 10-90% of a sine takes 2·acos(0.8)... of its period: 0.2952/f.
+      - {name: rise, label: Rise time, symbol: tr, kind: tran_rise, out: OUT, tol_pct: 2, target: "0.2952/1kHz"}
+
+multiplier:
+  part:
+    id: "lib:multiplier"
+    category: X
+    prefix: U
+    title: Analog multiplier (laws)
+    symbol: auto
+    pins:
+      - {name: X, num: 1, type: input}
+      - {name: Y, num: 2, type: input}
+      - {name: OUT, num: 3, type: output}
+    params:
+      scale: {unit: unitless, default: "0.1", min: "0.05", max: "0.5"}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      - "V(OUT) = scale*V(X)*V(Y)/1V"
+      - "R(X) = 1Meg"
+      - "R(Y) = 1Meg"
+      - "Rout(OUT) = 10"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        V1: {part: vsource_dc, params: {voltage: "0"}}
+        V2: {part: vsource_dc, params: {voltage: "2"}}
+      nets:
+        X: [V1.P, DUT.X]
+        Y: [V2.P, DUT.Y]
+        OUT: [DUT.OUT]
+        GND: [V1.N, V2.N]
+      analyses:
+        - {type: dc, source: V1, start: -2, stop: 2, step: 0.01}
+    checks:
+      - {name: pos, label: Output at x = 1.5 V, symbol: Vo, kind: dc_transfer, in: X, out: OUT, at_v: 1.5, tol_pct: 1, target: "scale*1.5V*2"}
+      - {name: neg, label: Output at x = -1 V, symbol: Vo, kind: dc_transfer, in: X, out: OUT, at_v: -1, tol_pct: 1, target: "scale*(-1V)*2"}
+
+lowpass2_tf:
+  part:
+    id: "lib:lowpass2_tf"
+    category: X
+    title: 2nd-order low-pass (transfer function)
+    symbol: auto
+    pins:
+      - {name: IN, num: 1, type: input}
+      - {name: OUT, num: 2, type: output}
+    params:
+      fc: {unit: hertz, default: 1k, min: "100", max: 10k}
+      q: {unit: unitless, default: "0.707", min: "0.5", max: "2"}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      - "V(OUT) = tf(V(IN), [1], [1/((2*pi*fc)*(2*pi*fc)), 1/(2*pi*fc*q), 1])"
+      - "R(IN) = 1Meg"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        V1: {part: vsource_sine, params: {amplitude: "1", frequency: "100"}}
+      nets:
+        IN: [V1.P, DUT.IN]
+        OUT: [DUT.OUT]
+        GND: [V1.N]
+    checks:
+      # fc is the natural frequency; the -3 dB point is fc times the corner ratio for Q.
+      - {name: f3db, label: Cutoff (-3 dB), symbol: fc, kind: ac_corner, out: OUT, pass: low, tol_pct: 3, target: "fc*sqrt((2 - 1/(q*q) + sqrt((2 - 1/(q*q))*(2 - 1/(q*q)) + 4))/2)"}
+      - {name: q, label: Q, symbol: Q, kind: ac_q, out: OUT, pass: low, tol_pct: 3, target: "q"}
+
+highpass1_tf:
+  part:
+    id: "lib:highpass1_tf"
+    category: X
+    title: 1st-order high-pass with gain (transfer function)
+    symbol: auto
+    pins:
+      - {name: IN, num: 1, type: input}
+      - {name: OUT, num: 2, type: output}
+    params:
+      fc: {unit: hertz, default: 1k, min: "10", max: 10k}
+      gain: {unit: unitless, default: "2", min: "0.5", max: "10"}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      - "V(OUT) = tf(gain*V(IN), [1/(2*pi*fc), 0], [1/(2*pi*fc), 1])"
+      - "R(IN) = 1Meg"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        V1: {part: vsource_sine, params: {amplitude: "1", frequency: 1k}}
+      nets:
+        IN: [V1.P, DUT.IN]
+        OUT: [DUT.OUT]
+        GND: [V1.N]
+    checks:
+      - {name: fc, label: Cutoff (-3 dB), symbol: fc, kind: ac_corner, out: OUT, pass: high, tol_pct: 3, target: "fc"}
+      - {name: gain, label: Pass-band gain, symbol: G, kind: ac_gain, in: IN, out: OUT, at_hz: 1meg, tol_pct: 1, target: "gain"}
+      - {name: gain_db, label: Pass-band gain (dB), symbol: GdB, kind: ac_db_at, in: IN, out: OUT, at_hz: 1meg, tol_pct: 2, target: "20*log10(gain)"}
+
+ldo:
+  part:
+    id: "lib:ldo"
+    category: X
+    prefix: U
+    title: Low-dropout regulator (laws)
+    symbol: auto
+    pins:
+      - {name: VIN, num: 1, type: power_pos}
+      - {name: VOUT, num: 2, type: output}
+      - {name: COM, num: 3, type: passive}
+    params:
+      vref: {unit: volt, default: "3.3", min: "1.2", max: "5"}
+      dropout: {unit: volt, default: "0.3", min: "0.1", max: "0.5"}
+      ilim: {unit: ampere, default: 200m, min: 50m, max: 500m}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      # Regulates to vref, follows the input less the dropout, and folds back above ilim.
+      - "V(VOUT, COM) = max(0, min(vref, V(VIN, COM) - dropout)) - 100ohm*max(0, -I(VOUT) - ilim)"
+      - "I(VIN, COM) = 1m"
+      - "require V(VIN, COM) in [0, 20]"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        V1: {part: vsource_dc, params: {voltage: "5"}}
+        R1: {part: resistor_th, params: {resistance: 1k}}
+      nets:
+        VIN: [V1.P, DUT.VIN]
+        VOUT: [DUT.VOUT, R1.1]
+        GND: [V1.N, R1.2, DUT.COM]
+      analyses:
+        - {type: dc, source: V1, start: 0, stop: 10, step: 0.02}
+    checks:
+      - {name: vreg, label: Regulated output, symbol: Vo, kind: dc_transfer, in: VIN, out: VOUT, at_v: 8, tol_pct: 1, target: "vref"}
+      - {name: vdrop, label: Output in dropout, symbol: Vdo, kind: dc_transfer, in: VIN, out: VOUT, at_v: 2, tol_pct: 1, target: "max(0, min(vref, 2V - dropout))"}
+
+rectifier:
+  part:
+    id: "lib:rectifier"
+    category: X
+    title: Precision full-wave rectifier (laws)
+    symbol: auto
+    pins:
+      - {name: IN, num: 1, type: input}
+      - {name: OUT, num: 2, type: output}
+    params:
+      gain: {unit: unitless, default: "1", min: "0.5", max: "4"}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      - "V(OUT) = gain*abs(V(IN))"
+      - "R(IN) = 1Meg"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        V1: {part: vsource_sine, params: {amplitude: "1", frequency: 1k}}
+      nets:
+        IN: [V1.P, DUT.IN]
+        OUT: [DUT.OUT]
+        GND: [V1.N]
+    checks:
+      # |sin| averages 2/pi and has an RMS of 1/sqrt(2): around its average, sqrt(1/2 - 4/pi^2).
+      - {name: ripple, label: Ripple (RMS), symbol: Vrms, kind: tran_rms, out: OUT, tol_pct: 3, target: "gain*1V*sqrt(0.5 - 4/(pi*pi))"}
+      - {name: mean, label: Average, symbol: Vavg, kind: dc_level, out: OUT, tol_pct: 2, target: "gain*1V*2/pi"}
+
+thermistor:
+  part:
+    id: "lib:thermistor"
+    category: X
+    title: NTC thermistor divider, 3.3 V (laws)
+    symbol: auto
+    pins:
+      - {name: OUT, num: 1, type: output}
+      - {name: COM, num: 2, type: passive}
+    params:
+      temp: {unit: unitless, default: "25", min: "-20", max: "80"}
+      beta: {unit: unitless, default: "3950", min: "3000", max: "4500"}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      # 10k NTC (temperature in °C) under a 10k resistor, from 3.3 V.
+      - "V(OUT, COM) = 3.3V/(1 + exp(beta*(1/(temp + 273.15) - 1/298.15)))"
+      - "Rout(OUT) = 100"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        R1: {part: resistor_th, params: {resistance: 1meg}}
+      nets:
+        OUT: [DUT.OUT, R1.1]
+        GND: [R1.2, DUT.COM]
+    checks:
+      - {name: vout, label: Output, symbol: Vo, kind: dc_level, out: OUT, tol_pct: 1, target: "3.3V/(1 + exp(beta*(1/(temp + 273.15) - 1/298.15)))"}
+
+current_source:
+  part:
+    id: "lib:current_source"
+    category: X
+    title: Current source with compliance (laws)
+    symbol: auto
+    pins:
+      - {name: P, num: 1, type: output}
+      - {name: "N", num: 2, type: passive}
+    params:
+      iset: {unit: ampere, default: 5m, min: 1m, max: 20m}
+      compliance: {unit: volt, default: "5", min: "3", max: "10"}
+  version: 1
+  model:
+    kind: behavioral
+    laws:
+      # Full current up to 0.1 V below the compliance voltage, none above it.
+      - "I(N, P) = iset*clamp((compliance - V(P, N))/0.1V, 0, 1)"
+      - "R(P, N) = 100Meg"
+  provenance: {kind: user}
+  contract:
+    bench:
+      parts:
+        R1: {part: resistor_th, params: {resistance: "0.5V/iset"}}
+        V1: {part: vsource_dc, params: {voltage: "0"}}
+      nets:
+        P: [DUT.P, R1.1]
+        M: [R1.2, V1.P]
+        GND: [V1.N, DUT.N]
+      analyses:
+        - {type: dc, source: V1, start: 0, stop: 12, step: 0.05}
+    checks:
+      - {name: drop, label: Sense drop at full current, symbol: Vs, kind: dc_transfer, in: M, out: P, at_v: 0, tol_pct: 1, target: "0.5V"}
+      - {name: past, label: Past compliance, symbol: Vp, kind: dc_transfer, in: M, out: P, at_v: 12, tol_pct: 1, target: "12V"}
+
+lm358_import:
+  part:
+    id: "lib:lm358_import"
+    category: X
+    prefix: U
+    title: LM358 (imported SPICE model)
+    symbol: auto
+    pins:
+      - {name: INP, num: 1, type: input}
+      - {name: INM, num: 2, type: input}
+      - {name: VCC, num: 3, type: power_pos}
+      - {name: VEE, num: 4, type: power_neg}
+      - {name: OUT, num: 5, type: output}
+  version: 1
+  model:
+    kind: spice
+    text: "@registry/models/lm358.lib"
+    subckt: LM358
+    pins: {INP: inp, INM: inm, VCC: vcc, VEE: vee, OUT: out}
+  provenance: {kind: import, source: registry/models/lm358.lib, licence: PolyForm-Noncommercial-1.0.0}
+  contract:
+    # Non-inverting gain of 2 around a 2.5 V reference on one 5 V supply.
+    bench:
+      parts:
+        V1: {part: vsource_dc, params: {voltage: "5"}}
+        V2: {part: vsource_dc, params: {voltage: "2.5"}}
+        V3: {part: vsource_sine, params: {offset: "2.5", amplitude: "0.25", frequency: 1k}}
+        R1: {part: resistor_th, params: {resistance: 10k}}
+        R2: {part: resistor_th, params: {resistance: 10k}}
+      nets:
+        VCC: [V1.P, DUT.VCC]
+        REF: [V2.P, R2.2]
+        IN: [V3.P, DUT.INP]
+        NM: [DUT.INM, R1.2, R2.1]
+        OUT: [DUT.OUT, R1.1]
+        GND: [V1.N, V2.N, V3.N, DUT.VEE]
+    checks:
+      - {name: gain, label: Gain, symbol: G, kind: ac_gain, in: IN, out: OUT, tol_pct: 2, target: "2"}
+      - {name: swing, label: Output swing, symbol: Vpk, kind: tran_amplitude, out: OUT, tol_pct: 2, target: "0.5"}
+      - {name: room, label: Headroom, symbol: Vhr, kind: tran_headroom, out: OUT, supply: [VCC], tol_pct: 5, target: "1.5"}

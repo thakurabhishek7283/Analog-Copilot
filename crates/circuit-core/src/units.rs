@@ -20,10 +20,12 @@ pub enum Unit {
     Second,
     Watt,
     Unitless,
+    /// A ratio in decibels (`ac_db_at` checks).
+    Decibel,
 }
 
 impl Unit {
-    pub const ALL: [Unit; 9] = [
+    pub const ALL: [Unit; 10] = [
         Unit::Ohm,
         Unit::Farad,
         Unit::Henry,
@@ -33,6 +35,7 @@ impl Unit {
         Unit::Second,
         Unit::Watt,
         Unit::Unitless,
+        Unit::Decibel,
     ];
 
     pub fn symbol(self) -> &'static str {
@@ -46,6 +49,7 @@ impl Unit {
             Unit::Second => "s",
             Unit::Watt => "W",
             Unit::Unitless => "",
+            Unit::Decibel => "dB",
         }
     }
 
@@ -62,6 +66,7 @@ impl Unit {
             Unit::Second => &["sec", "s"],
             Unit::Watt => &["W"],
             Unit::Unitless => &[],
+            Unit::Decibel => &["dB", "db"],
         }
     }
 }
@@ -290,24 +295,37 @@ const E24: [&str; 24] = [
     "4.7", "5.1", "5.6", "6.2", "6.8", "7.5", "8.2", "9.1",
 ];
 
-impl ESeries {
-    fn mantissas(self) -> impl Iterator<Item = &'static str> {
-        let step = match self {
-            ESeries::E6 => 4,
-            ESeries::E12 => 2,
-            ESeries::E24 => 1,
-        };
-        E24.iter().step_by(step).copied()
-    }
+/// Exponents the series table holds; others are parsed on demand.
+const TABLE_EXPS: std::ops::RangeInclusive<i32> = -24..=24;
 
+/// `"{m}e{exp}"` parsed: from a table built once (the same text, so the same doubles).
+fn decade_value(k: usize, m: &str, exp: i32) -> f64 {
+    static TABLE: std::sync::OnceLock<Vec<f64>> = std::sync::OnceLock::new();
+    if !TABLE_EXPS.contains(&exp) {
+        return format!("{m}e{exp}").parse().expect("series values parse");
+    }
+    let t = TABLE.get_or_init(|| {
+        TABLE_EXPS
+            .flat_map(|e| E24.iter().map(move |m| format!("{m}e{e}").parse().expect("series values parse")))
+            .collect()
+    });
+    t[(exp - TABLE_EXPS.start()) as usize * E24.len() + k]
+}
+
+impl ESeries {
     /// Every value of the series in `[lo, hi]`, ascending. Built from decimal text, so `4.7k` is
     /// exactly the double nearest 4700 on every runtime.
     pub fn values(self, lo: f64, hi: f64) -> Vec<f64> {
         let mut out = Vec::new();
         let (first, last) = (lo.log10().floor() as i32 - 1, hi.log10().ceil() as i32);
+        let step = match self {
+            ESeries::E6 => 4,
+            ESeries::E12 => 2,
+            ESeries::E24 => 1,
+        };
         for exp in first..=last {
-            for m in self.mantissas() {
-                let v: f64 = format!("{m}e{exp}").parse().expect("series values parse");
+            for (k, m) in E24.iter().enumerate().step_by(step) {
+                let v = decade_value(k, m, exp);
                 if v >= lo * (1.0 - 1e-12) && v <= hi * (1.0 + 1e-12) {
                     out.push(v);
                 }

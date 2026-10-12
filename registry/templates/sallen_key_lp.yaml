@@ -24,7 +24,23 @@ nets:
   gnd: [C2.2]
   vcc: [U1.VCC]
   vee: [U1.VEE]
-solver: sallen_key_lp
+rules:
+  funcs:
+    # -3 dB frequency over the natural frequency for a given Q: |H|^2 = 1/2.
+    "corner(q)": "sqrt((2 - 1/(q*q) + sqrt((2 - 1/(q*q))*(2 - 1/(q*q)) + 4))/2)"
+  solve:
+    w0: "2*pi*fc_hz/corner(q)"
+    C2: "search(E12, 100p, 1u)"
+    C1: "search(E12, C2*(4*q*q)/1.5, min(C2*(4*q*q)*1.5, 10u))"
+    r: "1/(w0*sqrt(C1*C2))"
+    R1: "search(E24, r/1.3, r*1.3, 1k, 330k)"
+    R2: "nearest(E24, 1/(w0*w0*R1*C1*C2), 1k, 330k)"
+    rc: "sqrt(R1*R2*C1*C2)"
+    qa: "rc/(C2*(R1 + R2))"
+  estimates:
+    fc_hz: "1/(2*pi*rc)*corner(qa)"
+    q: "qa"
+  prefer: {R1: 10k, R2: 10k}
 checks:
   - {name: fc_hz, label: Cutoff (−3 dB), symbol: "fc", kind: ac_corner, out: out, pass: low, tol_pct: 10}
   - {name: q, label: Q, symbol: "Q", kind: ac_q, out: out, pass: low, tol_pct: 15}

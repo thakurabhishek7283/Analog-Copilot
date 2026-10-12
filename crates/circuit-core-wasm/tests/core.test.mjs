@@ -132,3 +132,40 @@ test("what changed between two sessions", () => {
   before.free();
   after.free();
 });
+
+/** A behavioral VCA with a contract (LLD §17 D3, D10). */
+const vca = {
+  part: {
+    id: "lib:vca", category: "X", prefix: "U", title: "VCA", symbol: "auto",
+    pins: [{ name: "IN", num: 1, type: "input" }, { name: "CTL", num: 2, type: "input" }, { name: "REF", num: 3, type: "passive" }, { name: "OUT", num: 4, type: "output" }],
+    params: { k: { unit: "unitless", default: "2", min: 0.5, max: 4 } },
+  },
+  version: 1,
+  model: { kind: "behavioral", laws: ["V(OUT) = V(REF) + k*(V(CTL)/1V)*(V(IN) - V(REF))", "R(IN, REF) = 1Meg", "R(CTL) = 1Meg", "require V(CTL) in [0, 5]"] },
+  provenance: { kind: "user" },
+  contract: {
+    bench: {
+      parts: { V1: { part: "vsource_dc", params: { voltage: "2.5" } }, V2: { part: "vsource_dc", params: { voltage: "1" } }, V3: { part: "vsource_sine", params: { offset: "2.5", amplitude: "0.1" } } },
+      nets: { REF: ["V1.P", "DUT.REF"], CTL: ["V2.P", "DUT.CTL"], IN: ["V3.P", "DUT.IN"], OUT: ["DUT.OUT"], GND: ["V1.N", "V2.N", "V3.N"] },
+    },
+    checks: [{ name: "gain", label: "Gain", symbol: "G", kind: "ac_gain", in: "IN", out: "OUT", tol_pct: 1, target: "k" }],
+  },
+};
+
+test("a behavioral component: specialised sub-circuits, characterisation, envelope", () => {
+  const s = new core.CoreSession(registry);
+  JSON.parse(s.applyOps(JSON.stringify([{ op: "lib.add", body: { def: vca } }]), "user")).ok;
+  const runs = JSON.parse(s.characteriseBenches("lib:vca")).ok;
+  assert.equal(runs.length, 5);
+  assert.ok(runs[0].netlist.text.includes(".subckt lib_vca_"), runs[0].netlist.text);
+  const outcomes = runs.map((r) => ({ meas: Object.fromEntries(r.netlist.meas.map((m) => [m.name, m.name.endsWith("_o") ? 6.02 : 0])) }));
+  const rep = JSON.parse(s.characteriseReport("lib:vca", "47", JSON.stringify(runs), JSON.stringify(outcomes))).ok;
+  assert.equal(rep.def_hash.length, 64);
+  assert.equal(rep.points.length, 5);
+  const env = JSON.parse(core.evaluateEnvelope(JSON.stringify([{ part: "U1", law: 4, text: "require V(CTL) in [0, 5]", unit: "volt", lo: 0, hi: 5, meas: ["a", "b"] }]), JSON.stringify({ a: 6, b: 1 }))).ok;
+  assert.deepEqual([env[0].pass, env[0].note], [false, "from 1V to 6V"]);
+  const bad = { ...vca, model: { kind: "behavioral", laws: ["V(OUT) = V(IN) + I(OUT)"] } };
+  const e = JSON.parse(s.applyOps(JSON.stringify([{ op: "lib.update", body: { id: "lib:vca", def: bad } }]), "user")).err;
+  assert.ok(e.message.includes("cannot add V(IN) (volts) and I(OUT) (amps)"), e.message);
+  s.free();
+});

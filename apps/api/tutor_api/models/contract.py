@@ -18,7 +18,7 @@ class Contract(RootModel[Any]):
     ]
 
 
-class Unit(StrEnum):
+class Unit1(StrEnum):
     ohm = "ohm"
     farad = "farad"
     henry = "henry"
@@ -28,6 +28,10 @@ class Unit(StrEnum):
     second = "second"
     watt = "watt"
     unitless = "unitless"
+
+
+class Unit(RootModel[Unit1 | Literal["decibel"]]):
+    root: Unit1 | Literal["decibel"]
 
 
 class Origin1(BaseModel):
@@ -225,6 +229,37 @@ class Hazard(StrEnum):
     mains = "mains"
 
 
+class Model2(BaseModel):
+    """
+    Laws compiled to B-sources, R, C and I ([`crate::behavioral`]).
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    laws: Annotated[list[str], Field(description="One law per entry, as written.")]
+    kind: Literal["behavioral"]
+
+
+class Model3(BaseModel):
+    """
+    A vendor `.subckt`, parsed by an allow-list and re-emitted ([`crate::spice_import`]).
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    text: str
+    subckt: str
+    pins: Annotated[
+        dict[str, str],
+        Field(
+            description="Component pin -> port of the `.subckt`; every port is mapped once."
+        ),
+    ]
+    kind: Literal["spice"]
+
+
 class CompositePart(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -233,7 +268,7 @@ class CompositePart(BaseModel):
     params: Annotated[
         dict[str, str] | None,
         Field(
-            description='Values as written ("10k"); a missing param takes the part\'s default.'
+            description='Values as written ("10k"), or, in a component with params, expressions of them\n("10k*gain"); a missing param takes the part\'s default, unless the rules set it.'
         ),
     ] = {}
 
@@ -289,6 +324,116 @@ class Provenance(RootModel[Provenance1 | Provenance2 | Provenance3]):
         Provenance1 | Provenance2 | Provenance3,
         Field(description="Who made a definition (LLD §17 D10: trust levels read it)."),
     ]
+
+
+class ValueRules(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    funcs: Annotated[
+        dict[str, str] | None,
+        Field(
+            description='User functions, `"name(a, b)" -> body`; a function may call those before it.'
+        ),
+    ] = None
+    solve: Annotated[
+        dict[str, str],
+        Field(
+            description="Steps in order. A part's local refdes (`R1`, or `R1.resistance` for a part with several\nparams) sets that part value; any other name (lowercase) is an intermediate value."
+        ),
+    ]
+    estimates: Annotated[
+        dict[str, str] | None,
+        Field(
+            description="Forward estimates, each scored against the target or step of the same name."
+        ),
+    ] = None
+    prefer: Annotated[
+        dict[str, str] | None,
+        Field(description="Steps to keep near a nominal value when the estimates tie."),
+    ] = None
+    spec: Annotated[
+        dict[str, str] | None,
+        Field(
+            description="Spec targets derived from the inputs and the chosen values (a follower's gain of 1)."
+        ),
+    ] = None
+
+
+class Bench(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    parts: Annotated[
+        dict[str, CompositePart] | None,
+        Field(
+            description="Registry parts around the component: sources, loads, feedback. Values may be expressions\nof the component's params.",
+            validate_default=True,
+        ),
+    ] = {}
+    nets: Annotated[
+        dict[str, list[PinRef]],
+        Field(
+            description="Net -> pins; `DUT.<pin>` is the component's pin, `GND` is ground."
+        ),
+    ]
+    analyses: Annotated[
+        list[Analysis] | None,
+        Field(
+            description="Analyses the checks do not imply (a DC sweep for `dc_transfer`)."
+        ),
+    ] = None
+
+
+class CheckKind(StrEnum):
+    """
+    LLD §7 spec checks. Each is a few primitive ngspice `.meas` results combined by
+    [`evaluate_checks`] (ngspice cannot measure an expression such as `vdb(out)-vdb(in)`).
+    """
+
+    ac_corner = "ac_corner"
+    ac_q = "ac_q"
+    ac_gain = "ac_gain"
+    ac_center = "ac_center"
+    ac_band_q = "ac_band_q"
+    tran_freq = "tran_freq"
+    tran_duty = "tran_duty"
+    tran_amplitude = "tran_amplitude"
+    dc_level = "dc_level"
+    tran_threshold = "tran_threshold"
+    tran_headroom = "tran_headroom"
+    ac_db_at = "ac_db_at"
+    tran_rms = "tran_rms"
+    dc_transfer = "dc_transfer"
+    tran_rise = "tran_rise"
+
+
+class Pass(StrEnum):
+    low = "low"
+    high = "high"
+
+
+class Edge(StrEnum):
+    rise = "rise"
+    fall = "fall"
+
+
+class TranWindow(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    stop: Annotated[float, Field(description="Run length, seconds.")]
+    step: Annotated[float, Field(description="Largest step, seconds.")]
+
+
+class Compare(StrEnum):
+    """
+    How a measurement passes against its target and tolerance.
+    """
+
+    within = "within"
+    at_least = "at_least"
+    at_most = "at_most"
 
 
 class Scenario(BaseModel):
@@ -701,27 +846,41 @@ class MeasDef(BaseModel):
     line: str
 
 
-class CheckKind(StrEnum):
+class SpecCheckDef(BaseModel):
     """
-    LLD §7 spec checks. Each is a few primitive ngspice `.meas` results combined by
-    [`evaluate_checks`] (ngspice cannot measure an expression such as `vdb(out)-vdb(in)`).
+    A check as compiled into one netlist: which `.meas` results it combines.
     """
 
-    ac_corner = "ac_corner"
-    ac_q = "ac_q"
-    ac_gain = "ac_gain"
-    ac_center = "ac_center"
-    ac_band_q = "ac_band_q"
-    tran_freq = "tran_freq"
-    tran_duty = "tran_duty"
-    tran_amplitude = "tran_amplitude"
-    dc_level = "dc_level"
-    tran_threshold = "tran_threshold"
-
-
-class Edge(StrEnum):
-    rise = "rise"
-    fall = "fall"
+    block: str
+    name: str
+    label: str
+    symbol: str
+    kind: CheckKind
+    unit: Unit
+    target: float
+    tol_pct: float
+    meas: Annotated[
+        list[str],
+        Field(
+            description="`.meas` result names, in the order the kind combines them. Empty when `missing` is set."
+        ),
+    ]
+    edge: Annotated[
+        Edge | None,
+        Field(description="The output edge a `tran_threshold` check measures."),
+    ] = None
+    compare: Annotated[
+        Compare | None,
+        Field(
+            description="How the measurement passes (within the tolerance unless stated)."
+        ),
+    ] = None
+    missing: Annotated[
+        str | None,
+        Field(
+            description='Why the check could not be compiled into this netlist ("needs an AC analysis").'
+        ),
+    ] = None
 
 
 class CurrentTerm(BaseModel):
@@ -736,6 +895,28 @@ class CurrentTerm(BaseModel):
         ),
     ]
     coeff: float
+
+
+class EnvelopeDef(BaseModel):
+    """
+    A behavioral component's `require` as compiled into one netlist (LLD §17 D3, the envelope).
+    """
+
+    part: Annotated[str, Field(description="The instance.")]
+    law: Annotated[
+        int, Field(description="The law's number in its definition (1-based).", ge=0)
+    ]
+    text: Annotated[str, Field(description="The law as written.")]
+    unit: Unit
+    lo: float | None = None
+    hi: float | None = None
+    meas: Annotated[
+        list[str],
+        Field(
+            description="`.meas` names of the largest and smallest value; empty when `missing` is set."
+        ),
+    ]
+    missing: str | None = None
 
 
 class CompileError(BaseModel):
@@ -773,19 +954,6 @@ class TemplatePart(BaseModel):
         extra="forbid",
     )
     part: str
-
-
-class Pass(StrEnum):
-    low = "low"
-    high = "high"
-
-
-class TranWindow(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    stop: Annotated[float, Field(description="Run length, seconds.")]
-    step: Annotated[float, Field(description="Largest step, seconds.")]
 
 
 class Drive(BaseModel):
@@ -907,6 +1075,37 @@ class VerifyPoint(BaseModel):
 
     targets: dict[str, str]
     rails: dict[str, float]
+
+
+class SimOutcome(BaseModel):
+    """
+    What a simulator returned for one bench: its `.meas` values, or the failure.
+    """
+
+    meas: dict[str, float] | None = {}
+    error: str | None = None
+
+
+class Trust(StrEnum):
+    characterised = "characterised"
+    draft = "draft"
+
+
+class EnvelopeResult(BaseModel):
+    """
+    Whether a `require` held over the run.
+    """
+
+    part: str
+    law: Annotated[int, Field(ge=0)]
+    text: str
+    unit: Unit
+    max: float | None = None
+    min: float | None = None
+    pass_: Annotated[bool, Field(alias="pass")]
+    note: Annotated[
+        str, Field(description="In words: the range seen, or why nothing was measured.")
+    ]
 
 
 class DraftPart(BaseModel):
@@ -1289,13 +1488,84 @@ class Model1(BaseModel):
     kind: Literal["composite"]
 
 
-class Model(RootModel[Model1]):
+class Model(RootModel[Model1 | Model2 | Model3]):
     root: Annotated[
-        Model1,
+        Model1 | Model2 | Model3,
+        Field(description="What the component does inside (LLD §17 D3)."),
+    ]
+
+
+class CheckDef(BaseModel):
+    """
+    One spec check: what to measure (a closed set of kinds, so a template can never inject SPICE)
+    on which ports. Its target is the block's `spec[name]`.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    label: str
+    symbol: Annotated[
+        str,
         Field(
-            description="What the component does inside. Behavioral laws and SPICE imports join in P5.2 (LLD §17 D3)."
+            description="A few characters for badges on the drawing: `fc`, `Q`, `Vth+`."
         ),
     ]
+    kind: CheckKind
+    out: Annotated[str, Field(description="Output port measured.")]
+    in_: Annotated[
+        str | None,
+        Field(alias="in", description="Input port (gain reference, threshold input)."),
+    ] = None
+    pass_: Annotated[
+        Pass | None,
+        Field(
+            alias="pass",
+            description="Which side of a corner is the pass band (corner and Q checks).",
+        ),
+    ] = None
+    edge: Annotated[
+        Edge | None,
+        Field(
+            description="Output edge whose input level is the threshold (threshold checks)."
+        ),
+    ] = None
+    at_hz: Annotated[
+        float | None,
+        Field(description="Frequency a gain is measured at; default 1 kHz."),
+    ] = None
+    tran: Annotated[
+        TranWindow | None,
+        Field(
+            description="The transient a time-domain check needs. Regenerative circuits (a Schmitt trigger) switch\nlate in simulation unless the steps are near the op-amp's own speed: with coarse steps the\nintegrator follows the unstable balance point until it hits a rail."
+        ),
+    ] = None
+    tol_pct: float
+    supply: Annotated[
+        list[str] | None,
+        Field(
+            description="Supply ports a headroom check measures against: the positive one, then optionally the\nnegative one (ground without it)."
+        ),
+    ] = None
+    at_v: Annotated[
+        float | None,
+        Field(
+            description="Input level a `dc_transfer` check reads the output at, volts."
+        ),
+    ] = None
+    compare: Annotated[
+        Compare | None,
+        Field(
+            description="How the measurement passes; each kind has a default (headroom: at least the target)."
+        ),
+    ] = None
+    target: Annotated[
+        str | None,
+        Field(
+            description="A component contract's target, as an expression of the component's params (`gain`,\n`1/(2*pi*r*c)`). Template checks take theirs from the block's spec instead."
+        ),
+    ] = None
 
 
 class Probe(BaseModel):
@@ -1717,33 +1987,58 @@ class ErcIssue(BaseModel):
     block: str | None = None
 
 
-class SpecCheckDef(BaseModel):
-    """
-    A check as compiled into one netlist: which `.meas` results it combines.
-    """
-
-    block: str
-    name: str
-    label: str
-    symbol: str
-    kind: CheckKind
-    unit: Unit
-    target: float
-    tol_pct: float
-    meas: Annotated[
-        list[str],
+class Netlist(BaseModel):
+    text: Annotated[
+        str, Field(description="Deterministic: parts in natural refdes order.")
+    ]
+    hash: Annotated[str, Field(description="Lowercase hex sha256 of `text`.")]
+    node_map: Annotated[
+        dict[str, str],
         Field(
-            description="`.meas` result names, in the order the kind combines them. Empty when `missing` is set."
+            description='IR net id -> SPICE node name ("N_VOUT" -> "n_vout", "GND" -> "0").'
         ),
     ]
-    edge: Annotated[
-        Edge | None,
-        Field(description="The output edge a `tran_threshold` check measures."),
-    ] = None
-    missing: Annotated[
-        str | None,
+    includes: Annotated[
+        list[str],
         Field(
-            description='Why the check could not be compiled into this netlist ("needs an AC analysis").'
+            description="Registry model files the simulator must load, relative to the registry root."
+        ),
+    ]
+    meas: Annotated[
+        list[MeasDef],
+        Field(
+            description="Spec checks as primitive `.meas` statements, in replay order (later cards may use earlier\nresults)."
+        ),
+    ]
+    checks: Annotated[
+        list[SpecCheckDef],
+        Field(
+            description="The spec checks of every template block, and which `meas` results each combines\n([`crate::template::evaluate_checks`])."
+        ),
+    ]
+    pin_currents: Annotated[
+        dict[str, list[CurrentTerm]],
+        Field(
+            description='Current into each connected pin (`"R1.1"`), as a sum of saved vectors, for the overlays\nand current probes. OP and transient plots only: device currents do not exist in AC.\nPins inside subcircuit models (op-amps, regulators) are absent; a net with one such pin\ngets its current by KCL.'
+        ),
+    ]
+    analyses: Annotated[
+        list[Analysis],
+        Field(
+            description="The analyses in the deck, in order (resolved from `CompileOpts`)."
+        ),
+    ]
+    leaf_devices: Annotated[
+        int | None,
+        Field(
+            description="Primitive devices the deck simulates, library components flattened (LLD §17 D12: the\neditor runs live below a budget and asks for a Run above it).",
+            ge=0,
+        ),
+    ] = 0
+    envelope: Annotated[
+        list[EnvelopeDef] | None,
+        Field(
+            description="The `require` laws of behavioral components, measured over the transient\n([`evaluate_envelope`])."
         ),
     ] = None
 
@@ -1765,55 +2060,6 @@ class TargetDef(BaseModel):
             description="How verification spreads its points (frequencies and gains are `log`)."
         ),
     ] = "lin"
-
-
-class CheckDef(BaseModel):
-    """
-    One spec check: what to measure (a closed set of kinds, so a template can never inject SPICE)
-    on which ports. Its target is the block's `spec[name]`.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    name: str
-    label: str
-    symbol: Annotated[
-        str,
-        Field(
-            description="A few characters for badges on the drawing: `fc`, `Q`, `Vth+`."
-        ),
-    ]
-    kind: CheckKind
-    out: Annotated[str, Field(description="Output port measured.")]
-    in_: Annotated[
-        str | None,
-        Field(alias="in", description="Input port (gain reference, threshold input)."),
-    ] = None
-    pass_: Annotated[
-        Pass | None,
-        Field(
-            alias="pass",
-            description="Which side of a corner is the pass band (corner and Q checks).",
-        ),
-    ] = None
-    edge: Annotated[
-        Edge | None,
-        Field(
-            description="Output edge whose input level is the threshold (threshold checks)."
-        ),
-    ] = None
-    at_hz: Annotated[
-        float | None,
-        Field(description="Frequency a gain is measured at; default 1 kHz."),
-    ] = None
-    tran: Annotated[
-        TranWindow | None,
-        Field(
-            description="The transient a time-domain check needs. Regenerative circuits (a Schmitt trigger) switch\nlate in simulation unless the steps are near the op-amp's own speed: with coarse steps the\nintegrator follows the unstable balance point until it hits a rail."
-        ),
-    ] = None
-    tol_pct: float
 
 
 class VerifyBench(BaseModel):
@@ -1884,6 +2130,27 @@ class Preview(BaseModel):
             description="Each spec target formatted for reading (`1kHz`, `0.707`, `2.5V`)."
         ),
     ]
+
+
+class BenchRun(BaseModel):
+    """
+    One characterisation point: its params and the bench netlist, or why it cannot be built.
+    """
+
+    params: Annotated[
+        dict[str, str], Field(description="Param values as text, for reading (`10kΩ`).")
+    ]
+    netlist: Netlist | None = None
+    error: str | None = None
+
+
+class PointReport(BaseModel):
+    params: dict[str, str]
+    netlist_hash: str | None = None
+    checks: list[CheckResult]
+    envelope: list[EnvelopeResult] | None = None
+    error: str | None = None
+    pass_: Annotated[bool, Field(alias="pass")]
 
 
 class BlockRequest1(BaseModel):
@@ -2148,6 +2415,19 @@ class PartDef(BaseModel):
     hazard: Hazard | None = None
 
 
+class ContractModel(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    bench: Bench
+    checks: Annotated[
+        list[CheckDef],
+        Field(
+            description="Checks on the bench's nets, each with a `target` expression of the component's params."
+        ),
+    ]
+
+
 class TestPlan(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2290,56 +2570,6 @@ class SymbolDef(BaseModel):
     ]
 
 
-class Netlist(BaseModel):
-    text: Annotated[
-        str, Field(description="Deterministic: parts in natural refdes order.")
-    ]
-    hash: Annotated[str, Field(description="Lowercase hex sha256 of `text`.")]
-    node_map: Annotated[
-        dict[str, str],
-        Field(
-            description='IR net id -> SPICE node name ("N_VOUT" -> "n_vout", "GND" -> "0").'
-        ),
-    ]
-    includes: Annotated[
-        list[str],
-        Field(
-            description="Registry model files the simulator must load, relative to the registry root."
-        ),
-    ]
-    meas: Annotated[
-        list[MeasDef],
-        Field(
-            description="Spec checks as primitive `.meas` statements, in replay order (later cards may use earlier\nresults)."
-        ),
-    ]
-    checks: Annotated[
-        list[SpecCheckDef],
-        Field(
-            description="The spec checks of every template block, and which `meas` results each combines\n([`crate::template::evaluate_checks`])."
-        ),
-    ]
-    pin_currents: Annotated[
-        dict[str, list[CurrentTerm]],
-        Field(
-            description='Current into each connected pin (`"R1.1"`), as a sum of saved vectors, for the overlays\nand current probes. OP and transient plots only: device currents do not exist in AC.\nPins inside subcircuit models (op-amps, regulators) are absent; a net with one such pin\ngets its current by KCL.'
-        ),
-    ]
-    analyses: Annotated[
-        list[Analysis],
-        Field(
-            description="The analyses in the deck, in order (resolved from `CompileOpts`)."
-        ),
-    ]
-    leaf_devices: Annotated[
-        int | None,
-        Field(
-            description="Primitive devices the deck simulates, library components flattened (LLD §17 D12: the\neditor runs live below a budget and asks for a Run above it).",
-            ge=0,
-        ),
-    ] = 0
-
-
 class TemplateDef(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2379,7 +2609,15 @@ class TemplateDef(BaseModel):
             description="Port or internal net name -> pins (`R1.2`, `U1.OUT_A`). Every port has one."
         ),
     ]
-    solver: Annotated[str, Field(description="A solver in [`solvers`], by name.")]
+    solver: Annotated[
+        str | None, Field(description="A solver in [`solvers`], by name; or `rules`.")
+    ] = None
+    rules: Annotated[
+        ValueRules | None,
+        Field(
+            description="Value rules as data (LLD §17 D5): the targets and rails (volts, by power port) are the inputs."
+        ),
+    ] = None
     checks: list[CheckDef]
     verify: Annotated[
         VerifyBench | None,
@@ -2387,6 +2625,24 @@ class TemplateDef(BaseModel):
             description="The test bench CI simulates the template in (LLD §12 step 2)."
         ),
     ] = None
+
+
+class Characterisation(BaseModel):
+    """
+    A characterisation report (LLD §17 D10), derived and keyed by what it depends on.
+    """
+
+    component: str
+    def_hash: Annotated[
+        str,
+        Field(
+            description="[`library::def_hash`] of the component and everything it uses."
+        ),
+    ]
+    registry_version: str
+    ngspice: str
+    trust: Trust
+    points: list[PointReport]
 
 
 class BlockRequest2(BaseModel):
@@ -2511,12 +2767,24 @@ class ComponentDef(BaseModel):
     part: Annotated[
         PartDef,
         Field(
-            description="The component as a part: id (`lib:<name>`), category `X`, title, refdes `prefix`, pins,\nlimits and symbol (`auto`, a box the editor draws from the pins, or a registry symbol whose\nanchors match the pins). It has no `spice` line and, for now, no params."
+            description="The component as a part: id (`lib:<name>`), category `X`, title, refdes `prefix`, pins,\nparams (each with a unit, a default and a range), limits and symbol (`auto`, a box the\neditor draws from the pins, or a registry symbol whose anchors match the pins). It has no\n`spice` line: its model is."
         ),
     ]
     version: Annotated[int, Field(ge=0)]
     model: Model
     provenance: Provenance
+    rules: Annotated[
+        ValueRules | None,
+        Field(
+            description="A composite's part values from its params (LLD §17 D5), searched over the E-series."
+        ),
+    ] = None
+    contract: Annotated[
+        ContractModel | None,
+        Field(
+            description="What the component promises and the bench that tests it (D10): characterisation runs it."
+        ),
+    ] = None
 
 
 class OpEnvelope23(BaseModel):

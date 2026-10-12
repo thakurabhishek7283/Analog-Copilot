@@ -128,6 +128,7 @@ pub fn erc(c: &Circuit, reg: &Registry, ctx: ErcContext, scope: Option<&str>) ->
     output_conflicts(&g, &mut f);
     supply_shorts(&g, &mut f);
     over_voltage(&g, &mut f);
+    envelopes(&g, &mut f);
     ports_unbound(&g, &mut f);
 
     let in_scope = |x: &Finding| -> bool {
@@ -501,6 +502,66 @@ fn over_voltage(g: &Graph, f: &mut Vec<Finding>) {
                 )
                 .parts([inst.refdes.clone()]),
             );
+        }
+    }
+}
+
+/// A behavioral component's `require` on voltages its pins see from known rails (LLD §17 D3, the
+/// envelope): checked statically, under ERC008 like a supply rating. A require that reads a
+/// current, time or a pin on a signal net waits for the simulation.
+fn envelopes(g: &Graph, f: &mut Vec<Finding>) {
+    use crate::behavioral::{self, Law};
+    use crate::expr::{self, Expr};
+    use crate::library::Model;
+    use crate::units::format_sig;
+
+    struct Rails<'a, 'g> {
+        g: &'a Graph<'g>,
+        refdes: &'a str,
+    }
+    impl crate::expr::Values for Rails<'_, '_> {
+        fn var(&self, _: &str) -> Option<f64> {
+            None
+        }
+        fn volt(&self, a: &str, b: Option<&str>) -> Option<f64> {
+            let v = |pin: &str| {
+                if pin == GND {
+                    return Some(0.0);
+                }
+                self.g.net_of(self.refdes, pin).and_then(|n| self.g.net_volts(n))
+            };
+            Some(v(a)? - b.map_or(Some(0.0), v)?)
+        }
+    }
+    for (inst, def) in &g.parts {
+        let Some(Model::Behavioral(b)) = g.c.library.get(&inst.part).map(|d| &d.model) else { continue };
+        let Ok(laws) = behavioral::parse(b, def) else { continue };
+        let Ok(params) = crate::library::instance_values(def, inst) else { continue };
+        for law in &laws.laws {
+            let Law::Require(r) = law else { continue };
+            let mut reads_more = false;
+            expr::walk(&r.value, &mut |x| reads_more |= matches!(x, Expr::Amp(_) | Expr::Time | Expr::Var(_)));
+            if reads_more {
+                continue;
+            }
+            let Ok(v) = expr::eval(&r.value, &Rails { g, refdes: &inst.refdes }) else { continue };
+            let bound = |e: &Option<Expr>| e.as_ref().and_then(|e| expr::eval(e, &params).ok()).map(|x| x.value);
+            let (lo, hi) = (bound(&r.lo), bound(&r.hi));
+            if lo.is_some_and(|lo| v.value < lo) || hi.is_some_and(|hi| v.value > hi) {
+                let unit = crate::units::Unit::Volt;
+                f.push(
+                    Finding::new(
+                        ErcCode::OverVoltage,
+                        format!(
+                            "{} needs {}; here it is {}",
+                            inst.refdes,
+                            r.text.trim_start_matches("require").trim(),
+                            format_sig(v.value, unit)
+                        ),
+                    )
+                    .parts([inst.refdes.clone()]),
+                );
+            }
         }
     }
 }

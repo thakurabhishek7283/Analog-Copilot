@@ -809,6 +809,20 @@ fn lib_update(c: &mut Circuit, reg: &Registry, b: &LibUpdate) -> Result<Vec<Op>,
     if new.part.refdes_prefix() != old.part.refdes_prefix() {
         return err(E::ComponentInvalid, format!("{} keeps its refdes prefix {}", b.id, old.part.refdes_prefix()));
     }
+    // Instances keep their params: one an instance has stays, in the same unit.
+    for inst in c.parts.values().filter(|p| p.part == b.id) {
+        for (k, q) in &inst.params {
+            match new.part.params.get(k) {
+                Some(p) if p.unit == q.unit => {}
+                _ => {
+                    return err(
+                        E::ComponentInvalid,
+                        format!("{} would lose param {k} (in {:?}), which {} sets", b.id, q.unit, inst.refdes),
+                    );
+                }
+            }
+        }
+    }
     // Instances keep their wiring, pins matched by name as `part.swap` does.
     for net in c.nets.values() {
         for p in net.pins.iter().filter(|p| c.parts[&p.refdes].part == b.id) {
@@ -847,7 +861,18 @@ fn instance_expand(c: &mut Circuit, reg: &Registry, b: &InstanceExpand, ctx: &Ct
             format!("{} is a {}, not a library component: it has nothing to expand", b.refdes, inst.part),
         )
     })?;
-    let Model::Composite(m) = &def.model;
+    let Model::Composite(m) = &def.model else {
+        let what = if matches!(def.model, Model::Behavioral(_)) { "laws" } else { "an imported SPICE model" };
+        return err(E::ComponentInvalid, format!("{} is {what}, a black box: it has no parts to expand", b.refdes));
+    };
+    // A component with params or rules expands with the values its params give; otherwise
+    // the values are copied as written.
+    let computed = if def.part.params.is_empty() && def.rules.is_none() {
+        None
+    } else {
+        let values = library::instance_values(&def.part, &inst).map_err(|e| OpError::new(E::BadValue, e))?;
+        Some(library::composite_values(&def, m, reg, &c.library, &values).map_err(|e| OpError::new(E::BadValue, e))?)
+    };
     let block = b.block.clone().unwrap_or_else(|| crate::template::free_block_id(c));
 
     let upper = b.refdes.to_ascii_uppercase();
@@ -907,10 +932,18 @@ fn instance_expand(c: &mut Circuit, reg: &Registry, b: &InstanceExpand, ctx: &Ct
         }),
     ];
     for (local, cp) in &m.parts {
+        let params = match &computed {
+            None => cp.params.clone(),
+            Some(vals) => {
+                let pd = library::lookup(reg, &c.library, &cp.part)
+                    .ok_or_else(|| OpError::new(E::PartNotFound, format!("{} is unknown", cp.part)))?;
+                vals[local].iter().map(|(k, v)| (k.clone(), Quantity::new(*v, pd.params[k].unit).display)).collect()
+            }
+        };
         ops.push(Op::PartAdd(PartAdd {
             refdes: refdes[local].clone(),
             part: cp.part.clone(),
-            params: cp.params.clone(),
+            params,
             block: Some(block.clone()),
             origin: None,
         }));

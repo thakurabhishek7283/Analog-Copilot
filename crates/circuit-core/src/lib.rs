@@ -3,17 +3,22 @@
 //! (PyO3). Pure: no I/O, no clock, no randomness — same input, same output, on every runtime.
 
 pub mod apply;
+pub mod behavioral;
+pub mod characterise;
 pub mod describe;
 pub mod edit;
 pub mod erc;
 pub mod error;
+pub mod expr;
 pub mod ir;
 pub mod library;
 pub mod ops;
 pub mod registry;
+pub mod rules;
 pub mod schema;
 pub mod session;
 pub mod spice;
+pub mod spice_import;
 pub mod symbol;
 pub mod template;
 pub mod testplan;

@@ -198,3 +198,38 @@ def test_tutor_changes(reg):
     assert ctx["parts"] == ["R1"] and ctx["nets"] == ["B1_OUT"]
     assert "B1_OUT: op 500mV → 250mV" in ctx["text"]
     assert json.loads(after.tutor_changes(before, "{}"))["err"]["code"] == "schema_error"
+
+
+VCA = {
+    "part": {"id": "lib:vca", "category": "X", "prefix": "U", "title": "VCA", "symbol": "auto",
+             "pins": [{"name": "IN", "num": 1, "type": "input"}, {"name": "CTL", "num": 2, "type": "input"},
+                      {"name": "REF", "num": 3, "type": "passive"}, {"name": "OUT", "num": 4, "type": "output"}],
+             "params": {"k": {"unit": "unitless", "default": "2", "min": 0.5, "max": 4}}},
+    "version": 1,
+    "model": {"kind": "behavioral", "laws": ["V(OUT) = V(REF) + k*(V(CTL)/1V)*(V(IN) - V(REF))", "R(IN, REF) = 1Meg", "R(CTL) = 1Meg"]},
+    "provenance": {"kind": "user"},
+    "contract": {
+        "bench": {"parts": {"V1": {"part": "vsource_dc", "params": {"voltage": "2.5"}}, "V2": {"part": "vsource_dc", "params": {"voltage": "1"}},
+                            "V3": {"part": "vsource_sine", "params": {"offset": "2.5", "amplitude": "0.1"}}},
+                  "nets": {"REF": ["V1.P", "DUT.REF"], "CTL": ["V2.P", "DUT.CTL"], "IN": ["V3.P", "DUT.IN"], "OUT": ["DUT.OUT"], "GND": ["V1.N", "V2.N", "V3.N"]}},
+        "checks": [{"name": "gain", "label": "Gain", "symbol": "G", "kind": "ac_gain", "in": "IN", "out": "OUT", "tol_pct": 1, "target": "k"}],
+    },
+}
+
+
+def test_behavioral_component_characterisation(reg):
+    s = cc.Session(reg)
+    cc.unwrap(s.apply_ops(json.dumps([{"op": "lib.add", "body": {"def": VCA}}]), "user"))
+    runs = cc.unwrap(s.characterise_benches("lib:vca"))
+    assert len(runs) == 5 and ".subckt lib_vca_" in runs[0]["netlist"]["text"]
+    # Gains measured as exactly the targets: 20·log10(k) above the input.
+    import math
+    outcomes = []
+    for r in runs:
+        k = cc.unwrap(cc.parse_quantity(r["params"]["k"], "unitless"))["si"]
+        outcomes.append({"meas": {m["name"]: (20 * math.log10(k) if m["name"].endswith("_o") else 0.0) for m in r["netlist"]["meas"]}})
+    rep = cc.unwrap(s.characterise_report("lib:vca", "47", json.dumps(runs), json.dumps(outcomes)))
+    assert rep["trust"] == "characterised", rep
+    assert json.loads(s.characterise_benches("lib:nope"))["err"]["code"] == "component_not_found"
+    env = cc.unwrap(cc.evaluate_envelope(json.dumps([{"part": "U1", "law": 4, "text": "require V(CTL) in [0, 5]", "unit": "volt", "lo": 0, "hi": 5, "meas": ["a", "b"]}]), json.dumps({"a": 4, "b": 1})))
+    assert env[0]["pass"] and env[0]["note"] == "from 1V to 4V"

@@ -10,10 +10,10 @@ use sha2::{Digest, Sha256};
 
 use crate::erc::{floating_nets, implicit_supplies};
 use crate::ir::*;
-use crate::library::{self, Model};
+use crate::library;
 use crate::registry::{Category, PartDef, Registry};
 use crate::template::checks::{SpecCheckDef, emit as emit_checks};
-use crate::units::{Unit, spice_number};
+use crate::units::{Unit, format_sig, spice_number};
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct Netlist {
@@ -42,6 +42,76 @@ pub struct Netlist {
     /// editor runs live below a budget and asks for a Run above it).
     #[serde(default)]
     pub leaf_devices: u64,
+    /// The `require` laws of behavioral components, measured over the transient
+    /// ([`evaluate_envelope`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub envelope: Vec<EnvelopeDef>,
+}
+
+/// A behavioral component's `require` as compiled into one netlist (LLD §17 D3, the envelope).
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+pub struct EnvelopeDef {
+    /// The instance.
+    pub part: RefDes,
+    /// The law's number in its definition (1-based).
+    pub law: usize,
+    /// The law as written.
+    pub text: String,
+    pub unit: Unit,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lo: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hi: Option<f64>,
+    /// `.meas` names of the largest and smallest value; empty when `missing` is set.
+    pub meas: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing: Option<String>,
+}
+
+/// Whether a `require` held over the run.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
+pub struct EnvelopeResult {
+    pub part: RefDes,
+    pub law: usize,
+    pub text: String,
+    pub unit: Unit,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    pub pass: bool,
+    /// In words: the range seen, or why nothing was measured.
+    pub note: String,
+}
+
+/// Combine `.meas` results into envelope results. Unmeasured counts as held: the envelope is a
+/// warning about what a simulation showed, not a check that needs one.
+pub fn evaluate_envelope(defs: &[EnvelopeDef], meas: &BTreeMap<String, f64>) -> Vec<EnvelopeResult> {
+    defs.iter()
+        .map(|d| {
+            let get = |k: usize| d.meas.get(k).and_then(|m| meas.get(m)).copied();
+            let (max, min) = (get(0), get(1));
+            let low = d.lo.zip(min).is_some_and(|(lo, m)| m < lo - 1e-9 * lo.abs());
+            let high = d.hi.zip(max).is_some_and(|(hi, m)| m > hi + 1e-9 * hi.abs());
+            let note = match (&d.missing, max.zip(min)) {
+                (Some(why), _) => why.clone(),
+                (None, Some((hi, lo))) => {
+                    format!("from {} to {}", format_sig(lo, d.unit), format_sig(hi, d.unit))
+                }
+                (None, None) => "not measured".to_string(),
+            };
+            EnvelopeResult {
+                part: d.part.clone(),
+                law: d.law,
+                text: d.text.clone(),
+                unit: d.unit,
+                max,
+                min,
+                pass: !(low || high),
+                note,
+            }
+        })
+        .collect()
 }
 
 /// `coeff · vector`, e.g. `-1 · @r1[i]`.
@@ -100,12 +170,17 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
     let mut pin_currents = BTreeMap::new();
 
     let mut leaf_devices = 0;
+    let mut subs = Subckts::default();
+    let mut envelope_parts: Vec<(RefDes, String)> = Vec::new();
     for refdes in c.sorted_refdes() {
         let inst = &c.parts[refdes];
         let def = library::part_def(reg, c, &inst.part)
             .ok_or_else(|| cerr(Some(refdes), format!("{} is not in the registry or the library", inst.part)))?;
         if c.library.contains_key(&inst.part) {
-            leaf_devices += library::leaf_devices(reg, &c.library, &inst.part);
+            let values = library::instance_values(def, inst).map_err(|m| cerr(Some(refdes), m))?;
+            let name = subs.ensure(c, reg, &inst.part, &values, 0).map_err(|m| cerr(Some(refdes), m))?;
+            leaf_devices += subs.leaf[&name];
+            envelope_parts.push((refdes.clone(), name.clone()));
             // An instance of a library component: one `X` line, pins in the definition's order.
             let mut line = format!("X{refdes}");
             for p in &def.pins {
@@ -121,7 +196,7 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
                 line.push_str(&n);
             }
             line.push(' ');
-            line.push_str(&library::subckt_name(&inst.part));
+            line.push_str(&name);
             elements.push(line);
             continue;
         }
@@ -209,15 +284,17 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
         });
     }
 
-    let subckts = subckts(c, reg, &mut includes)?;
+    includes.extend(subs.includes.iter().cloned());
     let includes: Vec<String> = includes.into_iter().collect();
     let mut text = String::from("* circuit-tutor netlist\n");
     for inc in &includes {
         text.push_str(&format!(".include {inc}\n"));
     }
-    for line in &subckts {
-        text.push_str(line);
-        text.push('\n');
+    for lines in subs.bodies.values() {
+        for line in lines {
+            text.push_str(line);
+            text.push('\n');
+        }
     }
     for e in &elements {
         text.push_str(e);
@@ -229,94 +306,91 @@ pub fn compile(c: &Circuit, reg: &Registry, opts: &CompileOpts) -> Result<Netlis
         text.push_str(a);
         text.push('\n');
     }
-    let (meas, checks) = emit_checks(c, reg, &analyses);
+    let (mut meas, checks) = emit_checks(c, reg, &analyses);
+    // Each behavioral instance's requires, measured over the transient.
+    let has_tran = analyses.iter().any(|a| matches!(a, Analysis::Tran { .. }));
+    let mut envelope = Vec::new();
+    for (refdes, name) in &envelope_parts {
+        for e in &subs.envelopes[name] {
+            let base = format!("env_{}_{}", refdes.to_ascii_lowercase(), e.law);
+            let vector = format!("v(x{}.{})", refdes.to_ascii_lowercase(), e.node);
+            let mut def = EnvelopeDef {
+                part: refdes.clone(),
+                law: e.law,
+                text: e.text.clone(),
+                unit: e.unit,
+                lo: e.lo,
+                hi: e.hi,
+                meas: Vec::new(),
+                missing: None,
+            };
+            if has_tran {
+                for (suffix, f) in [("hi", "max"), ("lo", "min")] {
+                    let n = format!("{base}_{suffix}");
+                    meas.push(MeasDef { line: format!(".meas tran {n} {f} {vector}"), name: n.clone() });
+                    def.meas.push(n);
+                }
+            } else {
+                def.missing = Some("needs a transient analysis".into());
+            }
+            envelope.push(def);
+        }
+    }
     for m in &meas {
         text.push_str(&m.line);
         text.push('\n');
     }
     text.push_str(".end\n");
 
-    let hash = Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
-    Ok(Netlist { text, hash, node_map, includes, meas, checks, pin_currents, analyses, leaf_devices })
+    let hash = text_hash(&text);
+    Ok(Netlist { text, hash, node_map, includes, meas, checks, pin_currents, analyses, leaf_devices, envelope })
 }
 
-/// One `.subckt` per library definition the circuit uses, directly or inside another, in id
-/// order. Inside, nodes are the definition's own net names (`GND` is node 0) and refdes are its
-/// local ones; values are written in, so the hash covers them and no value goes through numparam
-/// (LLD §17, P5.0). A pin no net reaches (an `nc` pin) gets a 1 GΩ shunt: inside a definition
-/// nothing else can tie it down.
-fn subckts(c: &Circuit, reg: &Registry, includes: &mut BTreeSet<String>) -> Result<Vec<String>, CompileError> {
-    let used = library::closure(&c.library, c.parts.values().map(|p| p.part.as_str()));
-    let mut out = Vec::new();
-    for id in used {
-        let def = &c.library[id];
-        let Model::Composite(m) = &def.model;
-        let ports: Vec<String> = def.part.pins.iter().map(|p| p.name.to_ascii_lowercase()).collect();
-        out.push(format!(".subckt {} {}", library::subckt_name(id), ports.join(" ")));
-        let mut net_of: BTreeMap<PinRef, String> = BTreeMap::new();
-        for (name, pins) in &m.nets {
-            for p in pins {
-                net_of.insert(p.clone(), if name == GND { "0".to_string() } else { name.to_ascii_lowercase() });
-            }
+/// Lowercase hex sha256 of a netlist's text.
+pub(crate) fn text_hash(text: &str) -> String {
+    Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The sub-circuits a netlist needs: one per definition and distinct param values, keyed (and
+/// emitted in order) by name, nested ones included.
+#[derive(Default)]
+struct Subckts {
+    bodies: BTreeMap<String, Vec<String>>,
+    leaf: BTreeMap<String, u64>,
+    envelopes: BTreeMap<String, Vec<crate::behavioral::Envelope>>,
+    includes: BTreeSet<String>,
+}
+
+impl Subckts {
+    /// Emit `id` at `values` (and what it uses) if not yet; returns its name.
+    fn ensure(
+        &mut self,
+        c: &Circuit,
+        reg: &Registry,
+        id: &str,
+        values: &BTreeMap<String, f64>,
+        depth: usize,
+    ) -> Result<String, String> {
+        let def = c.library.get(id).ok_or_else(|| format!("{id} is not in the library"))?;
+        let name = library::subckt_name_for(id, &def.part, values);
+        if self.bodies.contains_key(&name) {
+            return Ok(name);
         }
-        let mut locals: Vec<&String> = m.parts.keys().collect();
-        locals.sort_by_key(|r| refdes_sort_key(r));
-        let mut floating = BTreeSet::new();
-        for local in locals {
-            let cp = &m.parts[local];
-            let at = format!("{id} {local}");
-            let at = Some(at.as_str());
-            let pdef =
-                library::part_def(reg, c, &cp.part).ok_or_else(|| cerr(at, format!("{} is unknown", cp.part)))?;
-            let mut node = |pin: &str| -> String {
-                net_of.get(&PinRef::new(local, pin)).cloned().unwrap_or_else(|| {
-                    let n = format!("nc_{local}_{pin}").to_ascii_lowercase();
-                    floating.insert(n.clone());
-                    n
-                })
-            };
-            if c.library.contains_key(&cp.part) {
-                let nodes: Vec<String> = pdef.pins.iter().map(|p| node(&p.name)).collect();
-                out.push(format!("X{local} {} {}", nodes.join(" "), library::subckt_name(&cp.part)));
-                continue;
-            }
-            let Some(sp) = &pdef.spice else { continue };
-            if let Some(inc) = &sp.include {
-                includes.insert(inc.clone());
-            }
-            let mut params = BTreeMap::new();
-            for (k, pd) in &pdef.params {
-                let text = cp.params.get(k).unwrap_or(&pd.default);
-                let q = crate::units::parse_quantity(text, pd.unit).map_err(|e| cerr(at, format!("{k}: {e}")))?;
-                params.insert(k.clone(), q);
-            }
-            let inst = PartInstance {
-                refdes: local.clone(),
-                part: cp.part.clone(),
-                params,
-                block: None,
-                origin: Origin::User,
-                pinned: None,
-            };
-            if let Some(line) = &sp.line {
-                out.push(expand(line, |name| resolve(name, &inst, pdef, None, &mut node)).map_err(|m| cerr(at, m))?);
-            } else if let Some(line) = &sp.unit_line {
-                for unit in &pdef.units {
-                    if pdef.unit_pins(unit).any(|p| net_of.contains_key(&PinRef::new(local, &p.name))) {
-                        out.push(
-                            expand(line, |name| resolve(name, &inst, pdef, Some(unit), &mut node))
-                                .map_err(|m| cerr(at, m))?,
-                        );
-                    }
-                }
-            }
+        if depth > library::MAX_DEPTH {
+            return Err(format!("components nest more than {} deep", library::MAX_DEPTH));
         }
-        for n in floating {
-            out.push(format!("Rshunt_{n} {n} 0 {}", spice_number(SHUNT_OHMS)));
+        let body = library::body(def, reg, &c.library, values, &name).map_err(|e| format!("{id}: {e}"))?;
+        let mut leaf = body.leaf_devices;
+        for (inner, v) in &body.uses {
+            let n = self.ensure(c, reg, inner, v, depth + 1)?;
+            leaf += self.leaf[&n];
         }
-        out.push(format!(".ends {}", library::subckt_name(id)));
+        self.includes.extend(body.includes);
+        self.leaf.insert(name.clone(), leaf);
+        self.envelopes.insert(name.clone(), body.envelopes);
+        self.bodies.insert(name.clone(), body.lines);
+        Ok(name)
     }
-    Ok(out)
 }
 
 /// Pin currents of a primitive device, from SPICE's fixed terminal order (`R n+ n-`,
@@ -382,7 +456,7 @@ pub fn interactive_analyses(c: &Circuit, reg: &Registry) -> Vec<Analysis> {
     out
 }
 
-fn resolve(
+pub(crate) fn resolve(
     name: &str,
     inst: &PartInstance,
     def: &PartDef,
@@ -404,7 +478,7 @@ fn resolve(
     inst.params.get(name).map(|q| q.to_spice())
 }
 
-fn expand(tpl: &str, mut resolve: impl FnMut(&str) -> Option<String>) -> Result<String, String> {
+pub(crate) fn expand(tpl: &str, mut resolve: impl FnMut(&str) -> Option<String>) -> Result<String, String> {
     let mut out = String::with_capacity(tpl.len() + 16);
     let mut rest = tpl;
     while let Some(open) = rest.find('{') {

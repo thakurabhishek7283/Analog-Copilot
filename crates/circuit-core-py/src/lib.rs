@@ -190,6 +190,18 @@ impl Session {
         api::read_answer(&self.inner, text)
     }
 
+    /// Bench netlists that characterise library component `id` → `{"ok": [BenchRun]} | {"err": OpError}`.
+    fn characterise_benches(&self, py: Python<'_>, id: &str) -> String {
+        let inner = &self.inner;
+        py.detach(|| api::characterise_benches(inner, id))
+    }
+
+    /// A characterisation report from `runs` (`[BenchRun]` JSON) and one `SimOutcome` per run
+    /// → `{"ok": Characterisation} | {"err": OpError}`.
+    fn characterise_report(&self, id: &str, ngspice: &str, runs: &str, outcomes: &str) -> String {
+        api::characterise_report(&self.inner, id, ngspice, runs, outcomes)
+    }
+
     /// The full `Circuit` JSON.
     fn snapshot(&self) -> String {
         api::snapshot(&self.inner)
@@ -224,6 +236,13 @@ fn evaluate_checks(checks: &str, meas: &str) -> String {
     api::evaluate_checks(checks, meas)
 }
 
+/// Behavioral `require`s from a netlist's `envelope` and a simulation's `meas` (both JSON)
+/// → `{"ok": [EnvelopeResult]} | {"err": OpError}`.
+#[pyfunction]
+fn evaluate_envelope(defs: &str, meas: &str) -> String {
+    api::evaluate_envelope(defs, meas)
+}
+
 /// circuit-core version, for client/server skew checks.
 #[pyfunction]
 fn core_version() -> &'static str {
@@ -237,6 +256,7 @@ fn native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Session>()?;
     m.add_function(wrap_pyfunction!(parse_quantity, m)?)?;
     m.add_function(wrap_pyfunction!(evaluate_checks, m)?)?;
+    m.add_function(wrap_pyfunction!(evaluate_envelope, m)?)?;
     m.add_function(wrap_pyfunction!(core_version, m)?)?;
     Ok(())
 }

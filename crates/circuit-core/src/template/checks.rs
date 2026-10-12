@@ -10,9 +10,9 @@ use std::f64::consts::FRAC_PI_2;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{CheckDef, CheckKind, Edge, Pass};
+use super::{CheckDef, CheckKind, Compare, Domain, Edge, Pass};
 use crate::Registry;
-use crate::ir::{Analysis, BlockId, Circuit};
+use crate::ir::{Analysis, BlockId, Circuit, PinRef};
 use crate::spice::{MeasDef, node_name};
 use crate::units::{Unit, format_sig, spice_number};
 
@@ -45,6 +45,9 @@ pub struct SpecCheckDef {
     /// The output edge a `tran_threshold` check measures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edge: Option<Edge>,
+    /// How the measurement passes (within the tolerance unless stated).
+    #[serde(default, skip_serializing_if = "Compare::is_within")]
+    pub compare: Compare,
     /// Why the check could not be compiled into this netlist ("needs an AC analysis").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing: Option<String>,
@@ -72,85 +75,140 @@ pub struct CheckResult {
     pub note: Option<String>,
 }
 
+/// What a deck simulates, for deciding which checks it can measure.
+pub(crate) struct Sim {
+    ac: Option<(f64, f64)>,
+    /// `(t_stop, t_step)`.
+    tran: Option<(f64, f64)>,
+    /// The node of each DC sweep source's positive pin.
+    dc: Vec<String>,
+    /// A periodic source to measure a response to.
+    signal: bool,
+}
+
+impl Sim {
+    pub(crate) fn new(c: &Circuit, reg: &Registry, analyses: &[Analysis]) -> Sim {
+        let ac = analyses.iter().find_map(|a| match a {
+            Analysis::Ac { f_start, f_stop, .. } => Some((*f_start, *f_stop)),
+            _ => None,
+        });
+        let tran = analyses.iter().find_map(|a| match a {
+            Analysis::Tran { t_stop, t_step } => Some((*t_stop, *t_step)),
+            _ => None,
+        });
+        let pins = c.pin_index();
+        let dc = analyses
+            .iter()
+            .filter_map(|a| match a {
+                Analysis::Dc { source, .. } => pins.get(&PinRef::new(source, "P")).map(|n| node_name(n)),
+                _ => None,
+            })
+            .collect();
+        // A signal to measure a response to: a periodic source (one with a frequency), as for the
+        // editor's default transient.
+        let signal = c.parts.values().any(|p| {
+            crate::library::part_def(reg, c, &p.part).is_some_and(|d| d.category == crate::registry::Category::V)
+                && p.params.values().any(|q| q.unit == Unit::Hertz && q.si > 0.0)
+        });
+        Sim { ac, tran, dc, signal }
+    }
+}
+
 /// `.meas` cards and check definitions for every template block of `c`, against the analyses
 /// the deck runs (a check whose analysis is absent is listed with `missing`, not emitted).
 pub fn emit(c: &Circuit, reg: &Registry, analyses: &[Analysis]) -> (Vec<MeasDef>, Vec<SpecCheckDef>) {
-    let ac = analyses.iter().find_map(|a| match a {
-        Analysis::Ac { f_start, f_stop, .. } => Some((*f_start, *f_stop)),
-        _ => None,
-    });
-    let tran = analyses.iter().find_map(|a| match a {
-        Analysis::Tran { t_stop, t_step } => Some((*t_stop, *t_step)),
-        _ => None,
-    });
-    // A signal to measure a response to: a periodic source (one with a frequency), as for the
-    // editor's default transient.
-    let signal = c.parts.values().any(|p| {
-        crate::library::part_def(reg, c, &p.part).is_some_and(|d| d.category == crate::registry::Category::V)
-            && p.params.values().any(|q| q.unit == Unit::Hertz && q.si > 0.0)
-    });
+    let sim = Sim::new(c, reg, analyses);
     let mut cards = Vec::new();
     let mut defs = Vec::new();
     for block in c.blocks.values() {
         let Some(t) = block.template.as_ref().and_then(|id| reg.templates.get(id)) else { continue };
-        for ch in &t.checks {
-            let Some(spec) = block.spec.get(&ch.name) else { continue };
-            let mut def = SpecCheckDef {
-                block: block.id.clone(),
-                name: ch.name.clone(),
-                label: ch.label.clone(),
-                symbol: ch.symbol.clone(),
-                kind: ch.kind,
-                unit: ch.kind.unit(),
-                target: spec.target,
-                tol_pct: spec.tol_pct,
-                meas: Vec::new(),
-                edge: ch.edge,
-                missing: None,
-            };
-            let node = |port: &str| {
-                block
-                    .ports
-                    .iter()
-                    .find(|p| p.name == port)
-                    .filter(|p| c.nets.contains_key(&p.net))
-                    .map(|p| node_name(&p.net))
-                    .ok_or_else(|| format!("port {port} is not connected"))
-            };
-            let nodes = node(&ch.out).and_then(|o| Ok((o, ch.input.as_deref().map(node).transpose()?)));
-            let lines = match nodes {
-                Err(why) => Err(why),
-                Ok(_) if ch.kind.needs_signal() && !signal => {
-                    Err("needs a signal: connect a sine source to the block's input".to_string())
-                }
-                Ok(_) if ch.kind.is_ac() && ac.is_none() => Err("needs an AC analysis".to_string()),
-                Ok(_) if !ch.kind.is_ac() && tran.is_none() => Err("needs a transient analysis".to_string()),
-                Ok(_) if ch.tran.zip(tran).is_some_and(|(w, (_, step))| step > w.step * (1.0 + 1e-9)) => {
-                    let w = ch.tran.expect("checked");
-                    Err(format!("needs transient steps of at most {}", format_sig(w.step, Unit::Second)))
-                }
-                Ok((out, inp)) => {
-                    let sweep = ac.unwrap_or((0.0, f64::MAX));
-                    Ok(cards_for(ch, spec.target, &out, inp.as_deref(), sweep, tran.map_or(0.0, |t| t.0)))
-                }
-            };
-            match lines {
-                Err(why) => def.missing = Some(why),
-                Ok(lines) => {
-                    let prefix = format!("{}_{}", block.id, ch.name).to_ascii_lowercase();
-                    let analysis = if ch.kind.is_ac() { "ac" } else { "tran" };
-                    for (suffix, body) in lines {
-                        let name = format!("{prefix}_{suffix}");
-                        let body = body.replace("{p}", &prefix);
-                        cards.push(MeasDef { line: format!(".meas {analysis} {name} {body}"), name: name.clone() });
-                        def.meas.push(name);
-                    }
-                }
-            }
-            defs.push(def);
-        }
+        let node = |port: &str| {
+            block
+                .ports
+                .iter()
+                .find(|p| p.name == port)
+                .filter(|p| c.nets.contains_key(&p.net))
+                .map(|p| node_name(&p.net))
+                .ok_or_else(|| format!("port {port} is not connected"))
+        };
+        let checks = t.checks.iter().filter_map(|ch| block.spec.get(&ch.name).map(|s| (ch, s.target, s.tol_pct)));
+        emit_checks(&sim, &block.id, checks, &node, &mut cards, &mut defs);
     }
     (cards, defs)
+}
+
+/// Compile checks (with their targets and tolerances) into `.meas` cards; `node` names the deck
+/// node of a port. Card names start with the lowercased `block` id and the check name.
+pub(crate) fn emit_checks<'a>(
+    sim: &Sim,
+    block: &str,
+    checks: impl Iterator<Item = (&'a CheckDef, f64, f64)>,
+    node: &dyn Fn(&str) -> Result<String, String>,
+    cards: &mut Vec<MeasDef>,
+    defs: &mut Vec<SpecCheckDef>,
+) {
+    for (ch, target, tol_pct) in checks {
+        let mut def = SpecCheckDef {
+            block: block.to_string(),
+            name: ch.name.clone(),
+            label: ch.label.clone(),
+            symbol: ch.symbol.clone(),
+            kind: ch.kind,
+            unit: ch.kind.unit(),
+            target,
+            tol_pct,
+            meas: Vec::new(),
+            edge: ch.edge,
+            compare: ch.compare(),
+            missing: None,
+        };
+        let nodes = node(&ch.out).and_then(|o| {
+            let inp = ch.input.as_deref().map(node).transpose()?;
+            let supply: Vec<String> = ch.supply.iter().map(|p| node(p)).collect::<Result<_, _>>()?;
+            Ok((o, inp, supply))
+        });
+        let lines = match nodes {
+            Err(why) => Err(why),
+            Ok(_) if ch.kind.needs_signal() && !sim.signal => {
+                Err("needs a signal: connect a sine source to the block's input".to_string())
+            }
+            Ok(_) if ch.kind.domain() == Domain::Ac && sim.ac.is_none() => Err("needs an AC analysis".to_string()),
+            Ok(_) if ch.kind.domain() == Domain::Tran && sim.tran.is_none() => {
+                Err("needs a transient analysis".to_string())
+            }
+            Ok((_, ref inp, _))
+                if ch.kind.domain() == Domain::Dc && !inp.as_ref().is_some_and(|i| sim.dc.contains(i)) =>
+            {
+                Err("needs a DC sweep of the source driving the input".to_string())
+            }
+            Ok(_) if ch.tran.zip(sim.tran).is_some_and(|(w, (_, step))| step > w.step * (1.0 + 1e-9)) => {
+                let w = ch.tran.expect("checked");
+                Err(format!("needs transient steps of at most {}", format_sig(w.step, Unit::Second)))
+            }
+            Ok((out, inp, supply)) => {
+                let sweep = sim.ac.unwrap_or((0.0, f64::MAX));
+                Ok(cards_for(ch, target, &out, inp.as_deref(), &supply, sweep, sim.tran.map_or(0.0, |t| t.0)))
+            }
+        };
+        match lines {
+            Err(why) => def.missing = Some(why),
+            Ok(lines) => {
+                let prefix = format!("{}_{}", block, ch.name).to_ascii_lowercase();
+                let analysis = match ch.kind.domain() {
+                    Domain::Ac => "ac",
+                    Domain::Tran => "tran",
+                    Domain::Dc => "dc",
+                };
+                for (suffix, body) in lines {
+                    let name = format!("{prefix}_{suffix}");
+                    let body = body.replace("{p}", &prefix);
+                    cards.push(MeasDef { line: format!(".meas {analysis} {name} {body}"), name: name.clone() });
+                    def.meas.push(name);
+                }
+            }
+        }
+        defs.push(def);
+    }
 }
 
 /// `(suffix, card body)` per primitive measurement; `{p}` in a body is the check's name prefix.
@@ -159,12 +217,14 @@ fn cards_for(
     target: f64,
     out: &str,
     inp: Option<&str>,
+    supply: &[String],
     (f_start, f_stop): (f64, f64),
     t_stop: f64,
 ) -> Vec<(&'static str, String)> {
     let n = spice_number;
     let mid = "({p}_hi+{p}_lo)/2";
     let range = || vec![("hi", format!("max v({out})")), ("lo", format!("min v({out})"))];
+    let has_inp = inp.is_some();
     let inp = inp.unwrap_or("0");
     // A pass-band reference a decade from the corner, kept inside the sweep.
     let reference = |pass: Option<Pass>| match pass {
@@ -225,6 +285,44 @@ fn cards_for(
             }
             v
         }
+        CheckKind::TranHeadroom => {
+            let td = n(t_stop / 2.0);
+            let mut v = vec![("hi", format!("max v({out}) from={td}")), ("lo", format!("min v({out}) from={td}"))];
+            v.push(("p", format!("avg v({}) from={td}", supply[0])));
+            if let Some(neg) = supply.get(1) {
+                v.push(("n", format!("avg v({neg}) from={td}")));
+            }
+            v
+        }
+        CheckKind::AcDbAt => {
+            let at = n(ch.at_hz.unwrap_or(DEFAULT_GAIN_HZ));
+            let mut v = vec![("o", format!("find vdb({out}) at={at}"))];
+            if has_inp {
+                v.push(("i", format!("find vdb({inp}) at={at}")));
+            }
+            v
+        }
+        CheckKind::TranRms => {
+            let td = n(t_stop / 2.0);
+            vec![("r", format!("rms v({out}) from={td}")), ("a", format!("avg v({out}) from={td}"))]
+        }
+        CheckKind::DcTransfer => vec![("v", format!("find v({out}) at={}", n(ch.at_v.unwrap_or(0.0))))],
+        CheckKind::TranRise => {
+            let td = n(t_stop / 2.0);
+            let level = |f: &str| format!("{{p}}_lo+{f}*({{p}}_hi-{{p}}_lo)");
+            vec![
+                ("hi", format!("max v({out}) from={td}")),
+                ("lo", format!("min v({out}) from={td}")),
+                (
+                    "t",
+                    format!(
+                        "trig v({out}) val={} rise=1 td={td} targ v({out}) val={} rise=1 td={td}",
+                        level("0.1"),
+                        level("0.9")
+                    ),
+                ),
+            ]
+        }
     }
 }
 
@@ -251,6 +349,13 @@ fn combine(kind: CheckKind, edge: Option<Edge>, v: &[Option<f64>]) -> Option<f64
         (CheckKind::TranDuty, [hi, lo, _, _, av]) if hi > lo => (av - lo) / (hi - lo),
         (CheckKind::TranAmplitude, [hi, lo]) => (hi - lo) / 2.0,
         (CheckKind::DcLevel, [av]) => *av,
+        (CheckKind::TranHeadroom, [hi, lo, p]) => (p - hi).min(*lo),
+        (CheckKind::TranHeadroom, [hi, lo, p, n]) => (p - hi).min(lo - n),
+        (CheckKind::AcDbAt, [o]) => *o,
+        (CheckKind::AcDbAt, [o, i]) => o - i,
+        (CheckKind::TranRms, [r, a]) => (r * r - a * a).max(0.0).sqrt(),
+        (CheckKind::DcTransfer, [v]) => *v,
+        (CheckKind::TranRise, [_, _, t]) if *t > 0.0 => *t,
         _ => return None,
     };
     x.is_finite().then_some(x)
@@ -266,6 +371,10 @@ fn unmeasured(kind: CheckKind) -> &'static str {
         CheckKind::TranFreq | CheckKind::TranDuty => "the output does not oscillate (yet)",
         CheckKind::TranAmplitude | CheckKind::DcLevel => "the output was not simulated",
         CheckKind::TranThreshold => "the output never switched: is the input swinging past the threshold?",
+        CheckKind::TranHeadroom | CheckKind::TranRms => "the output was not simulated",
+        CheckKind::AcDbAt => "the frequency is outside the AC sweep",
+        CheckKind::DcTransfer => "the input level is outside the DC sweep",
+        CheckKind::TranRise => "the output never rose in the second half of the run",
     }
 }
 
@@ -278,8 +387,7 @@ pub fn evaluate_checks(defs: &[SpecCheckDef], meas: &BTreeMap<String, f64>) -> V
                 None => combine(d.kind, d.edge, &values),
                 Some(_) => None,
             };
-            let pass =
-                measured.is_some_and(|m| (m - d.target).abs() <= d.tol_pct / 100.0 * d.target.abs() * (1.0 + 1e-9));
+            let pass = measured.is_some_and(|m| d.compare.passes(m, d.target, d.tol_pct));
             CheckResult {
                 block: d.block.clone(),
                 name: d.name.clone(),
@@ -315,7 +423,7 @@ pub fn need(ch: &CheckDef, target: f64) -> Need {
     }
     match ch.kind {
         CheckKind::AcCorner | CheckKind::AcCenter => Need::Ac { lo: target / 100.0, hi: target * 100.0 },
-        CheckKind::AcGain => {
+        CheckKind::AcGain | CheckKind::AcDbAt => {
             let at = ch.at_hz.unwrap_or(DEFAULT_GAIN_HZ);
             Need::Ac { lo: at / 10.0, hi: at * 10.0 }
         }
@@ -330,7 +438,11 @@ pub fn need(ch: &CheckDef, target: f64) -> Need {
         | CheckKind::TranDuty
         | CheckKind::TranAmplitude
         | CheckKind::DcLevel
-        | CheckKind::TranThreshold => Need::Nothing,
+        | CheckKind::TranThreshold
+        | CheckKind::TranHeadroom
+        | CheckKind::TranRms
+        | CheckKind::TranRise
+        | CheckKind::DcTransfer => Need::Nothing,
     }
 }
 
@@ -396,6 +508,7 @@ mod tests {
             tol_pct: 10.0,
             meas: meas.iter().map(|s| s.to_string()).collect(),
             edge: None,
+            compare: Compare::Within,
             missing: None,
         }
     }

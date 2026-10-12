@@ -58,10 +58,89 @@ const PARTS: &[(&str, &[&str], &[&str])] = &[
 const BAD_VALUES: &[&str] = &["bad", "1e12", "-1", "10uF", "", "4k7k"];
 const NET_NAMES: &[&str] = &["GND", "VCC", "VEE", "N_IN", "N_OUT", "N_A", "N_B", "n_a", "gnd", "nc_x"];
 const BLOCKS: &[&str] = &["b1", "b2", "b3"];
-/// Library components (LLD §17): a passive RC, an op-amp buffer, and a stage that nests both.
-const LIB_IDS: &[&str] = &["lib:rc_lp", "lib:buf", "lib:stage"];
+/// Library components (LLD §17): a passive RC, an op-amp buffer, and a stage that nests both;
+/// a behavioral VCA with params, a bounded transfer function, a require and a contract; an
+/// imported SPICE model with a POLY source and `PARAMS:`; a gain stage whose rules set its values.
+const LIB_IDS: &[&str] = &["lib:rc_lp", "lib:buf", "lib:stage", "lib:vca", "lib:imp", "lib:gain"];
+/// Params of library components: (id, key, good values).
+const LIB_PARAMS: &[(&str, &str, &[&str])] = &[
+    ("lib:vca", "k", &["1", "2.5", "0.5"]),
+    ("lib:imp", "g", &["2", "10"]),
+    ("lib:gain", "gain", &["5", "20", "3.3"]),
+];
+
+const IMPORTED: &str = "\
+* a vendor-style amplifier
+.param base=1m
+.subckt amp a o params: g=2
+r1 a 0 1meg
+e1 n1 0 a 0 {g}
+g1 0 n2 poly(1) n1 0 0 {base}
+r2 n2 0 1k
+b1 o 0 v=v(n2)*1
+.ends amp
+";
+
+fn new_def(id: &str, variant: usize) -> Value {
+    let pin = |name: &str, num: u16, kind: &str| json!({"name": name, "num": num, "type": kind});
+    let mut def = match id {
+        "lib:vca" => json!({
+            "part": {"id": id, "category": "X", "prefix": "U", "title": "VCA", "symbol": "auto",
+                     "pins": [pin("IN", 1, "input"), pin("CTL", 2, "input"), pin("REF", 3, "passive"), pin("OUT", 4, "output")],
+                     "params": {"k": {"unit": "unitless", "default": (["2", "1", "4"][variant % 3]), "min": 0.5, "max": 4},
+                                "bw": {"unit": "hertz", "default": "100k", "min": 1000, "max": 1e6}}},
+            "version": 1 + variant as u32,
+            "model": {"kind": "behavioral", "laws": [
+                "V(OUT) = clamp(tf(V(REF) + k*(V(CTL)/1V)*(V(IN) - V(REF)), [1], [1/(2*pi*bw), 1]), 0.02, 10)",
+                "R(IN, REF) = 1Meg", "R(CTL) = 1Meg", "Rout(OUT) = 50", "require V(CTL) in [0, 5]"]},
+            "provenance": {"kind": "user"},
+            "contract": {"bench": {"parts": {"V1": {"part": "vsource_dc", "params": {"voltage": "2.5"}},
+                                             "V2": {"part": "vsource_dc", "params": {"voltage": "1"}},
+                                             "V3": {"part": "vsource_sine", "params": {"offset": "2.5", "amplitude": "0.1"}}},
+                                   "nets": {"REF": ["V1.P", "DUT.REF"], "CTL": ["V2.P", "DUT.CTL"], "IN": ["V3.P", "DUT.IN"],
+                                            "OUT": ["DUT.OUT"], "GND": ["V1.N", "V2.N", "V3.N"]}},
+                         "checks": [{"name": "gain", "label": "Gain", "symbol": "G", "kind": "ac_gain", "in": "IN", "out": "OUT",
+                                     "tol_pct": 1.0, "target": "k"},
+                                    {"name": "rise", "label": "Rise", "symbol": "tr", "kind": "tran_rise", "out": "OUT",
+                                     "tol_pct": 2.0, "target": "0.2952/1kHz"}]}
+        }),
+        "lib:imp" => json!({
+            "part": {"id": id, "category": "X", "prefix": "U", "title": "Imported amplifier", "symbol": "auto",
+                     "pins": [pin("A", 1, "input"), pin("O", 2, "output")],
+                     "params": {"g": {"unit": "unitless", "default": (["2", "5", "8"][variant % 3]), "min": 1, "max": 10}}},
+            "version": 1 + variant as u32,
+            "model": {"kind": "spice", "text": IMPORTED, "subckt": "amp", "pins": {"A": "a", "O": "o"}},
+            "provenance": {"kind": "import", "source": "parity", "licence": "test"},
+        }),
+        _ => json!({
+            "part": {"id": id, "category": "X", "prefix": "U", "title": "Gain stage", "symbol": "auto",
+                     "pins": [pin("IN", 1, "input"), pin("OUT", 2, "output"), pin("VCC", 3, "power_pos"), pin("VEE", 4, "power_neg")],
+                     "params": {"gain": {"unit": "unitless", "default": (["11", "4.7", "33"][variant % 3]), "min": 2, "max": 50}}},
+            "version": 1 + variant as u32,
+            "model": {"kind": "composite",
+                      "parts": {"R1": {"part": "resistor_th"}, "R2": {"part": "resistor_th"}, "U1": {"part": "opamp_tl072"}},
+                      "nets": {"IN": ["U1.INP_A"], "N_M": ["R1.1", "R2.1", "U1.INM_A"], "OUT": ["R2.2", "U1.OUT_A"],
+                               "GND": ["R1.2"], "VCC": ["U1.VCC"], "VEE": ["U1.VEE"]}},
+            "rules": {"solve": {"ratio": "gain - 1", "R1": "search(E24, 1k, 100k)", "R2": "nearest(E24, R1*ratio, 100, 1meg)"},
+                      "estimates": {"ratio": "R2/R1"}, "prefer": {"R1": "10k"}},
+            "provenance": {"kind": "user"},
+        }),
+    };
+    if variant == 3 {
+        // Refused: units that do not add up, a forbidden card, a rule in the wrong unit.
+        match id {
+            "lib:vca" => def["model"]["laws"][0] = json!("V(OUT) = V(IN) + I(OUT)"),
+            "lib:imp" => def["model"]["text"] = json!(format!(".include /etc/passwd\n{IMPORTED}")),
+            _ => def["rules"]["solve"]["R2"] = json!("nearest(E24, R1*ratio*1s, 100, 1meg)"),
+        }
+    }
+    def
+}
 
 fn lib_def(id: &str, variant: usize) -> Value {
+    if ["lib:vca", "lib:imp", "lib:gain"].contains(&id) {
+        return new_def(id, variant);
+    }
     let pin = |name: &str, num: u16, kind: &str| json!({"name": name, "num": num, "type": kind});
     let (title, prefix, pins, parts, nets) = match id {
         "lib:rc_lp" => (
@@ -134,7 +213,11 @@ impl Gen<'_> {
         match r {
             0..=21 => {
                 let (part, keys, good) = if self.rng.chance(35) {
-                    (*self.rng.pick(LIB_IDS), &[][..], &[][..])
+                    let id = *self.rng.pick(LIB_IDS);
+                    match LIB_PARAMS.iter().find(|p| p.0 == id) {
+                        Some((_, k, good)) => (id, std::slice::from_ref(k), *good),
+                        None => (id, &[][..], &[][..]),
+                    }
                 } else {
                     *self.rng.pick(PARTS)
                 };
@@ -187,7 +270,8 @@ impl Gen<'_> {
             58..=63 => {
                 let Some(r) = self.existing_part(s) else { return ("narrate", json!({"refs": [], "text": "x"})) };
                 let part = c.parts[&r].part.clone();
-                let (_, keys, good) = *PARTS.iter().find(|p| p.0 == part).unwrap_or(&("", &[], &[]));
+                let lib = LIB_PARAMS.iter().find(|p| p.0 == part).map(|(id, k, g)| (*id, std::slice::from_ref(k), *g));
+                let (_, keys, good) = lib.unwrap_or(*PARTS.iter().find(|p| p.0 == part).unwrap_or(&("", &[], &[])));
                 let key = if keys.is_empty() { "nope" } else { *self.rng.pick(keys) };
                 let v = if good.is_empty() || self.rng.chance(15) {
                     *self.rng.pick(BAD_VALUES)
@@ -342,6 +426,7 @@ fn digest(reg: &Arc<Registry>, log: &[String]) -> (String, u64, usize) {
     out.push(api::erc(&s, "user_edit", None));
     out.push(api::erc(&s, "llm_block", Some("b1")));
     out.push(s.circuit_text());
+    out.push(api::characterise_benches(&s, "lib:vca"));
     let fresh = api::new_session(reg.clone(), None).unwrap();
     out.push(api::apply_all(
         &fresh,

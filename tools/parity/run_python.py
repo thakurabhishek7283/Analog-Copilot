@@ -25,6 +25,7 @@ for log in logs:
     out.append(s.erc("user_edit", None))
     out.append(s.erc("llm_block", "b1"))
     out.append(s.circuit_text())
+    out.append(s.characterise_benches("lib:vca"))
     fresh = circuit_core.Session(registry)
     out.append(fresh.apply_all("[" + ",".join(e for e in log if e.endswith("}")) + "]"))
     digests.append(hashlib.sha256("\n".join(out).encode("utf-8")).hexdigest())
